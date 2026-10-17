@@ -9,7 +9,10 @@
 //!   d'enregistrement consigné, jamais de panique (ADR-05) ;
 //! - logs uniquement via plume-diagnostics — aucun `println!`.
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Console Windows supprimée, y compris en debug : rien n'est écrit sur
+// stdout (logs → fichier plume.log), une fenêtre noire à l'ouverture
+// n'apportait que de la confusion.
+#![windows_subsystem = "windows"]
 
 mod commands;
 mod pill;
