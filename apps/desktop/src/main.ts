@@ -103,6 +103,7 @@ const fr_engine: Record<string, string> = {
   fake: "moteur factice (démo)",
   "whisper.cpp": "whisper.cpp — 100 % local",
   parakeet: "Parakeet — 100 % local",
+  "parakeet-onnx": "Parakeet — 100 % local",
 };
 
 let config: ConfigJson | null = null;
@@ -471,10 +472,19 @@ async function main(): Promise<void> {
   void refreshHistory();
 
   // Événements (docs/05 §3 + additions documentées).
-  void listen("state://changed", (ev) => {
+  void listen("state://changed", async (ev) => {
     const payload = ev.payload as { state: string };
     ($id("badge") as HTMLElement).textContent =
       fr_state[payload.state] ?? payload.state;
+    // Le moteur peut changer sans passage par la configuration (modèle
+    // installé, rechargement automatique) : relecture de l'état complet
+    // plutôt que déduit du seul badge.
+    try {
+      const s = await invoke<StateInfo>("state_get");
+      ($id("engine") as HTMLElement).textContent = fr_engine[s.engine] ?? s.engine;
+    } catch {
+      // badge inchangé si la lecture échoue (jamais de fausse info)
+    }
   });
   void listen<Notice>("notice://notice", (ev) => {
     showNotice(ev.payload.message);
