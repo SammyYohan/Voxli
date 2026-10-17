@@ -623,6 +623,10 @@ fn download_model_thread(
         serde_json::to_string_pretty(&root).unwrap_or_default(),
     );
     let _ = app.emit("models://done", serde_json::json!({ "id": id }));
+    // Le worker réévalue le moteur chargé : si le modèle fraîchement
+    // installé le rend périmé (faux → réel), il recharge sans intervention
+    // utilisateur (RF-15), et sans toucher à une dictée en cours.
+    let _ = app.state::<UiShared>().tx.send(WorkerMsg::ModelInstalled);
     Ok(())
 }
 

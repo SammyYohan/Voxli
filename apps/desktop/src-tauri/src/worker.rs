@@ -63,6 +63,11 @@ pub enum WorkerMsg {
     /// reconstruit son orchestrateur (raccourcis re-registrés côté
     /// principal) — sans redémarrer l'application.
     ConfigChanged(Box<Config>),
+    /// RF-15 : un modèle vient d'être installé sur le disque. Le worker
+    /// réévalue la pertinence du moteur chargé (`engine_stale`) sans annuler
+    /// une dictée en cours : le rechargement attend la fin de la prise en
+    /// cours dans ce cas (jamais de perte, RF-20).
+    ModelInstalled,
     #[allow(dead_code)]
     Shutdown,
 }
@@ -352,6 +357,57 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 }
             }
             Ok(WorkerMsg::Shutdown) => break,
+            Ok(WorkerMsg::ModelInstalled) => {
+                // RF-15 : le modèle vient d'être installé ; le moteur ne peut
+                // changer que hors d'une prise (capture exclusive). Si une
+                // dictée est en cours, le recalage attendra le prochain
+                // cycle utile (ConfigChanged ou échange de périphérique).
+                if matches!(
+                    orch.state(),
+                    DictationState::Idle | DictationState::Recovery { .. }
+                ) && engine_stale(&engine_label, &cfg)
+                {
+                    logger.log(Event::DeviceEvent {
+                        kind: "model-installed-rebuild".into(),
+                    });
+                    let last = orch.last_transcript().cloned();
+                    let orch_cfg = to_orchestrator_cfg(&cfg, pro_profiles);
+                    drop(orch);
+                    engine = build_engine(&cfg, &logger);
+                    if let Err(err) = engine.warmup() {
+                        logger.log(Event::Error {
+                            module: "asr".into(),
+                            code: asr_code(&err),
+                        });
+                    }
+                    *lock_or_recover(&engine_label) = engine.id().as_str().to_string();
+                    *lock_or_recover(&app.state::<UiShared>().engine) =
+                        engine.id().as_str().to_string();
+                    post = match cfg.general.post_processing {
+                        plume_config::PostProcessing::Rules => {
+                            Box::new(plume_text::FrenchProcessor)
+                        }
+                        _ => Box::new(PassThroughProcessor),
+                    };
+                    let deps = Deps {
+                        capture: &mut capture,
+                        vad: &vad,
+                        transcriptor: &*engine,
+                        post: &*post,
+                        inserter: &mut *inserter,
+                        focus: &focus_reader,
+                    };
+                    orch = Orchestrator::new(
+                        orch_cfg,
+                        deps,
+                        make_sink(&app, &logger, &engine_label, &pill),
+                        &clock,
+                    );
+                    if let Some(t) = last {
+                        orch.restore_buffer(t);
+                    }
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {
                 tick = tick.wrapping_add(1);
                 orch.handle(InputEvent::Tick);

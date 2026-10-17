@@ -143,13 +143,18 @@ développement démarre et consigne : `license-free` → `history-memory` →
 `capture-opened:…` → `engine_loaded {"engine":"fake"}` ; les raccourcis
 `Shift+Alt+Z/X` s'enregistrent et un conflit possible sur `Ctrl+Alt+Espace`
 est signalé sans paniquer (RF-03). Interface : `tsc --noEmit` et `vite build`
-verts (3 fenêtres : réglages, secours, pastille).
+verts (3 fenêtres : réglages, secours, pastille). **Moteur whisper.cpp réel**
+(aussi au 17/10/2026) : `whisper-rs 0.16` compilé (libclang fourni par LLVM
+23.1.3 via winget, CMake embarqué de VS) ; `cargo test -p plume-asr
+--features whisper` vert et `cargo build -p plume-desktop --features
+custom-protocol,real-asr` vert — la transcription voix réelle est prête, les
+mesures de latence et de précision restent à produire (§6.4).
 
 ### 6.4 Ce qui reste à valider (écrit mais non prouvé)
 
-- **Moteur `real-asr` (whisper.cpp)** : la compilation exige libclang
-  (composant VS listé en §6.6) — le code est prêt, l'Édition de liens n'a
-  jamais été exécutée sur cette machine.
+- **Mesures réelles de performance et de précision** (docs/06) : le moteur
+  whisper.cpp compile désormais, mais **aucun chiffre** de latence (p95),
+  WER ou RAM n'est produit tant qu'une voix réelle n'a pas dicté.
 - **Feature `parakeet-asr`** : sherpa-onnx (C++/CMake) jamais compilé ici ;
   code écrit d'après l'API vérifiée de la documentation.
 - **Moteurs distants (P4)** : transcription BYOK compilée en opt-in (`remote`)
@@ -193,22 +198,25 @@ dernier texte ; `Shift+Alt+X` affiche la fenêtre de secours.
 
 ### 6.6 Moteurs réels (opt-in, toujours hors ligne)
 
-Prérequis toolchain (coût unique, vérifié le 17/10/2026) : `whisper-rs-sys`
-(bindgen) exige **libclang** — absent de votre VS Community 18 par défaut. Il
-faut le composant « C++ Clang Compiler for Windows (with libclang) »,
-puis redéfinir `LIBCLANG_PATH` vers son dossier `bin` :
+Prérequis toolchain (coût unique, éprouvé le 17/10/2026) : `whisper-rs-sys`
+(bindgen) exige **libclang**, et whisper.cpp se construit avec **CMake**.
+Chemin éprouvé : LLVM via winget + le CMake embarqué de Visual Studio
+(la variante « composant VS » reste possible en secours) :
 
 ```powershell
-# Installer le composant VS (admin, ~1 Go) :
+winget install --id LLVM.LLVM -e --accept-source-agreements --accept-package-agreements
+$env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+$env:PATH += ";C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
+
+cargo test -p plume-asr --features whisper                 # 2/2 verts
+cargo build -p plume-desktop --features custom-protocol,real-asr
+```
+
+```powershell
+# Variante de secours (admin, ~1 Go) :
 #   VS Installer → Modify → « C++ Clang Compiler for Windows (with libclang) »
 #   (composant Microsoft.VisualStudio.Component.VC.Llvm.ClangWithLibclang)
 $env:LIBCLANG_PATH = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin"
-
-cargo test -p plume-storage --features sqlite         # historique disque
-cargo test -p plume-secure --features dpapi           # secrets Windows
-
-powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggml
-cargo build -p plume-desktop --release --features real-asr
 ```
 
 ```powershell
@@ -217,10 +225,11 @@ cargo test -p plume-storage --features secure-disk   # SQLite + DPAPI (RF-33)
 cargo test -p plume-secure --features dpapi          # secrets Windows
 
 # Modèles : le gestionnaire intégré les télécharge depuis la fenêtre
-# Régglages → « Modèles » (RF-20) — empreinte SHA-256 consignée.
-# Sans l'interface, l'ancien script reste valable :
+# Réglages → « Modèles » (RF-15) — empreinte SHA-256 consignée ; à la fin
+# du téléchargement, le moteur reconstruit sans action supplémentaire
+# (« model-installed-rebuild » au journal) ni redémarrage.
+# Sans l'interface, le script reste valable :
 powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggml
-cargo build -p plume-desktop --release --features real-asr
 ```
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé

@@ -498,6 +498,8 @@ async function main(): Promise<void> {
       showNotice(
         `Téléchargement interrompu (${"reason" in ev.payload && ev.payload.reason !== "" && ev.payload.reason !== undefined ? ev.payload.reason : "erreur réseau"}). Vous pouvez recommencer : il reprendra là où il s'était arrêté.`,
       );
+    } else {
+      showNotice("Modèle installé — pris en compte immédiatement.");
     }
     void refreshModels();
   });

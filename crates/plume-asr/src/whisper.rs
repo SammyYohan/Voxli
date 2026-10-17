@@ -6,6 +6,7 @@
 //! contenu des dictées).
 
 use std::path::Path;
+use std::time::Duration;
 
 use plume_core::{
     AsrError, AudioBuffer, EngineId, TranscribeOptions, Transcript, Transcriptor, SAMPLE_RATE_HZ,
@@ -42,7 +43,7 @@ impl WhisperCppEngine {
             return Err(AsrError::ModelMissing(model_path.display().to_string()));
         }
         let ctx = whisper_rs::WhisperContext::new_with_params(
-            &model_path.to_string_lossy(),
+            model_path,
             whisper_rs::WhisperContextParameters::default(),
         )
         .map_err(|e| AsrError::ModelMissing(e.to_string()))?;
@@ -90,7 +91,7 @@ impl Transcriptor for WhisperCppEngine {
             whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
         params.set_language(opts.language.as_deref());
         params.set_temperature(0.0);
-        params.set_no_speech_prob_threshold(0.6);
+        params.set_no_speech_thold(0.6);
         params.set_suppress_blank(true);
         params.set_no_context(true);
         if let Some(prompt) = &opts.initial_prompt {
@@ -103,22 +104,19 @@ impl Transcriptor for WhisperCppEngine {
             .full(params, &audio.samples)
             .map_err(|_| AsrError::Inference)?;
 
-        let n_segments = state.full_n_segments().map_err(|_| AsrError::Inference)?;
+        let n_segments = state.full_n_segments();
         let mut text = String::new();
         let mut t0: i64 = 0;
         let mut t1: i64 = 0;
         for i in 0..n_segments {
-            let seg_text = state
-                .full_get_segment_text(i)
-                .map_err(|_| AsrError::Inference)?;
-            text.push_str(&seg_text);
-            t1 = state
-                .full_get_segment_t1(i)
-                .map_err(|_| AsrError::Inference)?;
+            let Some(seg) = state.get_segment(i) else {
+                continue;
+            };
+            let seg_text = seg.to_str().map_err(|_| AsrError::Inference)?;
+            text.push_str(seg_text);
+            t1 = seg.end_timestamp();
             if i == 0 {
-                t0 = state
-                    .full_get_segment_t0(i)
-                    .map_err(|_| AsrError::Inference)?;
+                t0 = seg.start_timestamp();
             }
         }
 
