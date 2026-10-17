@@ -218,6 +218,22 @@ function listOfApps(inputId: string): string[] {
  * choix de présentation, pas une configuration produit. */
 const MODE_KEY = "plume.ui.avance";
 
+/** Thème : clair / sombre / celui du système. Préférence locale, appliquée
+ * dès le script de tête de la page (pas de flash). */
+const THEME_KEY = "plume.ui.theme";
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(): void {
+  const pref = localStorage.getItem(THEME_KEY) ?? "system";
+  const effective =
+    pref === "light" || pref === "dark"
+      ? pref
+      : darkQuery.matches
+        ? "dark"
+        : "light";
+  document.documentElement.dataset.theme = effective;
+}
+
 function applyUiMode(): void {
   const avance = localStorage.getItem(MODE_KEY) === "1";
   document.body.classList.toggle("mode-avance", avance);
@@ -411,6 +427,17 @@ function wireEvents(): void {
   modeBox.addEventListener("change", () => {
     localStorage.setItem(MODE_KEY, modeBox.checked ? "1" : "0");
     document.body.classList.toggle("mode-avance", modeBox.checked);
+  });
+  // Thème : la préférence enregistrée pilote data-theme ; l'attribut est
+  // déjà posé avant la première peinture (script de tête de la page).
+  const themeSel = $id("ui-theme") as HTMLSelectElement;
+  themeSel.value = localStorage.getItem(THEME_KEY) ?? "system";
+  themeSel.addEventListener("change", () => {
+    localStorage.setItem(THEME_KEY, themeSel.value);
+    applyTheme();
+  });
+  darkQuery.addEventListener("change", () => {
+    if ((localStorage.getItem(THEME_KEY) ?? "system") === "system") applyTheme();
   });
   $id("btn-save-general").addEventListener("click", () => {
     void sendConfig();

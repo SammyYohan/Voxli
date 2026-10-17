@@ -307,6 +307,24 @@ button {
   margin-right: 6px;
 }
 
+/* Thème sombre : mêmes variables, valeurs inversées ; appliqué par
+   data-theme (script en tête de page — jamais de flash). */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #1d1b24;
+  --ink: #ece9f2;
+  --muted: #a19baf;
+  --line: #353140;
+  --plume: #a2aaff;
+  --plume-soft: #4a4f8f;
+  --ok: #52d9a0;
+  --bad: #ff9d9d;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
 /* ================================================== Simple / Avancé
    Préférence de présentation seulement (localStorage, hors
    configuration produit) : tant que « mode-avance » n'est pas coché,
@@ -326,11 +344,22 @@ body.mode-avance .simple-only {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
 }
 
 #mode-bar label {
   cursor: pointer;
   user-select: none;
+}
+
+.mode-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
 }
 
 #mode-bar input {

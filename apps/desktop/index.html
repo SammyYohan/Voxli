@@ -4,6 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Plume — Réglages</title>
+    <script>
+      /** Thème appliqué avant la première peinture (préférence locale,
+       * jamais une configuration produit). */
+      (function () {
+        var pref = localStorage.getItem("plume.ui.theme") || "system";
+        var dark =
+          pref === "dark"
+            ? true
+            : pref === "light"
+              ? false
+              : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -21,6 +35,14 @@
       <label>
         <input id="mode-avance" type="checkbox" />
         Mode avancé — tous les réglages
+      </label>
+      <label class="mode-theme">
+        Thème
+        <select id="ui-theme">
+          <option value="system">celui du système</option>
+          <option value="light">clair</option>
+          <option value="dark">sombre</option>
+        </select>
       </label>
     </div>
 
@@ -46,44 +68,105 @@
         <label for="gen-language">Langue de dictée (auto = la machine la détecte)</label>
         <select id="gen-language">
           <option value="">Détection automatique (recommandée)</option>
-          <option value="fr">français</option>
-          <option value="en">anglais</option>
-          <option value="de">allemand</option>
-          <option value="es">espagnol</option>
-          <option value="it">italien</option>
-          <option value="pt">portugais</option>
-          <option value="nl">néerlandais</option>
-          <option value="ro">roumain</option>
-          <option value="pl">polonais</option>
-          <option value="cs">tchèque</option>
-          <option value="sk">slovaque</option>
-          <option value="hu">hongrois</option>
-          <option value="da">danois</option>
-          <option value="no">norvégien</option>
-          <option value="sv">suédois</option>
-          <option value="fi">finlandais</option>
-          <option value="el">grec</option>
-          <option value="ru">russe</option>
-          <option value="uk">ukrainien</option>
-          <option value="hr">croate</option>
-          <option value="he">hébreu</option>
-          <option value="ar">arabe</option>
-          <option value="fa">persan</option>
-          <option value="tr">turc</option>
-          <option value="hi">hindi</option>
-          <option value="bn">bengali</option>
-          <option value="ur">ourdou</option>
-          <option value="ta">tamil (tamoul)</option>
-          <option value="te">telugu</option>
-          <option value="vi">vietnamien</option>
-          <option value="th">thaï</option>
-          <option value="id">indonésien</option>
-          <option value="ms">malais</option>
-          <option value="ja">japonais</option>
-          <option value="ko">coréen</option>
-          <option value="zh">chinois</option>
-          <option value="sw">swahili</option>
-          <option value="yo">yoruba</option>
+          <option value="sq">albanais (sq)</option>
+          <option value="de">allemand (de)</option>
+          <option value="am">amharique (am)</option>
+          <option value="en">anglais (en)</option>
+          <option value="ar">arabe (ar)</option>
+          <option value="hy">arménien (hy)</option>
+          <option value="as">assamais (as)</option>
+          <option value="az">azéri (az)</option>
+          <option value="ba">bachkir (ba)</option>
+          <option value="eu">basque (eu)</option>
+          <option value="be">biélorusse (be)</option>
+          <option value="bn">bengali (bn)</option>
+          <option value="my">birman (my)</option>
+          <option value="bs">bosnien (bs)</option>
+          <option value="br">breton (br)</option>
+          <option value="bg">bulgare (bg)</option>
+          <option value="yue">cantonais (yue)</option>
+          <option value="ca">catalan (ca)</option>
+          <option value="zh">chinois mandarin (zh)</option>
+          <option value="ko">coréen (ko)</option>
+          <option value="ht">créole haïtien (ht)</option>
+          <option value="hr">croate (hr)</option>
+          <option value="si">cingalais (si)</option>
+          <option value="da">danois (da)</option>
+          <option value="es">espagnol (es)</option>
+          <option value="et">estonien (et)</option>
+          <option value="fo">féroïen (fo)</option>
+          <option value="fi">finlandais (fi)</option>
+          <option value="fr">français (fr)</option>
+          <option value="gl">galicien (gl)</option>
+          <option value="cy">gallois (cy)</option>
+          <option value="ka">géorgien (ka)</option>
+          <option value="el">grec (el)</option>
+          <option value="gu">gujarati (gu)</option>
+          <option value="ha">haoussa (ha)</option>
+          <option value="haw">hawaïen (haw)</option>
+          <option value="he">hébreu (he)</option>
+          <option value="hi">hindi (hi)</option>
+          <option value="hu">hongrois (hu)</option>
+          <option value="id">indonésien (id)</option>
+          <option value="is">islandais (is)</option>
+          <option value="it">italien (it)</option>
+          <option value="ja">japonais (ja)</option>
+          <option value="jw">javanais (jw)</option>
+          <option value="kn">kannada (kn)</option>
+          <option value="kk">kazakh (kk)</option>
+          <option value="km">khmer (km)</option>
+          <option value="lo">lao (lo)</option>
+          <option value="la">latin (la)</option>
+          <option value="lv">letton (lv)</option>
+          <option value="ln">lingala (ln)</option>
+          <option value="lt">lituanien (lt)</option>
+          <option value="lb">luxembourgeois (lb)</option>
+          <option value="mk">macédonien (mk)</option>
+          <option value="ms">malais (ms)</option>
+          <option value="ml">malayalam (ml)</option>
+          <option value="mg">malgache (mg)</option>
+          <option value="mt">maltais (mt)</option>
+          <option value="mi">maori (mi)</option>
+          <option value="mr">marathi (mr)</option>
+          <option value="mn">mongol (mn)</option>
+          <option value="nn">nynorsk norvégien (nn)</option>
+          <option value="no">norvégien (no)</option>
+          <option value="ne">népalais (ne)</option>
+          <option value="nl">néerlandais (nl)</option>
+          <option value="oc">occitan (oc)</option>
+          <option value="ur">ourdou (ur)</option>
+          <option value="uz">ouzbek (uz)</option>
+          <option value="ps">pachto (ps)</option>
+          <option value="pa">pendjabi (pa)</option>
+          <option value="fa">persan (fa)</option>
+          <option value="pl">polonais (pl)</option>
+          <option value="pt">portugais (pt)</option>
+          <option value="ro">roumain (ro)</option>
+          <option value="ru">russe (ru)</option>
+          <option value="sa">sanskrit (sa)</option>
+          <option value="sr">serbe (sr)</option>
+          <option value="sd">sindhi (sd)</option>
+          <option value="sk">slovaque (sk)</option>
+          <option value="sl">slovène (sl)</option>
+          <option value="sn">shona (sn)</option>
+          <option value="so">somali (so)</option>
+          <option value="su">soundanais (su)</option>
+          <option value="sv">suédois (sv)</option>
+          <option value="sw">swahili (sw)</option>
+          <option value="tg">tadjik (tg)</option>
+          <option value="tl">tagalog (tl)</option>
+          <option value="ta">tamoul (ta)</option>
+          <option value="tt">tatar (tt)</option>
+          <option value="cs">tchèque (cs)</option>
+          <option value="te">telugu (te)</option>
+          <option value="th">thaï (th)</option>
+          <option value="bo">tibétain (bo)</option>
+          <option value="tr">turc (tr)</option>
+          <option value="tk">turkmène (tk)</option>
+          <option value="uk">ukrainien (uk)</option>
+          <option value="vi">vietnamien (vi)</option>
+          <option value="yi">yiddish (yi)</option>
+          <option value="yo">yoruba (yo)</option>
         </select>
       </div>
       <div class="row">
