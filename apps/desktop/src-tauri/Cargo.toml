@@ -39,4 +39,8 @@ real-asr = ["plume-asr/whisper"]
 parakeet-asr = ["plume-asr/parakeet"]
 # Historique sur disque chiffré DPAPI (RF-33) — opt-in explicite.
 history-disk = ["plume-storage/secure-disk"]
+# Embarquer l'interface construite (`../dist`) dans le binaire : OBLIGATOIRE
+# pour lancer l'application sans serveur Vite (`pnpm dev`) — sans elle, les
+# fenêtres affichent une page vide (mode dev → devUrl port 5173).
+custom-protocol = ["tauri/custom-protocol"]
 

@@ -177,10 +177,14 @@ cargo test -p plume-core -p plume-config -p plume-license -p plume-storage `
   -p plume-diagnostics -p plume-audio -p plume-hotkeys -p plume-asr `
   -p plume-secure -p plume-text -p plume-win
 
-# application complète (interface déjà construite dans ../dist)
-cargo run -p plume-desktop
-# ou, pour itérer sur l'interface : `pnpm --dir apps/desktop dev` dans un
-# second terminal, puis `cargo run -p plume-desktop` (devUrl : localhost:5173)
+# application complète — la feature `custom-protocol` embarque l'interface
+# (`../dist`) dans le binaire : SANS elle, un simple `cargo run` reste en
+# « mode dev » (devUrl localhost:5173) et chaque fenêtre webview s'ouvre
+# vide faute de serveur Vite.
+cargo run -p plume-desktop --features custom-protocol
+# variante développement de l'interface uniquement :
+#   `pnpm --dir apps/desktop dev` + `cargo run -p plume-desktop`
+#   (aucune feature, hot reload — sinon fenêtres vides)
 ```
 
 Le tray apparaît (« Plume — dictée locale ») : clic gauche ouvre/ferme les
