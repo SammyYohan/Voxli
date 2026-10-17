@@ -79,7 +79,7 @@
         </select>
       </div>
       <div class="row">
-        <label for="gen-post">Mise en forme du texte (RF-26)</label>
+        <label for="gen-post">Mise en forme du texte</label>
         <select id="gen-post">
           <option value="none">aucune — texte brut</option>
           <option value="rules">règles françaises (défaut)</option>
@@ -95,7 +95,7 @@
         <input id="hk-push" type="text" spellcheck="false" />
       </div>
       <div class="row">
-        <label for="hk-mode">Mode de déclenchement (RF-02)</label>
+        <label for="hk-mode">Mode de déclenchement</label>
         <select id="hk-mode">
           <option value="hold">appui maintenu</option>
           <option value="toggle">bascule (un appui = marche/arrêt)</option>
@@ -120,7 +120,7 @@
     <section>
       <h2>Réglages audio</h2>
       <div class="row">
-        <label for="audio-device">Microphone (RF-08)</label>
+        <label for="audio-device">Microphone</label>
         <select id="audio-device">
           <option value="default">Micro par défaut du système</option>
         </select>
@@ -135,7 +135,7 @@
         <input id="max-rec" type="number" min="30" max="1800" step="5" />
       </div>
       <div class="row">
-        <label for="vad-aggr">Détection de voix (RF-18)</label>
+        <label for="vad-aggr">Détection de voix</label>
         <select id="vad-aggr">
           <option value="low">permissive — capte la parole lointaine</option>
           <option value="balanced">équilibrée (défaut)</option>
@@ -148,18 +148,18 @@
 
     <!-- ================================================== modèles -->
     <section>
-      <h2>Modèles de reconnaissance (RF-20)</h2>
+      <h2>Modèles de reconnaissance</h2>
       <p class="muted">
         Le téléchargement est <b>votre action explicite</b>, ici, et la
-        <b>seule</b> connexion réseau de Plume depuis cet écran. Empreinte
-        SHA-256 consignée dans <code>%APPDATA%\Plume\models\manifests.json</code>.
+        <b>seule</b> connexion réseau de Plume depuis cet écran. Chaque fichier
+        est vérifié après réception ; la preuve reste dans un journal local.
       </p>
       <table id="models" class="list">
         <thead>
           <tr>
             <th>Modèle</th>
             <th>État</th>
-            <th>Empreinte</th>
+            <th>Contrôle</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -173,7 +173,7 @@
 
     <!-- ================================================== profils -->
     <section>
-      <h2>Profils &amp; dictionnaires (RF-23, RF-25)</h2>
+      <h2>Profils &amp; dictionnaires</h2>
       <div id="profiles-lock" class="notice" hidden></div>
       <div class="row">
         <label for="prof-code-apps">Profil « code » — applications associées (séparées par des virgules)</label>
@@ -204,7 +204,7 @@
 
     <!-- ================================================== historique -->
     <section>
-      <h2>Historique (RF-33)</h2>
+      <h2>Historique</h2>
       <div class="row">
         <label for="hist-enabled">Conserver les transcriptions</label>
         <select id="hist-enabled">
@@ -240,7 +240,7 @@
 
     <!-- ================================================== licence -->
     <section>
-      <h2>Licence (RF-38, RF-39)</h2>
+      <h2>Licence</h2>
       <p id="license-line">…</p>
       <ul id="license-features" class="muted"></ul>
       <details>
@@ -254,7 +254,7 @@
 
     <!-- ================================================== vie privée -->
     <section>
-      <h2>Vie privée (RF-36, RF-37)</h2>
+      <h2>Vie privée</h2>
       <div class="row">
         <label for="pv-strict">Mode local strict</label>
         <select id="pv-strict">
@@ -307,8 +307,8 @@
     </section>
 
     <footer class="muted">
-      Plume — les réglages avancés vivent aussi dans
-      <code>%APPDATA%\Plume\config.json</code> (schéma 4).
+      Plume — 100 % local. Réglages avancés accessibles dans
+      <code>%APPDATA%\Plume\config.json</code>.
     </footer>
 
     <script type="module" src="/src/main.ts"></script>
