@@ -19,4 +19,4 @@ pub mod post;
 pub use focus::WindowsFocusReader;
 pub use inserter::WindowsInserter;
 pub use plan::plan_insertion;
-pub use post::PassThroughProcessor;
+pub use post::{apply_dictionary, apply_french_rules, FrenchProcessor, PassThroughProcessor};

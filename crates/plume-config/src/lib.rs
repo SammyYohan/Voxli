@@ -9,8 +9,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Version courante du schéma. Toute évolution passe par `migrations.rs`.
-pub const CURRENT_SCHEMA: u32 = 3;
+/// Version courante du schéma. Toute évolution passe par une migration
+/// testée. v4 : mode de déclenchement (RF-02) + consentements RF-36.
+pub const CURRENT_SCHEMA: u32 = 4;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -91,6 +92,20 @@ pub enum Aggressiveness {
     High,
 }
 
+/// Mode de déclenchement de la dictée (RF-02) — miroir de schéma ; la
+/// conversion vers le type du noyau se fait dans l'assemblage.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TriggerMode {
+    /// (a) appui maintenu (défaut, compatibilité P0).
+    #[default]
+    Hold,
+    /// (b) bascule : un appui démarre, le suivant arrête.
+    Toggle,
+    /// (c) double appui pour verrouiller.
+    DoublePushLock,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
@@ -149,6 +164,8 @@ pub struct Hotkeys {
     pub paste_last_transcript: String,
     pub show_last_transcript: String,
     pub use_low_level_hook: bool,
+    /// Mode de déclenchement de la dictée (RF-02).
+    pub mode: TriggerMode,
 }
 
 impl Default for Hotkeys {
@@ -158,6 +175,7 @@ impl Default for Hotkeys {
             paste_last_transcript: "Shift+Alt+Z".into(),
             show_last_transcript: "Shift+Alt+X".into(),
             use_low_level_hook: false,
+            mode: TriggerMode::default(),
         }
     }
 }
@@ -263,6 +281,17 @@ impl Default for ClipboardHoldMs {
     }
 }
 
+/// Consentements explicites, par utilisation (RF-36, RF-26 niveau 3).
+/// Tout défaut est `false` : rien de distant sans un accord donné ici.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ConsentCfg {
+    /// Transcription par un service IA distant (BYOK, P4).
+    pub remote_asr: bool,
+    /// Post-traitement distant (RF-26 niveau 3).
+    pub cloud_post: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Privacy {
@@ -270,6 +299,7 @@ pub struct Privacy {
     pub context_read: ContextRead,
     pub telemetry: Telemetry,
     pub updates: UpdatePolicy,
+    pub consent: ConsentCfg,
 }
 
 impl Default for Privacy {
@@ -279,6 +309,7 @@ impl Default for Privacy {
             context_read: ContextRead::None,
             telemetry: Telemetry::Off,
             updates: UpdatePolicy::Notify,
+            consent: ConsentCfg::default(),
         }
     }
 }
@@ -427,6 +458,22 @@ fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> 
                                 "minSpeechMs": 250,
                                 "aggressiveness": "balanced"
                             }),
+                        );
+                    }
+                }
+            }
+            // 3 → 4 : mode de déclenchement (RF-02) + consentements (RF-36).
+            3 => {
+                if let Some(hk) = value.get_mut("hotkeys").and_then(|h| h.as_object_mut()) {
+                    if !hk.contains_key("mode") {
+                        hk.insert("mode".into(), serde_json::json!("hold"));
+                    }
+                }
+                if let Some(p) = value.get_mut("privacy").and_then(|p| p.as_object_mut()) {
+                    if !p.contains_key("consent") {
+                        p.insert(
+                            "consent".into(),
+                            serde_json::json!({"remoteAsr": false, "cloudPost": false}),
                         );
                     }
                 }

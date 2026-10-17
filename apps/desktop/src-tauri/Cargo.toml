@@ -15,6 +15,11 @@ tauri-plugin-global-shortcut = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# Téléchargement de modèles + empreinte SHA-256 (RF-20) : UNE action
+# explicite de l'utilisateur, la seule voie réseau du produit (RF-36).
+ureq = "2"
+sha2 = "0.10"
+
 plume-core = { path = "../../../crates/plume-core" }
 plume-config = { path = "../../../crates/plume-config" }
 plume-audio = { path = "../../../crates/plume-audio" }
@@ -24,10 +29,14 @@ plume-hotkeys = { path = "../../../crates/plume-hotkeys" }
 plume-storage = { path = "../../../crates/plume-storage" }
 plume-secure = { path = "../../../crates/plume-secure" }
 plume-diagnostics = { path = "../../../crates/plume-diagnostics" }
+plume-license = { path = "../../../crates/plume-license" }
 plume-win = { path = "../../../crates/plume-win" }
 
 # Moteur ASR réel — opt-in (voir README) :
 [features]
 default = []
 real-asr = ["plume-asr/whisper"]
+parakeet-asr = ["plume-asr/parakeet"]
+# Historique sur disque chiffré DPAPI (RF-33) — opt-in explicite.
+history-disk = ["plume-storage/secure-disk"]
 

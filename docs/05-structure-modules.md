@@ -157,20 +157,42 @@ chaque build.
 Principe : le webview **observe** et **configure**. Il ne déclenche jamais une insertion et ne voit
 jamais l'audio.
 
+### 3.1 Événements (noyau → UI), émis par le thread pipeline (`worker.rs`)
+
 | Sens | Message | Charge utile | Remarque |
 |---|---|---|---|
 | Noyau → UI | `state://changed` | état de la machine à états, horodatage | Aucun contenu de texte |
-| Noyau → UI | `meter://level` | niveau normalisé, limité en fréquence | Pour les réglages uniquement |
-| Noyau → UI | `session://finished` | id de session, durée, moteur, niveau d'insertion, succès | Pour l'historique et les statistiques locales |
-| UI → Noyau | `config.get` / `config.set` | fragment de configuration validé | Validation côté noyau, jamais confiance aveugle |
-| UI → Noyau | `models.list` / `models.download` / `models.remove` | identifiants, progression en retour | Téléchargement en tâche de fond |
-| UI → Noyau | `history.query` / `history.delete` / `history.purge` | filtres, identifiants | Le contenu transite ici car l'UI affiche l'historique : acceptable, mais l'UI est locale et sans ressource distante |
-| UI → Noyau | `license.import` / `license.status` | blob de licence | Vérification hors ligne |
-| UI → Noyau | `diagnostics.export` | chemin de destination | Rédaction obligatoire |
+| Noyau → UI | `meter://level` | niveau normalisé (échantillonné 1/4 tick, ~200 ms) | Passif : jamais enregistré, jamais transmis |
+| Noyau → UI | `session://finished` | durée, moteur, niveau d'insertion, succès | Aucun contenu |
+| Noyau → UI | `notice://notice` | `kind` + message FR neutre (`strings.rs`) | `nothing`, `busy`, `inserted`, `refused`, `max-warning`, `locked`, `queued`, `retarget`, `hotkey` — **addition documentée à cette table** ; aucun événement ne contient de texte dicté (T-34) |
+| Noyau → UI | `models://progress` / `models://done` | `id`, octets reçus / total | **Seule** voie réseau consentie : téléchargement de modèles (RF-20, RF-36) |
 
-**Interdits** : aucune commande ne permet d'insérer du texte arbitraire dans une application,
-d'envoyer l'audio, ni de lire le presse-papiers. Toute commande future doit être ajoutée à cette
-table **et** à la surface de permissions Tauri (capabilities), avec le minimum de droits.
+** Exceptions documentées d'exfiltration de contenu du noyau (les seules) :
+1. **Fenêtre de secours** (RF-31) — texte du tampon interne, jamais par le canal d'événements.
+2. **Historique** (RF-33) — lecture choisie par l'utilisateur, supprimable à tout instant
+   (`history.delete` / `history.purge`) ; chiffré au repos (DPAPI).
+
+### 3.2 Commandes (UI → noyau), fichier `commands.rs`
+
+| Sens | Commande | Charge utile | Remarque |
+|---|---|---|---|
+| UI → Noyau | `configGet` / `configSet` | configuration complète | Validation + clamp côté noyau ; `configSet` sauvegarde, **re-registre les raccourcis à chaud** (RF-01) et pousse `ConfigChanged` au pipeline (§2.6) |
+| UI → Noyau | `stateGet` | `{ state, engine }` | Métadonnées, aucun contenu |
+| UI → Noyau | `rescueLast` / `rescuePasteAgain` / `rescueRetry` / `rescueClose` | — | Exception RF-31 ; « coller » et « réessayer » ne peuvent insérer QUE le texte du tampon interne |
+| UI → Noyau | `cancelDictation` | — | Annulation (RF-09) |
+| UI → Noyau | `diagnosticsExport` | chemin de destination optionnel | Rédige le rapport (ni dictée, ni presse-papiers) |
+| UI → Noyau | `devicesList` | — | Liste des micros (RF-08 : identifiant cpal stable) |
+| UI → Noyau | `modelsList` / `modelsDownload` / `modelsDownloadCancel` / `modelsRemove` | `id` | Catalogue + SHA-256 consigné (RF-20) ; un seul téléchargement à la fois |
+| UI → Noyau | `historyQuery` / `historyDelete` / `historyPurge` | `n`, `id` | Lecture bornée ; contenu affiché car l'UI est locale sans ressource distante (§3.1 exception 2) |
+| UI → Noyau | `licenseStatus` / `licenseImport` | blob de licence | Vérification locale Ed25519 hors ligne (ADR-08) ; persisté seulement si valide |
+| UI → Noyau | `dictionariesImport` / `dictionariesExport` | `profile`, CSV | Dictionnaire utilisateur RF-23 (cible|variantes) ; poussé au pipeline |
+| UI → Noyau | `contextPreview` | — | RF-37 : app + titre uniquement, refus explicite en `contextRead: none`, **jamais le contenu du champ** |
+| UI → Noyau | `dataExport` | destination optionnelle | Configuration + dictionnaires + empreintes de modèles ; **jamais** de dictée ni de secret |
+
+**Interdits** : aucune commande ne permet d'insérer du texte arbitraire dans une application, d'accéder à
+l'audio, de lire le presse-papiers, ou d'ouvrir une voie réseau non consignée ici. Toute commande future
+doit être ajoutée à cette table **et** à la surface de permissions Tauri (capabilities), avec le minimum
+de droits.
 
 ---
 
@@ -180,19 +202,20 @@ Fichier `%APPDATA%\Plume\config.json`, versionné, lisible, exportable. Extrait 
 
 ```jsonc
 {
-  "schema": 3,
+  "schema": 4,
   "general": {
     "language": "fr",
     "engine": "auto",                 // auto | whisper | parakeet
     "model": "auto",
-    "postProcessing": "rules",        // none | rules | local_model | cloud
+    "postProcessing": "rules",        // none | rules | local_model
     "history": { "enabled": true, "storage": "memory", "retentionDays": 30 }
   },
   "hotkeys": {
     "pushToTalk": "Ctrl+Alt+Space",
     "pasteLastTranscript": "Shift+Alt+Z",
     "showLastTranscript": "Shift+Alt+X",
-    "useLowLevelHook": false
+    "useLowLevelHook": false,
+    "mode": "hold"                    // hold | toggle | double-push-lock (RF-02)
   },
   "audio": {
     "device": "default",
@@ -204,18 +227,19 @@ Fichier `%APPDATA%\Plume\config.json`, versionné, lisible, exportable. Extrait 
     "rememberTargetAtStart": true,
     "clipboardHoldMs": { "default": 500, "slowApps": 3000, "remoteDesktop": 5000 },
     "excludeFromClipboardHistory": true,
-    "excludedApps": []                // remplie par les profils par défaut
+    "excludedApps": ["keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe"]
   },
   "privacy": {
     "strictLocalMode": true,
-    "contextRead": "none",            // none | app_and_title | app_title_and_selection
+    "contextRead": "none",            // none | app_and_title | app_title_and_selection (RF-37)
     "telemetry": "off",
-    "updates": "notify"               // notify | auto | off
+    "updates": "notify",
+    "consent": { "remoteAsr": false, "cloudPost": false } // RF-36 : tout défaut = false
   },
   "profiles": {
     "default": { "style": "punctuated", "dictionary": [] },
-    "code":    { "match": ["Code.exe"], "style": "verbatim" },
-    "email":   { "match": ["OUTLOOK.EXE"], "style": "punctuated" }
+    "code":    { "match": ["Code.exe"], "style": "verbatim", "dictionary": [] },
+    "email":   { "match": ["OUTLOOK.EXE"], "style": "punctuated", "dictionary": [] }
   }
 }
 ```

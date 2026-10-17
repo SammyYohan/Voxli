@@ -3,10 +3,12 @@
 > **Nom de code provisoire.** `Plume` est un nom de travail, choisi pour les besoins du dépôt et
 > renommable en une commande. Aucune marque n'a été déposée ni vérifiée à ce stade.
 
-**Statut : spike P0 échafaudée.** La conception (7 livrables) est terminée ; la
-spike verticale P0 est implémentée : capture WASAPI en continu → VAD →
-transcription (moteur factice par défaut, whisper.cpp en option) → cascade
-d'insertion → fenêtre de secours. Voir « 6. État du code, P0 » plus bas.
+**Statut : P1 → P4 implémentées — en phase de test.** La conception (7 livrables) est
+terminée ; les quatre phases de développement sont codées : réglages à chaud,
+gestionnaire de modèles, VAD à trois niveaux, profils et dictionnaires,
+historique chiffré, licences hors ligne, pastille d'état. Ce qui est **prouvé**
+(compilé + tests verts) et ce qui reste **à valider sur le terrain** est listé
+dans « 6. État du code » plus bas.
 
 ---
 
@@ -21,7 +23,7 @@ d'insertion → fenêtre de secours. Voir « 6. État du code, P0 » plus bas.
 | 5 | Structure des modules | [`docs/05-structure-modules.md`](docs/05-structure-modules.md) | ✅ produite |
 | 6 | Plan de tests et critères de validation | [`docs/06-plan-de-tests.md`](docs/06-plan-de-tests.md) | ✅ produite |
 | 7 | Plan de développement progressif (risques, dépendances) | [`docs/07-plan-de-developpement.md`](docs/07-plan-de-developpement.md) | ✅ produite |
-| — | Prototype vertical de bout en bout (code) | `crates/` + `apps/desktop/` | 🔨 **P0 échafaudé** |
+| — | Prototype vertical de bout en bout (code) | `crates/` + `apps/desktop/` | 🔨 **P1–P4 codés — en test** |
 
 ## 2. Comment lire ces documents
 
@@ -79,28 +81,34 @@ P4 — commercialisation : licences, mises à jour, support, Store
 
 Détail, critères de sortie et risques : [`docs/07-plan-de-developpement.md`](docs/07-plan-de-developpement.md).
 
-## 6. État du code, P0
+## 6. État du code, P1–P4
 
 ### 6.1 Arborescence
 
 ```
 crates/                        11 modules, toit Cargo workspace
 ├── plume-core                 noyau pur : état, orchestrateur, types partagés
-├── plume-config               %APPDATA%\Plume\config.json (schéma v3, migrations)
+├── plume-config               %APPDATA%\Plume\config.json (schéma v4, migrations)
 ├── plume-diagnostics          journal sans contenu (RF-34), rapport de support
 ├── plume-license              licences Ed25519 hors ligne (grâce incluse)
-├── plume-storage              historique : mémoire (défaut) / SQLite (opt-in)
+├── plume-storage              historique : mémoire (défaut) / SQLite chiffré DPAPI (opt-in)
 ├── plume-secure               secrets : DPAPI (opt-in), jamais dans le JSON
 ├── plume-hotkeys              politique des raccourcis (validation, réservées)
-├── plume-audio                mono 16 kHz f32, pré-roll 400 ms, VAD énergie
-├── plume-asr                  moteur factice ; whisper.cpp (opt-in)
+├── plume-audio                 mono 16 kHz f32, pré-roll 400 ms, VAD énergie à
+│                              trois niveaux, liste des micros (cpal 0.18)
+├── plume-asr                  moteur factice ; whisper.cpp et Parakeet ONNX
+│                              (opt-in) ; transcription distante BYOK (opt-in)
 ├── plume-win                  tout le `unsafe` Win32 : presse-papiers, UIA,
 │                              SendInput, fenêtre active
-└── plume-text                 plan d'insertion (pur) + exécution cascade
+└── plume-text                 plan d'insertion (pur) + exécution cascade +
+                               règles françaises RF-26 + dictionnaire RF-23
 
-apps/desktop                   le seul binaire : fenêtre réglages + fenêtre secours
-    src-tauri/                 orchestrateur câblé, tray, raccourcis globaux
-    src/                       TypeScript strict (vite multi-pages)
+apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
+                               secours + pastille d'état, tray, raccourcis
+                               globaux, gestionnaire de modèles, licence
+    src-tauri/                 orchestrateur câblé, thread pipeline
+    src/                       TypeScript strict (vite multi-pages : réglages,
+                               secours, pastille)
 ```
 
 ### 6.2 Conformité à la conception
@@ -109,16 +117,49 @@ apps/desktop                   le seul binaire : fenêtre réglages + fenêtre s
   toute tentative d'insertion et n'est jamais perdu — testé par
   `crates/plume-core/tests/flow.rs` (13 tests d'état, y compris panne de
   moteur → réessayer, échec d'insertion → secours, fuite de contenu).
-- Invariant 2 : une seule dictée à la fois. P0 applique l'option **refus
-  explicite** de RF-05 (`RejectedBusy`, indication visible) ; la file d'attente
-  de 1 arrive en V1 sur le même état `Transcribing { queued }`.
+- Invariant 2 : une seule dictée à la fois ; option **refus explicite** de RF-05
+  (`RejectedBusy`) **et** file d'attente de 1 (RF-05 b, `QueuedAfterCurrent`).
 - Invariant 3 : l'audio est libéré après insertion, refus ou annulation.
-- Aucun texte ne passe par le pont IPC sur le chemin critique : la seule
-  exception est la fenêtre de secours (RF-31), texte issu du tampon interne.
+- Aucun texte ne passe par le pont IPC sur le chemin critique : les seules
+  exceptions **documentées dans `docs/05 §3`** sont la fenêtre de secours
+  (RF-31) et la lecture d'historique choisie par l'utilisateur (RF-33).
 - Le resampler est maison (sinc fenêtré, 24 taps par rive) —
   cf. `plume-audio/convert.rs`, anti-repliement testé.
+- RF-16 : la détection automatique de langue est refusée pour les énoncés
+  courts (< 1,5 s) — repli sur la langue configurée.
+- RF-22 : le texte transcrit est conservé dans le tampon du noyau même après
+  un rechargement de configuration ou une perte de micro ; « coller à
+  nouveau » reste fonctionnel (`Orchestrator::restore_buffer`).
 
-### 6.3 Démarrage rapide (développement)
+### 6.3 Ce qui est prouvé (compilé + tests verts, au 17/10/2026)
+
+Tout le workspace passe (`cargo test --workspace`, exit 0) : **22 tests noyau,
+11 config (schéma 4 + migrations 3→4), 16 post-traitement FR, 9 audio
+(cpal 0.18)**, les suites storage/secure/licence/hotkeys/ASR/diagnostics
+toutes vertes ; `cargo check -p plume-desktop` vert **sans avertissement**,
+ainsi qu'avec la feature `history-disk` (SQLite chiffré DPAPI) et
+`cargo test -p plume-asr --features remote` (6 tests). L'application de
+développement démarre et consigne : `license-free` → `history-memory` →
+`capture-opened:…` → `engine_loaded {"engine":"fake"}` ; les raccourcis
+`Shift+Alt+Z/X` s'enregistrent et un conflit possible sur `Ctrl+Alt+Espace`
+est signalé sans paniquer (RF-03). Interface : `tsc --noEmit` et `vite build`
+verts (3 fenêtres : réglages, secours, pastille).
+
+### 6.4 Ce qui reste à valider (écrit mais non prouvé)
+
+- **Moteur `real-asr` (whisper.cpp)** : la compilation exige libclang
+  (composant VS listé en §6.6) — le code est prêt, l'Édition de liens n'a
+  jamais été exécutée sur cette machine.
+- **Feature `parakeet-asr`** : sherpa-onnx (C++/CMake) jamais compilé ici ;
+  code écrit d'après l'API vérifiée de la documentation.
+- **Moteurs distants (P4)** : transcription BYOK compilée en opt-in (`remote`)
+  et codée, mais **délibérément non branchée** au flux de raccourci — aucun
+  envoi tant que le consentement RF-36 et l'intégration P4 ne sont pas tranchés.
+- **Recette terrain** : matrice 12 applications, mesures RAM, T-01
+  (raccourcis à chaud), T-02 (modes de déclenchement) — nécessite un humain,
+  scripts prêts (§6.7).
+
+### 6.5 Démarrage rapide (développement)
 
 ```powershell
 # prérequis : Rust (rustup), Node 22+, pnpm — vérifier :
@@ -146,7 +187,7 @@ Le tray apparaît (« Plume — dictée locale ») : clic gauche ouvre/ferme les
 réglages ; `Ctrl+Alt+Espace` (appui maintenu) dicte ; `Shift+Alt+Z` recolle le
 dernier texte ; `Shift+Alt+X` affiche la fenêtre de secours.
 
-### 6.4 Moteur réel (opt-in, toujours hors ligne)
+### 6.6 Moteurs réels (opt-in, toujours hors ligne)
 
 Prérequis toolchain (coût unique, vérifié le 17/10/2026) : `whisper-rs-sys`
 (bindgen) exige **libclang** — absent de votre VS Community 18 par défaut. Il
@@ -166,27 +207,52 @@ powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggm
 cargo build -p plume-desktop --release --features real-asr
 ```
 
-Sans `real-asr` (défaut), le moteur factice dicte un énoncé reproductible —
-le pipeline complet reste exerçable en CI sans modèle ni micro.
+```powershell
+# Historique disque chiffré + secrets Windows :
+cargo test -p plume-storage --features secure-disk   # SQLite + DPAPI (RF-33)
+cargo test -p plume-secure --features dpapi          # secrets Windows
 
-### 6.5 Limites assumées en P0
+# Modèles : le gestionnaire intégré les télécharge depuis la fenêtre
+# Régglages → « Modèles » (RF-20) — empreinte SHA-256 consignée.
+# Sans l'interface, l'ancien script reste valable :
+powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggml
+cargo build -p plume-desktop --release --features real-asr
+```
 
-- Le VAD est un seuil d'énergie simple (Silero arrive en P1).
-- Le post-traitement est identité (niveau 0) ; règles de ponctuation en V1.
-- Les réglages modifiés depuis l'interface (pré-roll, durée max) ne sont lus
-  qu'au démarrage ; les raccourcis ne sont pas modifiables depuis l'UI (P0).
-- La langue du modèle et la sélection de périphérique audio ne sont pas
-  encore exposées (`audio.device` lu en V1).
-- La fenêtre de secours affiche le dernier texte uniquement en mémoire.
+Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
+reproductible — le pipeline complet reste exerçable en CI sans modèle ni
+micro. Les deux features de moteur sont **mutuellement exclusives à
+l'exécution** : seul le moteur compilé ET dont le modèle est présent est
+retenu, jamais de repli silencieux (consigné sinon).
 
-### 6.6 Recette
+### 6.7 Limites assumées à ce stade
+
+- Le VAD est un seuil d'énergie simple à trois niveaux d'agressivité
+  (Silero reste une option future).
+- Le post-traitement distant (RF-26 niveau 3) est codé mais non branché —
+  consentement RF-36 et garde-fous en place, décision produit en attente.
+- La transcription distante (BYOK) est compilable (`remote`) et testée
+  unitairement, mais rien du flux de dictée ne l'appelle : branchement P4
+  volontairement laissé hors ligne.
+- Recette sur applications réelles (matrice 12 apps) à exécuter : scripts
+  prêts, exécution manuelle requise.
+
+### 6.8 Recette
 
 - Matrice d'insertion : [`tests/e2e/matrice-12-apps.md`](tests/e2e/matrice-12-apps.md)
 - Bancs M1/M2 : [`benchmarks/README.md`](benchmarks/README.md)
 - Preuve réseau (RF-36) : [`scripts/prove-no-network.ps1`](scripts/prove-no-network.ps1)
 
-## 7. Licence
+## 7. Licences et tierces parties
 
-À fixer avant toute distribution (décision n°4 : `docs/01`, réutilisation du
-nom ; ainsi que le choix commercial). Les dépendances utilisées sont listées
-dans `Cargo.toml` de chaque module.
+- **Code du dépôt** : licence à fixer avant toute distribution (décision
+  n°4 : `docs/01`).
+- **Dépendances logicielles** : listées dans le `Cargo.toml` de chaque module
+  et dans `apps/desktop/package.json` ; la liste complète avec textes de
+  licence est à générer (`cargo license` / pnpm) avant mise en paquet.
+- **Modèles de reconnaissance téléchargeables** (RF-20, attribution
+  obligatoire pour certains) : voir [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
+  En pratique : l'interface affiche la provenance et la licence de chaque
+  modèle avant tout téléchargement, et l'export de données inclut ce fichier.
+- **Support** : [`SUPPORT.md`](SUPPORT.md) — où trouver le journal, ce que
+  contient un rapport de diagnostic, comment le lire avant envoi.

@@ -34,6 +34,9 @@ pub trait HistoryStore: Send {
     /// Les `n` entrées les plus récentes, la plus récente d'abord.
     fn recent(&self, n: usize) -> Vec<Entry>;
     fn delete(&mut self, id: u64) -> bool;
+    /// Supprime les entrées plus vieilles que `cutoff_ms` (rétention RF-33) ;
+    /// retourne le nombre d'entrées retirées.
+    fn retain_since(&mut self, cutoff_ms: u64) -> usize;
     /// Suppression totale, y compris le fichier (purge à la désinstallation).
     fn purge(&mut self);
     fn len(&self) -> usize;
@@ -41,6 +44,124 @@ pub trait HistoryStore: Send {
         self.len() == 0
     }
 }
+
+/// Codec de chiffrement du texte au repos (RF-33). Le contenu **n'est
+/// jamais stocké en clair** quand un codec réel est branché ; l'interface
+/// empêche d'oublier l'un des deux sens.
+pub trait TextCodec: Send {
+    fn encode(&self, text: &str) -> Vec<u8>;
+    fn decode(&self, blob: &[u8]) -> Option<String>;
+}
+
+/// Codec transparent — tests et backend mémoire.
+pub struct PlainCodec;
+
+impl TextCodec for PlainCodec {
+    fn encode(&self, text: &str) -> Vec<u8> {
+        text.as_bytes().to_vec()
+    }
+    fn decode(&self, blob: &[u8]) -> Option<String> {
+        String::from_utf8(blob.to_vec()).ok()
+    }
+}
+
+/// Enveloppe d'un `HistoryStore` avec chiffrement du champ `text` (RF-33).
+/// Le fichier SQLite reste listable (identifiants, dates) : les **contenus**
+/// sont illisibles hors du compte Windows.
+pub struct EncryptedStore<S: HistoryStore, C: TextCodec> {
+    inner: S,
+    codec: C,
+}
+
+impl<S: HistoryStore, C: TextCodec> EncryptedStore<S, C> {
+    pub fn new(inner: S, codec: C) -> Self {
+        Self { inner, codec }
+    }
+    /// Accès direct au store sous-jacent (purge du fichier, VACUUM…).
+    pub fn inner(&mut self) -> &mut S {
+        &mut self.inner
+    }
+}
+
+impl<S: HistoryStore, C: TextCodec> HistoryStore for EncryptedStore<S, C> {
+    fn append(&mut self, text: &str, engine: &str, created_ms: u64) -> Result<u64, StorageError> {
+        let blob = self.codec.encode(text);
+        // Stockage en tableau d'octets échappés UTF-8 lossy : le codec peut
+        // produire des octets arbitraires (DPAPI) ; on transite par encodage
+        // hexadécimal borné pour rester un TEXT sûr dans la colonne.
+        let hex = bytes_to_hex(&blob);
+        self.inner.append(&hex, engine, created_ms)
+    }
+
+    fn recent(&self, n: usize) -> Vec<Entry> {
+        self.inner
+            .recent(n)
+            .into_iter()
+            .map(|mut e| {
+                e.text = decode_hex(&e.text)
+                    .and_then(|b| self.codec.decode(&b))
+                    .unwrap_or_default();
+                e
+            })
+            .collect()
+    }
+
+    fn delete(&mut self, id: u64) -> bool {
+        self.inner.delete(id)
+    }
+
+    fn retain_since(&mut self, cutoff_ms: u64) -> usize {
+        self.inner.retain_since(cutoff_ms)
+    }
+
+    fn purge(&mut self) {
+        self.inner.purge()
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+fn decode_hex(s: &str) -> Option<Vec<u8>> {
+    if s.is_empty() || s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len() / 2)
+        .map(|i| u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok())
+        .collect()
+}
+
+#[cfg(all(feature = "secure-disk", target_os = "windows"))]
+pub mod secure_backend {
+    //! Codec DPAPI : chaque entrée d'historique est chiffrée **au compte
+    //! Windows** (RFC RF-33 « chiffré, lié au compte »). Un fichier copié sur
+    //! une autre machine, ou lu par un autre compte, est illisible.
+    use super::TextCodec;
+
+    pub struct DpapiCodec;
+
+    impl TextCodec for DpapiCodec {
+        fn encode(&self, text: &str) -> Vec<u8> {
+            plume_secure::dpapi::protect(text.as_bytes()).unwrap_or_default()
+        }
+        fn decode(&self, blob: &[u8]) -> Option<String> {
+            let plain = plume_secure::dpapi::unprotect(blob).ok()?;
+            String::from_utf8(plain).ok()
+        }
+    }
+}
+
+#[cfg(all(feature = "secure-disk", target_os = "windows"))]
+pub use secure_backend::DpapiCodec;
 
 /// Backend mémoire (défaut produit). Double de test pour le backend SQLite.
 #[derive(Default)]
@@ -88,6 +209,12 @@ impl HistoryStore for MemoryStore {
         let before = self.entries.len();
         self.entries.retain(|e| e.id != id);
         self.entries.len() != before
+    }
+
+    fn retain_since(&mut self, cutoff_ms: u64) -> usize {
+        let before = self.entries.len();
+        self.entries.retain(|e| e.created_ms >= cutoff_ms);
+        before - self.entries.len()
     }
 
     fn purge(&mut self) {
@@ -175,6 +302,15 @@ mod sqlite_backend {
                 .unwrap_or(false)
         }
 
+        fn retain_since(&mut self, cutoff_ms: u64) -> usize {
+            self.conn
+                .execute(
+                    "DELETE FROM history WHERE created_ms < ?1",
+                    [cutoff_ms as i64],
+                )
+                .unwrap_or(0)
+        }
+
         fn purge(&mut self) {
             let _ = self.conn.execute_batch("DELETE FROM history; VACUUM;");
         }
@@ -215,6 +351,52 @@ mod tests {
         s.append("autre", "fake", 2).unwrap();
         s.purge();
         assert!(s.is_empty());
+    }
+
+    /// Rétention RF-33 : les entrées plus vieilles que la fenêtre partent.
+    #[test]
+    fn t_retention_cutoff() {
+        let mut s = MemoryStore::new(100);
+        s.append("ancien", "fake", 1).unwrap();
+        s.append("récent", "fake", 999).unwrap();
+        let removed = s.retain_since(500);
+        assert_eq!(removed, 1);
+        let texts: Vec<String> = s.recent(10).into_iter().map(|e| e.text).collect();
+        assert_eq!(texts, vec!["récent".to_string()]);
+    }
+
+    /// Store chiffré : le texte ne transite jamais en clair, round-trip net.
+    #[test]
+    fn t_encrypted_store_round_trip_and_at_rest() {
+        struct UppercaseCodec;
+        impl TextCodec for UppercaseCodec {
+            fn encode(&self, text: &str) -> Vec<u8> {
+                text.to_uppercase().as_bytes().to_vec()
+            }
+            fn decode(&self, blob: &[u8]) -> Option<String> {
+                Some(String::from_utf8(blob.to_vec()).ok()?.to_lowercase())
+            }
+        }
+        let mut s = EncryptedStore::new(MemoryStore::new(10), UppercaseCodec);
+        s.append("contenu secret", "fake", 7).unwrap();
+        // Au repos : la valeur stockée est l'encodage hexadécimal du texte
+        // codé (format obligatoire pour des blobs binaires dans SQLite) —
+        // jamais l'original.
+        let raw = s.inner().recent(1);
+        assert_eq!(raw[0].text, "434f4e54454e5520534543524554");
+        // En lecture : décodé.
+        assert_eq!(s.recent(1)[0].text, "contenu secret");
+        // Rétention déléguée.
+        assert_eq!(s.retain_since(8), 1);
+        assert!(s.is_empty());
+    }
+
+    #[test]
+    fn t_hex_round_trip() {
+        let data = vec![0u8, 1, 254, 255, 10, 0x41];
+        let hex = bytes_to_hex(&data);
+        assert_eq!(decode_hex(&hex).unwrap(), data);
+        assert!(decode_hex("abc").is_none());
     }
 
     #[test]

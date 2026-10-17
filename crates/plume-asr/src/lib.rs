@@ -17,6 +17,11 @@ pub mod whisper;
 #[cfg(feature = "whisper")]
 pub use whisper::WhisperCppEngine;
 
+#[cfg(feature = "parakeet")]
+pub mod parakeet;
+#[cfg(feature = "parakeet")]
+pub use parakeet::ParakeetOnnxEngine;
+
 #[cfg(feature = "remote")]
 pub mod remote;
 #[cfg(feature = "remote")]

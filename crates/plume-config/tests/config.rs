@@ -4,12 +4,43 @@ use plume_config::*;
 fn t_default_serializes_to_documented_schema() {
     let cfg = Config::default();
     let raw = serde_json::to_string_pretty(&cfg).unwrap();
-    assert!(raw.contains("\"schema\": 3"));
+    assert!(raw.contains("\"schema\": 4"));
     assert!(raw.contains("\"pushToTalk\": \"Ctrl+Alt+Space\""));
     assert!(raw.contains("\"preRollMs\": 400"));
     assert!(raw.contains("\"strictLocalMode\": true"));
     assert!(raw.contains("\"telemetry\": \"off\""));
     assert!(raw.contains("\"postProcessing\": \"rules\""));
+    assert!(raw.contains("\"mode\": \"hold\""));
+    assert!(raw.contains("\"consent\""));
+    assert!(raw.contains("\"remoteAsr\": false"));
+}
+
+/// v3 → v4 : mode de déclenchement implicite (`hold`, compatibilité P0) et
+/// consentements RF-36 absents → tout faux.
+#[test]
+fn t_migration_from_schema_3() {
+    let old = r#"{
+        "schema": 3,
+        "general": { "postProcessing": "rules" },
+        "hotkeys": { "pushToTalk": "Ctrl+Alt+Space" },
+        "privacy": { "strictLocalMode": true }
+    }"#;
+    let cfg = Config::from_json(old).unwrap();
+    assert_eq!(cfg.schema, CURRENT_SCHEMA);
+    assert_eq!(cfg.hotkeys.mode, TriggerMode::Hold);
+    assert!(!cfg.privacy.consent.remote_asr);
+    assert!(!cfg.privacy.consent.cloud_post);
+}
+
+/// Le mode de déclenchement est mémorisé entre les sessions (RF-02c).
+#[test]
+fn t_trigger_mode_round_trip() {
+    let mut cfg = Config::default();
+    cfg.hotkeys.mode = TriggerMode::DoublePushLock;
+    let raw = serde_json::to_string(&cfg).unwrap();
+    let back: Config = serde_json::from_str(&raw).unwrap();
+    assert_eq!(back.hotkeys.mode, TriggerMode::DoublePushLock);
+    assert!(raw.contains("\"double-push-lock\""));
 }
 
 #[test]

@@ -71,3 +71,29 @@ pub fn msg_error(module: &str, code: u32) -> String {
         .replace("{module}", module)
         .replace("{code}", &code.to_string())
 }
+
+/// Titre de la pastille (RF-09) — invisible (sans décor), réservé
+/// à l'accessibilité.
+pub const PILL_WINDOW_TITLE: &str = "Plume — pastille d'état";
+
+// ------------------------------------------------------------ nouveautés ---
+
+/// RF-11 : avertissement unique, 30 s avant le plafond de durée.
+pub fn msg_max_duration(remaining_ms: u64) -> String {
+    let seconds = (remaining_ms / 1000).max(1);
+    format!(
+        "Dictée longue : la prise s'arrêtera dans environ {seconds} s. Relâchez et reprenez ensuite."
+    )
+}
+
+/// RF-02 (c) : la dictée est verrouillée par double appui.
+pub const MSG_LOCKED: &str =
+    "Dictée verrouillée : elle continue même quand vous relâchez la touche. Double appui pour arrêter.";
+
+/// RF-05 : une prise est déjà en attente, elle démarrera à la fin.
+pub const MSG_QUEUED: &str =
+    "Une prise est déjà terminée — la suivante démarrera automatiquement à la fin.";
+
+/// RF-32 : la cible mémorisée a disparu ; insertion dans la fenêtre courante.
+pub const MSG_RETARGET: &str =
+    "La fenêtre de départ a changé — le texte sera inséré dans la fenêtre active.";

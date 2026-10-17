@@ -107,8 +107,41 @@ impl CpalCapture {
     /// Ouvre le micro par défaut et lit sa configuration native. Aucun flux
     /// démarré avant `start`.
     pub fn new() -> Result<Self, CaptureError> {
+        Self::new_with_device("default")
+    }
+
+    /// RF-08 : ouvre un périphérique nommé, ou le micro par défaut quand
+    /// `selector` est vide/`default`. Le sélecteur est **l'identifiant
+    /// cpal stable** (`DeviceId`, sérialisable entre les sessions) ; à
+    /// titre de tolérance un nom exact est accepté. Le nom réel ouvert est
+    /// consultable via `device_name`.
+    pub fn new_with_device(selector: &str) -> Result<Self, CaptureError> {
         let host = cpal::default_host();
-        let device = host.default_input_device().ok_or(CaptureError::NoDevice)?;
+        let wanted = selector.trim().is_empty() || selector.eq_ignore_ascii_case("default");
+        let device = if wanted {
+            host.default_input_device().ok_or(CaptureError::NoDevice)?
+        } else {
+            let by_id = selector
+                .parse::<cpal::DeviceId>()
+                .ok()
+                .and_then(|id| host.device_by_id(&id));
+            match by_id {
+                Some(d) => d,
+                None => {
+                    // Tolérance : correspondance par nom exact.
+                    host.input_devices()
+                        .ok()
+                        .and_then(|mut ds| {
+                            ds.find(|d| {
+                                d.description()
+                                    .map(|desc| desc.name().eq_ignore_ascii_case(selector))
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .ok_or(CaptureError::NoDevice)?
+                }
+            }
+        };
         let supported = device
             .default_input_config()
             .map_err(|_| CaptureError::UnsupportedFormat)?;
@@ -128,6 +161,22 @@ impl CpalCapture {
             segment_cap,
             pre_roll_ms: 400,
         })
+    }
+
+    /// Identifiant stable du périphérique ouvert (réglages RF-08).
+    pub fn device_id(&self) -> Result<String, CaptureError> {
+        self.device
+            .id()
+            .map(|i| i.to_string())
+            .map_err(|_| CaptureError::NoDevice)
+    }
+
+    /// Nom du périphérique ouvert (journalisation, réglages RF-08).
+    pub fn device_name(&self) -> String {
+        self.device
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_default()
     }
 
     pub fn frames(&self) -> u64 {
@@ -255,4 +304,49 @@ impl Drop for CpalCapture {
     fn drop(&mut self) {
         self.stream = None; // arrête le flux
     }
+}
+
+/// Périphérique d'entrée visible dans les réglages (RF-08).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InputDevice {
+    /// Identifiant cpal stable (`DeviceId`) — persiste dans la
+    /// configuration et rouvre le même micro entre les sessions.
+    pub id: String,
+    /// Nom lisible (description du pilote).
+    pub name: String,
+    /// `true` si c'est le micro par défaut du système au moment de la
+    /// consultation (information instantanée, pas un suivi en continu).
+    pub is_default: bool,
+}
+
+/// Énumération des micros (RF-08) : liste dans l'ordre du système, avec
+/// marquage du micro par défaut. Une liste vide n'est pas une erreur : une
+/// machine sans micro n'est pas une panne.
+pub fn list_input_devices() -> Vec<InputDevice> {
+    let host = cpal::default_host();
+    let default = host.default_input_device();
+    let default_id = default
+        .as_ref()
+        .and_then(|d| d.id().ok())
+        .map(|i| i.to_string());
+    let mut out = Vec::new();
+    if let Ok(devices) = host.input_devices() {
+        for d in devices {
+            let id = match d.id() {
+                Ok(i) => i.to_string(),
+                Err(_) => continue,
+            };
+            let name = d
+                .description()
+                .map(|desc| desc.name().to_string())
+                .unwrap_or_else(|_| "microphone sans nom".to_string());
+            let is_default = default_id.as_deref() == Some(id.as_str());
+            out.push(InputDevice {
+                id,
+                name,
+                is_default,
+            });
+        }
+    }
+    out
 }

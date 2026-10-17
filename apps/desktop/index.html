@@ -11,55 +11,259 @@
       <h1>Plume</h1>
       <p class="muted">
         Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
-        machine.
+        machine — sauf si vous le demandez explicitement (RF-36).
       </p>
       <div id="notice" class="notice" hidden></div>
     </header>
 
+    <!-- ================================================== état + vumètre -->
     <section>
       <h2>État</h2>
       <p class="status">
         <span id="badge" class="badge">…</span>
         <span class="engine">moteur&nbsp;: <b id="engine">…</b></span>
       </p>
+      <div
+        class="meter"
+        title="Niveau du micro — jamais envoyé, jamais enregistré"
+      >
+        <div id="meter" class="meter-fill"></div>
+      </div>
     </section>
 
+    <!-- ================================================== général -->
     <section>
-      <h2>Raccourcis</h2>
-      <table class="keys">
-        <tr><th>Dictée (appui maintenu)</th><td id="hk-push">…</td></tr>
-        <tr><th>Coller le dernier texte</th><td id="hk-paste">…</td></tr>
-        <tr><th>Montrer le dernier texte</th><td id="hk-show">…</td></tr>
-      </table>
-      <p class="muted">Modifiables après édition du fichier de configuration, puis relance.</p>
+      <h2>Général</h2>
+      <div class="row">
+        <label for="gen-language">Langue de dictée (vide = détection auto)</label>
+        <select id="gen-language">
+          <option value="">Détection automatique</option>
+          <option value="fr">français</option>
+          <option value="en">anglais</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="gen-post">Mise en forme du texte (RF-26)</label>
+        <select id="gen-post">
+          <option value="none">aucune — texte brut</option>
+          <option value="rules">règles françaises (défaut)</option>
+        </select>
+      </div>
     </section>
 
+    <!-- ================================================== raccourcis -->
+    <section>
+      <h2>Raccourcis &amp; déclenchement</h2>
+      <div class="row">
+        <label for="hk-push">Dictée</label>
+        <input id="hk-push" type="text" spellcheck="false" />
+      </div>
+      <div class="row">
+        <label for="hk-mode">Mode de déclenchement (RF-02)</label>
+        <select id="hk-mode">
+          <option value="hold">appui maintenu</option>
+          <option value="toggle">bascule (un appui = marche/arrêt)</option>
+          <option value="double-push-lock">double appui = verrouillé</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="hk-paste">Coller le dernier texte</label>
+        <input id="hk-paste" type="text" spellcheck="false" />
+      </div>
+      <div class="row">
+        <label for="hk-show">Montrer le dernier texte</label>
+        <input id="hk-show" type="text" spellcheck="false" />
+      </div>
+      <p class="muted">
+        Appliqués immédiatement à l'enregistrement (RF-01) — si un raccourci est
+        déjà pris par une autre application, un message le signale.
+      </p>
+    </section>
+
+    <!-- ================================================== audio -->
     <section>
       <h2>Réglages audio</h2>
-      <form id="form-audio">
+      <div class="row">
+        <label for="audio-device">Microphone (RF-08)</label>
+        <select id="audio-device">
+          <option value="default">Micro par défaut du système</option>
+        </select>
+        <button id="btn-devices" type="button">Rafraîchir la liste</button>
+      </div>
+      <div class="row">
         <label for="pre-roll">Anticipation avant l'appui (pré-roll, ms)</label>
         <input id="pre-roll" type="number" min="100" max="1000" step="25" />
+      </div>
+      <div class="row">
         <label for="max-rec">Durée maximale d'une prise (s)</label>
         <input id="max-rec" type="number" min="30" max="1800" step="5" />
-        <button type="submit">Enregistrer</button>
-        <span id="audio-result" class="muted"></span>
-      </form>
-      <p class="muted">Pris en compte au prochain démarrage de Plume.</p>
+      </div>
+      <div class="row">
+        <label for="vad-aggr">Détection de voix (RF-18)</label>
+        <select id="vad-aggr">
+          <option value="low">permissive — capte la parole lointaine</option>
+          <option value="balanced">équilibrée (défaut)</option>
+          <option value="high">stricte — ignore le bruit</option>
+        </select>
+      </div>
+      <button id="btn-save-general" type="button">Envoyer</button>
+      <span id="save-result" class="muted"></span>
     </section>
 
+    <!-- ================================================== modèles -->
     <section>
-      <h2>Vie privée</h2>
-      <table class="keys">
-        <tr><th>Mode local strict</th><td id="pv-strict">…</td></tr>
-        <tr><th>Contexte lu</th><td id="pv-context">…</td></tr>
-        <tr><th>Télémétrie</th><td id="pv-telemetry">…</td></tr>
+      <h2>Modèles de reconnaissance (RF-20)</h2>
+      <p class="muted">
+        Le téléchargement est <b>votre action explicite</b>, ici, et la
+        <b>seule</b> connexion réseau de Plume depuis cet écran. Empreinte
+        SHA-256 consignée dans <code>%APPDATA%\Plume\models\manifests.json</code>.
+      </p>
+      <table id="models" class="list">
+        <thead>
+          <tr>
+            <th>Modèle</th>
+            <th>État</th>
+            <th>Empreinte</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="models-body"></tbody>
+      </table>
+      <div id="model-progress" class="meter slim" hidden>
+        <div id="model-progress-fill" class="meter-fill"></div>
+      </div>
+      <span id="model-status" class="muted"></span>
+    </section>
+
+    <!-- ================================================== profils -->
+    <section>
+      <h2>Profils &amp; dictionnaires (RF-23, RF-25)</h2>
+      <div id="profiles-lock" class="notice" hidden></div>
+      <div class="row">
+        <label for="prof-code-apps">Profil « code » — applications associées (séparées par des virgules)</label>
+        <input id="prof-code-apps" type="text" spellcheck="false" />
+      </div>
+      <div class="row">
+        <label for="prof-email-apps">Profil « courriel » — applications associées</label>
+        <input id="prof-email-apps" type="text" spellcheck="false" />
+      </div>
+      <details>
+        <summary>Dictionnaire « code » (une entrée par ligne&nbsp;: cible|variante1|variante2)</summary>
+        <textarea id="dict-code" rows="6" spellcheck="false"></textarea>
+        <button id="dict-code-export" type="button">Exporter en fichier</button>
+        <button id="dict-code-import" type="button">Réimporter depuis le fichier choisi</button>
+      </details>
+      <details>
+        <summary>Dictionnaire « courriel »</summary>
+        <textarea id="dict-email" rows="6" spellcheck="false"></textarea>
+        <button id="dict-email-import" type="button">Importer ce CSV dans la configuration</button>
+        <button id="dict-email-export" type="button">Exporter en fichier</button>
+      </details>
+      <p class="muted">
+        Le dictionnaire remplace vos variantes (métallurgie → « métallurjie »
+        redevient <i>métallurgie</i>) même en mode « texte brut » : c'est
+        votre correction, pas une réécriture du produit.
+      </p>
+    </section>
+
+    <!-- ================================================== historique -->
+    <section>
+      <h2>Historique (RF-33)</h2>
+      <div class="row">
+        <label for="hist-enabled">Conserver les transcriptions</label>
+        <select id="hist-enabled">
+          <option value="no">non — rien n'est conservé (défaut navigateur)</option>
+          <option value="yes">oui — je le veux, supprimables à tout instant</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="hist-storage">Où conserver</label>
+        <select id="hist-storage">
+          <option value="memory">mémoire vive seule (disparaît à l'extinction)</option>
+          <option value="disk">disque chiffré (clé Windows, DPAPI)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="hist-retention">Rétention (jours)</label>
+        <input id="hist-retention" type="number" min="1" max="365" step="1" />
+      </div>
+      <button id="btn-history-purge" type="button">Tout supprimer maintenant</button>
+      <span id="history-result" class="muted"></span>
+      <table id="history" class="list">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Moteur</th>
+            <th>Texte</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="history-body"></tbody>
       </table>
     </section>
 
+    <!-- ================================================== licence -->
     <section>
-      <h2>Diagnostic</h2>
+      <h2>Licence (RF-38, RF-39)</h2>
+      <p id="license-line">…</p>
+      <ul id="license-features" class="muted"></ul>
+      <details>
+        <summary>Importer un code de licence</summary>
+        <p class="muted">La vérification est locale et hors ligne (signature Ed25519). Aucun envoi.</p>
+        <textarea id="license-blob" rows="5" spellcheck="false" placeholder="plume-license-v1&#10;…"></textarea>
+        <button id="btn-license-import" type="button">Vérifier et importer</button>
+        <span id="license-result" class="muted"></span>
+      </details>
+    </section>
+
+    <!-- ================================================== vie privée -->
+    <section>
+      <h2>Vie privée (RF-36, RF-37)</h2>
+      <div class="row">
+        <label for="pv-strict">Mode local strict</label>
+        <select id="pv-strict">
+          <option value="on">actif — rien ne quitte cette machine</option>
+          <option value="off">désactivé — je débloque sur consentement</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-consent-asr">Consentement : transcription distante (BYOK, P4)</label>
+        <select id="pv-consent-asr">
+          <option value="off">jamais (défaut)</option>
+          <option value="on">accord — uniquement si j'ai sais une clé d'API</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-consent-post">Consentement : post-traitement distant</label>
+        <select id="pv-consent-post">
+          <option value="off">jamais (défaut)</option>
+          <option value="on">accord</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-context">Lecture du contexte (RF-37)</label>
+        <select id="pv-context">
+          <option value="none">aucune lecture (défaut)</option>
+          <option value="app_and_title">application + titre (pas le contenu)</option>
+          <option value="app_title_and_selection">application + titre + sélection</option>
+        </select>
+        <button id="btn-context-preview" type="button">Voir le contexte actuel</button>
+        <span id="context-result" class="muted"></span>
+      </div>
+      <p class="muted">
+        Aucun service distant n'est activé tant que ces deux interrupteurs
+        restent sur « jamais » — même si un moteur distant est compilé.
+      </p>
+    </section>
+
+    <!-- ================================================== diagnostic -->
+    <section>
+      <h2>Diagnostic &amp; données</h2>
       <button id="btn-export">Exporter le rapport de diagnostic</button>
       <span id="export-result" class="muted"></span>
+      <a id="export-download" hidden>Télécharger le fichier</a>
+      <button id="btn-data-export">Exporter mes données (configuration + dictionnaires)</button>
+      <span id="data-result" class="muted"></span>
       <p class="muted">
         Le rapport ne contient, par conception, ni caractère dicté, ni audio,
         ni contenu de presse-papiers. Relisez-le avant tout envoi.
@@ -67,8 +271,8 @@
     </section>
 
     <footer class="muted">
-      Plume&nbsp;P0 — les réglages détaillés vivent dans
-      <code>%APPDATA%\Plume\config.json</code>.
+      Plume — les réglages avancés vivent aussi dans
+      <code>%APPDATA%\Plume\config.json</code> (schéma 4).
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

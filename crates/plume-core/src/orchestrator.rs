@@ -23,7 +23,8 @@ use crate::errors::InsertError;
 use crate::state::{DictationState, RecoveryReason};
 use crate::traits::{Clock, SpeechVerdict, Stage};
 use crate::types::{
-    AudioBuffer, FocusSnapshot, InsertLevel, Profile, RefuseReason, TranscribeOptions, Transcript,
+    select_profile, AudioBuffer, FocusSnapshot, InsertLevel, Profile, RefuseReason,
+    TranscribeOptions, Transcript, TriggerMode, DOUBLE_PUSH_WINDOW_MS,
 };
 
 /// Événements d'entrée de l'orchestrateur.
@@ -64,6 +65,19 @@ pub enum CoreEvent {
     Recovered {
         reason: RecoveryReason,
     },
+    /// Durée maximale proche : avertissement 30 s avant la coupure (RF-11).
+    MaxDurationWarning {
+        remaining_ms: u64,
+    },
+    /// RF-32 (option « cible actuelle ») : la fenêtre mémorisée a disparu
+    /// et l'insertion a repris dans la fenêtre au premier plan.
+    RetargetedToCurrent,
+    /// Demande mise en file d'attente (RF-05, file de 1) : elle démarrera
+    /// automatiquement à la fin de la session en cours.
+    QueuedAfterCurrent,
+    /// Prise verrouillée par double appui (RF-02c) : elle survivra au
+    /// relâchement jusqu'au prochain appui.
+    RecordingLocked,
     Latency {
         stage: Stage,
         micros: u64,
@@ -116,10 +130,23 @@ pub struct OrchestratorCfg {
     pub max_recording: Duration,
     pub min_speech_ms: u32,
     pub remember_target_at_start: bool,
+    /// Profil utilisé quand aucune liaison RF-25 ne correspond à la cible.
     pub profile: Profile,
+    /// Profils par application (RF-25) — priorité dans l'ordre du tableau.
+    pub profile_bindings: Vec<crate::types::ProfileBinding>,
     pub excluded_apps: Vec<String>,
+    /// Code de langue forcé (`None` : détection automatique — RF-16).
     pub language: Option<String>,
+    /// Repli quand la détection est interdite (énoncé < 1,5 s, RF-16).
+    pub auto_language_fallback: Option<String>,
+    /// Amorce de vocabulaire métier explicite (RF-24) ; sinon construite
+    /// depuis le dictionnaire du profil.
     pub initial_prompt: Option<String>,
+    /// Durée minimale en dessous de laquelle la détection de langue est
+    /// interdite (RF-16). Défaut 1,5 s.
+    pub auto_language_min: Duration,
+    /// Mode de déclenchement (RF-02).
+    pub trigger: TriggerMode,
 }
 
 impl Default for OrchestratorCfg {
@@ -130,9 +157,13 @@ impl Default for OrchestratorCfg {
             min_speech_ms: 250,
             remember_target_at_start: true,
             profile: Profile::default(),
+            profile_bindings: Vec::new(),
             excluded_apps: Vec::new(),
             language: Some("fr".to_string()),
+            auto_language_fallback: Some("fr".to_string()),
             initial_prompt: None,
+            auto_language_min: Duration::from_millis(1_500),
+            trigger: TriggerMode::default(),
         }
     }
 }
@@ -161,6 +192,16 @@ pub struct Orchestrator<'a> {
     /// Tampon interne du dernier texte transcrit (RF-22) — jamais perdu.
     last: Option<Transcript>,
     recovering: Option<RecoveryJob>,
+    /// Profil résolu pour la session en cours (RF-25) — `None` hors session.
+    session_profile: Option<Profile>,
+    /// Mode (c) : prise verrouillée (RF-02).
+    recording_locked: bool,
+    /// Instant du dernier appui (détection du double appui, RF-02c).
+    press_started: Option<Duration>,
+    /// File d'attente de 1 (RF-05) : une demande pendant le pipeline.
+    queued: bool,
+    /// `true` une fois l'avertissement 30 s émis pour la prise en cours (RF-11).
+    duration_warned: bool,
     sink: Box<dyn FnMut(CoreEvent) + 'a>,
     clock: &'a dyn Clock,
 }
@@ -178,6 +219,11 @@ impl<'a> Orchestrator<'a> {
             state: DictationState::Idle,
             last: None,
             recovering: None,
+            session_profile: None,
+            recording_locked: false,
+            press_started: None,
+            queued: false,
+            duration_warned: false,
             sink,
             clock,
         }
@@ -191,6 +237,13 @@ impl<'a> Orchestrator<'a> {
     /// (RF-22). La fenêtre de secours et « coller à nouveau » s'en servent.
     pub fn last_transcript(&self) -> Option<&Transcript> {
         self.last.as_ref()
+    }
+
+    /// Restaure le tampon après un rechargement de configuration (RF-01) :
+    /// « coller à nouveau » doit rester fonctionnel — RF-22 exige qu'aucun
+    /// rechargement ne perde le dernier texte.
+    pub fn restore_buffer(&mut self, transcript: Transcript) {
+        self.last = Some(transcript);
     }
 
     /// L'audio est-il encore détenu (non libéré) ? Invariant 3.
@@ -223,11 +276,78 @@ impl<'a> Orchestrator<'a> {
     }
 
     fn on_pressed(&mut self) {
-        match self.state.clone() {
-            DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
-            // RF-05 (option refus, P0) : session occupée → indication visible,
-            // aucun mélange de deux dictées.
-            _ => self.emit(CoreEvent::RejectedBusy),
+        match self.cfg.trigger {
+            TriggerMode::Hold => match self.state.clone() {
+                // RF-05 : appui pendant une session occupée → mise en file
+                // (exercée de fait par le canal d'assemblage) ; le noyau
+                // garde la même sémantique pour la découpe événementielle V1.
+                DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
+                DictationState::Recording { .. } => self.emit(CoreEvent::RejectedBusy),
+                _ => {
+                    self.queued = true;
+                    self.emit(CoreEvent::QueuedAfterCurrent);
+                }
+            },
+            TriggerMode::Toggle => match self.state.clone() {
+                DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
+                DictationState::Recording { .. } => self.finish_recording(),
+                _ => {
+                    self.queued = true;
+                    self.emit(CoreEvent::QueuedAfterCurrent);
+                }
+            },
+            TriggerMode::DoublePushLock => match self.state.clone() {
+                DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
+                DictationState::Recording { started_at, .. } => {
+                    if self.push_within_window(started_at) {
+                        // Double appui rapproché : verrouillage (RF-02c).
+                        self.recording_locked = true;
+                        self.emit(CoreEvent::RecordingLocked);
+                    } else {
+                        self.finish_recording();
+                    }
+                }
+                _ => {
+                    self.queued = true;
+                    self.emit(CoreEvent::QueuedAfterCurrent);
+                }
+            },
+        }
+    }
+
+    /// L'appui courant (candidat au double appui) est-il survenu dans la
+    /// fenêtre `DOUBLE_PUSH_WINDOW_MS` suivant le précédent ?
+    fn push_within_window(&self, started_at: Duration) -> bool {
+        self.press_started
+            .map(|p| self.now().saturating_sub(p) <= Duration::from_millis(DOUBLE_PUSH_WINDOW_MS))
+            .unwrap_or_else(|| {
+                self.now().saturating_sub(started_at)
+                    <= Duration::from_millis(DOUBLE_PUSH_WINDOW_MS)
+            })
+    }
+
+    fn on_released(&mut self) {
+        if !matches!(self.state, DictationState::Recording { .. }) {
+            return;
+        }
+        match self.cfg.trigger {
+            TriggerMode::Hold => self.finish_recording(),
+            // RF-02b : en bascule, le relâchement n'arrête rien (l'appui
+            // suivant arrête).
+            TriggerMode::Toggle => {}
+            TriggerMode::DoublePushLock => {
+                // Un appui MAINTENU au-delà de la fenêtre arrête la prise ;
+                // un appui bref ou une prise verrouillée continue.
+                let held_long = self
+                    .press_started
+                    .map(|p| {
+                        self.now().saturating_sub(p) > Duration::from_millis(DOUBLE_PUSH_WINDOW_MS)
+                    })
+                    .unwrap_or(false);
+                if !self.recording_locked && held_long {
+                    self.finish_recording();
+                }
+            }
         }
     }
 
@@ -248,17 +368,15 @@ impl<'a> Orchestrator<'a> {
             });
             return;
         }
+        // Profil par application (RF-25) : résolu **une fois par session**.
+        self.session_profile = select_profile(&self.cfg.profile_bindings, &target.app_id).cloned();
+        self.recording_locked = false;
+        self.duration_warned = false;
+        self.press_started = Some(self.now());
         self.set_state(DictationState::Recording {
             target,
             started_at: self.now(),
         });
-    }
-
-    fn on_released(&mut self) {
-        if !matches!(self.state, DictationState::Recording { .. }) {
-            return;
-        }
-        self.finish_recording();
     }
 
     fn on_cancel(&mut self) {
@@ -266,6 +384,10 @@ impl<'a> Orchestrator<'a> {
             DictationState::Recording { started_at, .. } => {
                 // Annulation explicite : l'audio capté est jeté.
                 let _ = self.deps.capture.stop();
+                self.recording_locked = false;
+                self.queued = false;
+                self.press_started = None;
+                self.session_profile = None;
                 self.set_state(DictationState::Idle);
                 self.emit(CoreEvent::SessionFinished {
                     success: false,
@@ -276,6 +398,7 @@ impl<'a> Orchestrator<'a> {
             DictationState::Recovery { .. } => {
                 // Invariant 3 : l'audio de récupération est libéré.
                 self.recovering = None;
+                self.queued = false;
                 self.set_state(DictationState::Idle);
             }
             _ => self.emit(CoreEvent::RejectedBusy),
@@ -291,7 +414,11 @@ impl<'a> Orchestrator<'a> {
                     self.set_state(DictationState::Idle);
                     return;
                 };
-                self.run_pipeline(job.target, job.audio);
+                let profile = self
+                    .session_profile
+                    .take()
+                    .unwrap_or_else(|| self.cfg.profile.clone());
+                self.run_pipeline(job.target, job.audio, profile);
             }
             DictationState::Recovery {
                 reason: RecoveryReason::InsertFailed,
@@ -306,7 +433,11 @@ impl<'a> Orchestrator<'a> {
                     valid: false,
                     ..Default::default()
                 });
-                self.insert_flow(t, target);
+                let profile = self
+                    .session_profile
+                    .take()
+                    .unwrap_or_else(|| self.cfg.profile.clone());
+                self.insert_flow(t, target, profile);
             }
             _ => {}
         }
@@ -322,7 +453,7 @@ impl<'a> Orchestrator<'a> {
                     });
                     return;
                 };
-                self.insert_flow(t, target);
+                self.insert_flow(t, target, self.cfg.profile.clone());
             }
             _ => self.emit(CoreEvent::RejectedBusy),
         }
@@ -330,9 +461,19 @@ impl<'a> Orchestrator<'a> {
 
     fn on_tick(&mut self) {
         if let DictationState::Recording { started_at, .. } = self.state.clone() {
-            if self.now().saturating_sub(started_at) >= self.cfg.max_recording {
+            let elapsed = self.now().saturating_sub(started_at);
+            if elapsed >= self.cfg.max_recording {
                 // Durée maximale de sécurité : arrêt puis transcription (RF-11).
                 self.finish_recording();
+            } else if !self.duration_warned
+                && self.cfg.max_recording > Duration::from_secs(30)
+                && elapsed >= self.cfg.max_recording - Duration::from_secs(30)
+            {
+                // Avertissement 30 s avant la coupure de sécurité (RF-11).
+                self.duration_warned = true;
+                self.emit(CoreEvent::MaxDurationWarning {
+                    remaining_ms: (self.cfg.max_recording.as_millis() - elapsed.as_millis()) as u64,
+                });
             }
         }
     }
@@ -345,6 +486,13 @@ impl<'a> Orchestrator<'a> {
             DictationState::Recording { started_at, .. } => started_at,
             _ => self.now(),
         };
+        self.recording_locked = false;
+        self.press_started = None;
+        self.duration_warned = false;
+        let profile = self
+            .session_profile
+            .take()
+            .unwrap_or_else(|| self.cfg.profile.clone());
         let audio = match self.deps.capture.stop() {
             Ok(a) => a,
             Err(e) => {
@@ -364,12 +512,12 @@ impl<'a> Orchestrator<'a> {
         self.set_state(DictationState::Finalizing {
             target: target.clone(),
         });
-        self.run_pipeline(target, audio);
+        self.run_pipeline(target, audio, profile);
     }
 
     /// Pipeline complet : VAD → transcription → post-traitement → insertion.
     /// Synchrone ; l'assemblage l'exécute sur le thread pipeline (ADR-12).
-    fn run_pipeline(&mut self, target: FocusSnapshot, audio: AudioBuffer) {
+    fn run_pipeline(&mut self, target: FocusSnapshot, audio: AudioBuffer, profile: Profile) {
         let t0 = self.now();
 
         // --- Analyse VAD (RF-18) -----------------------------------------
@@ -389,14 +537,27 @@ impl<'a> Orchestrator<'a> {
                 duration: captured,
                 level: None,
             });
+            self.serve_queue();
             return;
         }
 
         // --- Transcription (RF-14 : strictement locale par défaut) --------
+        // RF-16 : la détection automatique de langue est interdite sur un
+        // énoncé plus court que `auto_language_min` (défaut 1,5 s) — repli.
+        let mut language = self.cfg.language.clone();
+        if language.is_none() && audio.duration() < self.cfg.auto_language_min {
+            language = self.cfg.auto_language_fallback.clone();
+        }
+        // RF-24 : amorce = champ explicite sinon les termes du dictionnaire
+        // (les 64 premiers caractères — la fenêtre utile de whisper).
+        let initial_prompt = self.cfg.initial_prompt.clone().or_else(|| {
+            let terms = profile.dictionary.join(", ");
+            (!terms.is_empty()).then(|| terms.chars().take(64).collect::<String>())
+        });
         let opts = TranscribeOptions {
-            language: self.cfg.language.clone(),
-            initial_prompt: self.cfg.initial_prompt.clone(),
-            verbatim: self.cfg.profile.style == crate::types::Style::Verbatim,
+            language,
+            initial_prompt,
+            verbatim: profile.style == crate::types::Style::Verbatim,
             threads: None,
         };
         let t1 = self.now();
@@ -416,6 +577,7 @@ impl<'a> Orchestrator<'a> {
                     duration: captured,
                     level: None,
                 });
+                self.serve_queue();
                 return;
             }
             Ok(t) => t,
@@ -451,7 +613,7 @@ impl<'a> Orchestrator<'a> {
 
         // --- Post-traitement local niveau 0/1 (RF-26) --------------------
         let t2 = self.now();
-        let text = match self.deps.post.process(&base.text, &self.cfg.profile) {
+        let text = match self.deps.post.process(&base.text, &profile) {
             Ok(t) => t,
             Err(_) => base.text.clone(),
         };
@@ -466,15 +628,41 @@ impl<'a> Orchestrator<'a> {
 
         // --- Insertion (RF-22 : le texte est au tampon AVANT la tentative) --
         self.last = Some(transcript.clone());
-        self.insert_flow(transcript, target);
+        self.insert_flow(transcript, target, profile);
     }
 
-    fn insert_flow(&mut self, transcript: Transcript, target: FocusSnapshot) {
+    /// Dispose de la file d'attente (RF-05) quand la session retombe à
+    /// l'inactif : la demande en attente démarre immédiatement.
+    fn serve_queue(&mut self) {
+        if self.queued {
+            self.queued = false;
+            self.begin_recording();
+        }
+    }
+
+    fn insert_flow(&mut self, transcript: Transcript, target: FocusSnapshot, profile: Profile) {
+        // RF-32 : avec l'option « insérer dans la fenêtre actuelle » (défaut
+        // `false`), la cible est **relue au moment d'insérer** — la fenêtre
+        // mémorisée peut avoir disparu ; avec l'option mémorisation, la cible
+        // de départ fait foi (refus → secours, chemin RF-31 testé ailleurs).
+        let target = if !self.cfg.remember_target_at_start {
+            match self.deps.focus.snapshot() {
+                Some(fresh) if fresh.app_id != target.app_id || fresh.title != target.title => {
+                    self.emit(CoreEvent::RetargetedToCurrent);
+                    fresh
+                }
+                Some(fresh) => fresh,
+                None => target,
+            }
+        } else {
+            target
+        };
+
         let t3 = self.now();
         self.set_state(DictationState::Inserting {
             target: target.clone(),
         });
-        let plan = self.deps.inserter.plan(&target, &self.cfg.profile);
+        let plan = self.deps.inserter.plan(&target, &profile);
         let result = self.deps.inserter.insert(&transcript.text, &plan);
         let duration = self.now().saturating_sub(t3);
         let micros = duration.as_micros() as u64;
@@ -495,6 +683,7 @@ impl<'a> Orchestrator<'a> {
                     duration,
                     level,
                 });
+                self.serve_queue();
             }
             Err(
                 err @ (InsertError::RefusedSensitive
@@ -514,6 +703,7 @@ impl<'a> Orchestrator<'a> {
                     duration,
                     level: None,
                 });
+                self.serve_queue();
             }
             Err(InsertError::AllLevelsFailed(_)) => {
                 // RF-28 niveau 4 / RF-31 : fenêtre de secours, texte intact.

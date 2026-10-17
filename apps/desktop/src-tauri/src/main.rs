@@ -12,6 +12,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod pill;
 mod strings;
 mod worker;
 
@@ -20,7 +21,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use plume_config::Config;
@@ -68,6 +69,23 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
             let config_path = Config::default_path();
+
+            // Licence (RF-38) : vérification locale hors ligne avec la clé
+            // publique embarquée — le produit démarre toujours, Pro ou pas.
+            let app_data = Config::default_dir();
+            let license = commands::license_from_file(&app_data.join("license.txt"));
+            logger_run.log(Event::DeviceEvent {
+                kind: format!("license-{}", license.state),
+            });
+
+            // Historique (RF-33) : mémoire par défaut ; disque chiffré avec
+            // la feature + la licence Pro + le choix de configuration.
+            let history = worker::build_history(
+                &config,
+                license.features.iter().any(|f| f == "history-on-disk"),
+                &logger_run,
+            );
+
             app.manage(UiShared {
                 tx: tx.clone(),
                 config: Mutex::new(config.clone()),
@@ -76,9 +94,14 @@ fn main() {
                 state: Mutex::new("idle".into()),
                 engine: Mutex::new(String::new()),
                 logger: Arc::clone(&logger_run),
+                license: Mutex::new(license.clone()),
+                history: Mutex::new(history),
+                download_busy: Mutex::new(false),
+                download_cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             });
 
             setup_main_window(app)?;
+            setup_pill_window(app)?;
 
             let handle: AppHandle<Wry> = app.handle().clone();
             let thread_logger = Arc::clone(&logger_run);
@@ -105,6 +128,20 @@ fn main() {
             commands::rescue_close,
             commands::cancel_dictation,
             commands::diagnostics_export,
+            commands::license_status,
+            commands::license_import,
+            commands::devices_list,
+            commands::models_list,
+            commands::models_download,
+            commands::models_download_cancel,
+            commands::models_remove,
+            commands::history_query,
+            commands::history_delete,
+            commands::history_purge,
+            commands::dictionaries_import,
+            commands::dictionaries_export,
+            commands::context_preview,
+            commands::data_export,
         ])
         .run(tauri::generate_context!());
 
@@ -117,6 +154,29 @@ fn main() {
         });
         std::process::exit(1);
     }
+}
+
+// ------------------------------------------------- pastille RF-09 ---
+
+/// Fenêtre pastille : native, sans décor, non focusable, toujours au premier
+/// plan, absente du sélecteur d'applications (RF-09). Créée masquée — elle
+/// apparaît quand la machine à états quitte « idle » (`pill::PillCtl`).
+/// Aucun contenu dicté : visuel d'état + niveau instantané (RF-34).
+fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
+    if app.get_webview_window("pill").is_some() {
+        return Ok(());
+    }
+    tauri::WebviewWindowBuilder::new(app, "pill", tauri::WebviewUrl::App("pill.html".into()))
+        .title(strings::PILL_WINDOW_TITLE)
+        .inner_size(190.0, 56.0)
+        .decorations(false)
+        .resizable(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .focusable(false)
+        .visible(false)
+        .build()?;
+    Ok(())
 }
 
 // ------------------------------------------------------- fenêtre principale ---
@@ -191,6 +251,17 @@ fn setup_tray(app: &AppHandle<Wry>) -> tauri::Result<()> {
 
 // ------------------------------------------------- raccourcis globaux ---
 
+/// RF-01 : re-registration à chaud après `configSet`. Tout est désenregistré
+/// puis les combinaisons valides sont re-registrées ; un conflit système est
+/// consigné, jamais de panique (ADR-05). Appelé uniquement depuis le thread
+/// principal (les commandes tauri y tournent).
+pub(crate) fn re_register_shortcuts(app: &AppHandle<Wry>, cfg: &Config) {
+    if let Some(shared) = app.try_state::<UiShared>() {
+        let _ = app.global_shortcut().unregister_all();
+        let _ = register_shortcuts(app, cfg, &shared.logger);
+    }
+}
+
 /// Un seul mécanisme d'enregistrement (plugin global-shortcut). Règles :
 /// - combinaisons réservées refusées d'office avec consigne au journal
 ///   (plume-hotkeys) ;
@@ -221,6 +292,13 @@ fn register_shortcuts(app: &AppHandle<Wry>, cfg: &Config, logger: &Logger) -> ta
                         logger.log(Event::DeviceEvent {
                             kind: format!("register-pushToTalk-infructueux:{err}").into(),
                         });
+                        let _ = app.emit(
+                            "notice://notice",
+                            serde_json::json!({
+                                "kind": "hotkey",
+                                "message": strings::ERR_HOTKEY_P0,
+                            }),
+                        );
                     }
                 }
                 Err(_err) => logger.log(Event::Error {
@@ -313,6 +391,13 @@ where
         logger.log(Event::DeviceEvent {
             kind: format!("register-{name}-infructueux:{err}").into(),
         });
+        let _ = app.emit(
+            "notice://notice",
+            serde_json::json!({
+                "kind": "hotkey",
+                "message": strings::ERR_HOTKEY_P0,
+            }),
+        );
     }
 }
 

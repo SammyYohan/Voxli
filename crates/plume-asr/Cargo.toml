@@ -8,12 +8,21 @@ license.workspace = true
 [dependencies]
 plume-core = { path = "../plume-core" }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 
 # Moteur réel — activé explicitement (feature `whisper`) : la compilation
 # embarque whisper.cpp via CMake ; voir scripts/fetch-model.ps1.
 whisper-rs = { version = "0.16", optional = true }
 
+# Parakeet TDT v3 (P3) via la crate officielle : 100 % local, poids
+# CC-BY-4.0 ; la compilation C++ requiert CMake.
+sherpa-onnx = { version = "1.13", optional = true }
+
+# Moteur distant BYOK (P4, RF-36) : transport HTTPS multipart minimal.
+ureq = { version = "2", optional = true, features = ["tls"] }
+
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
-remote = []
+parakeet = ["dep:sherpa-onnx"]
+remote = ["dep:ureq"]

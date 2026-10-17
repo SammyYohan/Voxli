@@ -7,6 +7,10 @@
 //!   l'artefact (test T-38 / S3 : recherche de motifs dans les binaires) ;
 //! - période de grâce hors ligne configurable (défaut 30 jours).
 
+pub mod pubkey;
+
+pub use pubkey::{embedded_public_key, EMBEDDED_PUBLIC_KEY_HEX, PRODUCT, PURCHASABLE_FEATURES};
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ed25519_dalek::{Signature, Signer, VerifyingKey, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
@@ -65,6 +69,12 @@ impl Entitlement {
 
     pub fn licensee(&self) -> &str {
         &self.licensee
+    }
+
+    /// Date de péremption en secondes depuis l'époque (une licence
+    /// perpétuelle en est dépourvue).
+    pub fn expires_at_secs(&self) -> Option<u64> {
+        self.expires_at_secs
     }
 }
 

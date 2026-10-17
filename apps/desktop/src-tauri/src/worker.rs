@@ -9,36 +9,43 @@
 //!
 //! Événements émis vers l'UI :
 //! - `state://changed` `{ state, atMs }` — aucun contenu (table docs/05 §3) ;
+//! - `meter://level` `{ level, atMs }` — vumètre, 1 échantillon sur 4 ticks
+//!   (~200 ms) : addition documentée à la table (RF-09) ;
 //! - `session://finished` `{ success, durationMs, level, atMs }` ;
 //! - `notice://notice` `{ kind, message }` — **addition documentée** à la
 //!   table : messages FR neutres définis dans `strings.rs`, jamais de contenu.
-//!   `meter://level` (réglages) n'est pas émis en P0 : le niveau demanderait
-//!   une deuxième voie depuis le thread temps réel — V1.
 
+use serde::Serialize;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use plume_asr::FakeEngine;
+#[cfg(feature = "parakeet-asr")]
+use plume_asr::ParakeetOnnxEngine;
 #[cfg(feature = "real-asr")]
 use plume_asr::WhisperCppEngine;
 use plume_audio::{CpalCapture, EnergyVad, FakeCapture, VadConfig};
-use plume_config::{Config, EngineChoice};
+use plume_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
 use plume_core::{
     orchestrator::{asr_code, capture_code},
-    Capture, CoreEvent, Deps, InputEvent, Inserter, Orchestrator, OrchestratorCfg, Profile,
-    SteadyClock, Transcriptor,
+    AudioBuffer, Capture, CaptureError, CoreEvent, Deps, DictationState, InputEvent, Inserter,
+    Level, Orchestrator, OrchestratorCfg, Profile, ProfileBinding, SteadyClock, Transcriptor,
+    TriggerMode,
 };
 use plume_diagnostics::{Event, Logger};
+use plume_storage::{HistoryStore, MemoryStore};
 use plume_text::PassThroughProcessor;
 #[cfg(target_os = "windows")]
 use plume_text::{WindowsFocusReader, WindowsInserter};
 
 use crate::commands::{lock_or_recover, UiShared};
+use crate::pill::PillCtl;
 use crate::strings;
+
+// Mise à jour du bandeau doc : la pastille (« pill ») et le vumètre sont
+// émis depuis ce thread après tout (RF-09).
 
 /// Période de scrutation de la boucle : sert de « tick » pour la durée
 /// maximale de sécurité (RF-11) et, en V1, au scrutin de relâchement ~50 ms
@@ -52,6 +59,10 @@ pub enum WorkerMsg {
     /// « Dernier texte » (raccourci Shift+Alt+X, RF-22) : ouvre la fenêtre de
     /// secours SI un texte est en attente.
     ShowRescue,
+    /// RF-01 : la configuration a été validée et sauvée ; le pipeline
+    /// reconstruit son orchestrateur (raccourcis re-registrés côté
+    /// principal) — sans redémarrer l'application.
+    ConfigChanged(Box<Config>),
     #[allow(dead_code)]
     Shutdown,
 }
@@ -114,59 +125,103 @@ fn now_ms() -> u64 {
 
 // ----------------------------------------------------------- assemblage ---
 
+/// Proxy de capture (RF-08/RF-09/RF-10) : l'orchestrateur tient
+/// `&mut dyn Capture` en exclusivité, mais le vumètre et la détection de
+/// déconnexion sont lus **hors orchestrateur** à intervalles réguliers. Le
+/// proxy passe par un verrou bref (une lecture de niveau ≈ quelques
+/// centaines d'octets, aucune allocation).
+struct SharedCapture(Arc<std::sync::Mutex<Box<dyn Capture + Send>>>);
+
+impl SharedCapture {
+    fn new(inner: Box<dyn Capture + Send>) -> Self {
+        Self(Arc::new(std::sync::Mutex::new(inner)))
+    }
+
+    /// Deuxième clé du même compartiment : vumètre + capteur de déconnexion.
+    fn inner_arc(&self) -> Arc<std::sync::Mutex<Box<dyn Capture + Send>>> {
+        Arc::clone(&self.0)
+    }
+}
+
+impl Capture for SharedCapture {
+    fn start(&mut self, pre_roll_ms: u32) -> Result<(), CaptureError> {
+        lock_or_recover(&self.0).start(pre_roll_ms)
+    }
+
+    fn stop(&mut self) -> Result<AudioBuffer, CaptureError> {
+        lock_or_recover(&self.0).stop()
+    }
+
+    fn level(&self) -> Level {
+        lock_or_recover(&self.0).level()
+    }
+
+    fn device_lost(&self) -> bool {
+        lock_or_recover(&self.0).device_lost()
+    }
+}
+
 /// Point d'entrée du thread : assemblage des dépendances puis boucle.
 pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
-    let cfg = lock_or_recover(&app.state::<UiShared>().config).clone();
-    let orch_cfg = to_orchestrator_cfg(&cfg);
+    let shared = app.state::<UiShared>();
+    let mut cfg = lock_or_recover(&shared.config).clone();
+    // Droits (RF-39) : profils multiples ⇢ « extra-profiles ». Licence
+    // vérifiée au démarrage (main.rs) ; re-vérifiée à chaque ConfigChanged.
+    let pro_profiles = {
+        let lic = lock_or_recover(&shared.license);
+        lic.features.iter().any(|f| f == "extra-profiles")
+    };
+    let orch_cfg = to_orchestrator_cfg(&cfg, pro_profiles);
     let excluded = cfg.insertion.excluded_apps.clone();
 
-    // --- Capture (ADR-04) : WASAPI via cpal ; repli factice si le micro est
-    // absent pour laisser la démo tourner (étiquette « fake » au journal).
-    #[cfg(target_os = "windows")]
-    let mut capture: Box<dyn Capture> = match CpalCapture::new() {
-        Ok(c) => Box::new(c),
-        Err(err) => {
-            logger.log(Event::Error {
-                module: "capture".into(),
-                code: capture_code(&err),
-            });
-            logger.log(Event::DeviceEvent {
-                kind: "capture-fallback-fake".into(),
-            });
+    // --- Capture (ADR-04, RF-08) : périphérique configuré → défaut →
+    // repli factice explicite au journal (jamais silencieux). La capture est
+    // enveloppée dans un proxy : l'orchestrateur garde `&mut dyn Capture`,
+    // pendant que le niveau sonore (RF-09) et la détection de déconnexion
+    // (RF-10) sont lus hors orchestrateur par un partagé `Arc`.
+    let init: Box<dyn Capture + Send> = {
+        #[cfg(target_os = "windows")]
+        {
+            build_capture(&cfg.audio.device, &logger)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
             Box::new(FakeCapture::with_duration(Duration::from_millis(1600)))
         }
     };
+    let mut capture = SharedCapture::new(init);
+    let capture_meter = capture.inner_arc();
+    let mut last_device: String = cfg.audio.device.clone();
     #[cfg(not(target_os = "windows"))]
-    let mut capture: Box<dyn Capture> =
-        Box::new(FakeCapture::with_duration(Duration::from_millis(1600)));
+    let _ = &mut last_device;
 
-    // --- VAD énergie (P0, RF-18) : bornes calées sur l'agressivité choisie.
-    let vad_cfg = VadConfig {
-        min_speech_ms: cfg.audio.vad.min_speech_ms,
-        threshold_rms: match cfg.audio.vad.aggressiveness {
-            plume_config::Aggressiveness::Low => 0.010,
-            plume_config::Aggressiveness::Balanced => 0.005,
-            plume_config::Aggressiveness::High => 0.002,
-        },
-        ..Default::default()
-    };
-    let vad = EnergyVad::new(vad_cfg);
+    // --- VAD (RF-18) : bornes calées sur l'agressivité choisie.
+    let vad = EnergyVad::new(vad_config(&cfg));
 
     // --- Moteur ASR (ADR-03) : réel si compilé + modèle présent ; sinon
     // moteur factice explicite au journal (jamais de fallback silencieux).
-    let engine = build_engine(&cfg, &logger);
-    let engine_label = engine.id().as_str().to_string();
+    let mut engine = build_engine(&cfg, &logger);
     if let Err(err) = engine.warmup() {
         logger.log(Event::Error {
             module: "asr".into(),
             code: asr_code(&err),
         });
     }
+    let engine_label = Arc::new(std::sync::Mutex::new(engine.id().as_str().to_string()));
     // Métadonnée moteur pour l'UI (état_get).
-    *lock_or_recover(&app.state::<UiShared>().engine) = engine_label.clone();
+    *lock_or_recover(&app.state::<UiShared>().engine) = engine.id().as_str().to_string();
 
-    // --- Post-traitement niveau 0 (P0 ; règles V1 — mêmes traits).
-    let post = PassThroughProcessor;
+    // --- Post-traitement (RF-26) : niveau 1 quand `rules` est choisi ;
+    // identité sinon (le profil verbatim la garantit de toute façon).
+    let mut post: Box<dyn plume_core::PostProcessor> = match cfg.general.post_processing {
+        plume_config::PostProcessing::Rules => Box::new(plume_text::FrenchProcessor),
+        _ => Box::new(PassThroughProcessor),
+    };
+
+    // --- Historique (RF-33) : le store vit dans `UiShared` (partagé avec
+    // les commandes IPC de lecture RF-33) ; le worker n'y touche qu'au
+    // moment opportun via `maybe_record_history`.
+    let pill = PillCtl::new(app.clone());
 
     // --- Focus + insertion (plume-text / plume-win).
     #[cfg(target_os = "windows")]
@@ -175,46 +230,36 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     let focus_reader = FocusStub;
 
     #[allow(unused_mut)]
-    let mut inserter: Box<dyn Inserter> = {
-        #[cfg(target_os = "windows")]
-        {
-            let mut ins = WindowsInserter::new();
-            ins.hold_ms_default = cfg.insertion.clipboard_hold_ms.default;
-            ins.hold_ms_slow_apps = cfg.insertion.clipboard_hold_ms.slow_apps;
-            ins.hold_ms_remote_desktop = cfg.insertion.clipboard_hold_ms.remote_desktop;
-            ins.exclude_from_clipboard_history = cfg.insertion.exclude_from_clipboard_history;
-            Box::new(ins)
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Box::new(InserterStub)
-        }
-    };
+    let mut inserter: Box<dyn Inserter> = build_inserter(&cfg);
 
-    // --- Orchestrateur : propriétaire de la machine à états.
-    let app_for_sink = app.clone();
-    let logger_for_sink = Arc::clone(&logger);
-    let engine_for_sink = engine_label.clone();
-    let sink = Box::new(move |ev: CoreEvent| {
-        forward_event(&app_for_sink, &logger_for_sink, &engine_for_sink, ev);
-    });
-
+    let clock = SteadyClock::default();
     let deps = Deps {
-        capture: &mut *capture,
+        capture: &mut capture,
         vad: &vad,
         transcriptor: &*engine,
-        post: &post,
+        post: &*post,
         inserter: &mut *inserter,
         focus: &focus_reader,
     };
-    let clock = SteadyClock::default();
-    let mut orch = Orchestrator::new(orch_cfg, deps, sink, &clock);
+    let mut orch = Orchestrator::new(
+        orch_cfg,
+        deps,
+        make_sink(&app, &logger, &engine_label, &pill),
+        &clock,
+    );
 
     // --- Boucle : relais des événements + tick de sécurité RF-11.
+    // La reconnaissance d'emprunt impose une reconstruction complète de
+    // l'orchestrateur quand une dépendance change : l'ancien est abandonné
+    // AVANT le nouvel assemblage (`drop` explicite) et le tampon RF-22 est
+    // préservé via `restore_buffer`.
+    let mut tick: u32 = 0;
+    let mut last_recorded_text: Option<String> = None;
     loop {
         match rx.recv_timeout(LOOP_TICK) {
             Ok(WorkerMsg::Input(ev)) => {
                 orch.handle(ev);
+                maybe_record_history(&app, &orch, &engine_label, &mut last_recorded_text);
                 sync_rescue_buffer(&app, &orch);
             }
             Ok(WorkerMsg::ShowRescue) => {
@@ -222,10 +267,161 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     let _ = open_rescue_window(&app);
                 }
             }
+            Ok(WorkerMsg::ConfigChanged(new_cfg)) => {
+                cfg = *new_cfg;
+                // Mi-prise : annulation propre (jamais de rebuild sous les
+                // pieds du pipeline) ; l'utilisateur voit la reprise nette.
+                if !matches!(
+                    orch.state(),
+                    DictationState::Idle | DictationState::Recovery { .. }
+                ) {
+                    orch.handle(InputEvent::Cancel);
+                    logger.log(Event::DeviceEvent {
+                        kind: "config-reload-rebuild".into(),
+                    });
+                }
+                // Droits rafraîchis (une licence importée prend effet ici).
+                let (pro_profiles, pro_history_disk) = {
+                    let lic = lock_or_recover(&shared.license);
+                    (
+                        lic.features.iter().any(|f| f == "extra-profiles"),
+                        lic.features.iter().any(|f| f == "history-on-disk"),
+                    )
+                };
+                let orch_cfg = to_orchestrator_cfg(&cfg, pro_profiles);
+                // RF-08 : l'échange de périphérique se fait APRÈS avoir
+                // abandonné l'orchestrateur (il tient un emprunt exclusif).
+                #[allow(unused_mut, unused_assignments)]
+                let mut reopen_device = false;
+                #[cfg(target_os = "windows")]
+                if cfg.audio.device != last_device {
+                    last_device = cfg.audio.device.clone();
+                    reopen_device = true;
+                }
+                #[cfg(not(target_os = "windows"))]
+                let _ = reopen_device;
+                // RF-33 : le store vit dans UiShared, partagé avec les
+                // commandes de lecture — reconstruit selon nouvelle config.
+                rebuild_history(&shared, &cfg, pro_history_disk, &logger);
+
+                // Toutes les dépendances sont MUTÉES après le drop : l'ancien
+                // orchestrateur les emprunte exclusivement jusqu'ici.
+                let last = orch.last_transcript().cloned();
+                drop(orch);
+                // Moteur : rechargé seulement si le choix ou le modèle a
+                // changé (un chargement réel coûte cher, RF-20).
+                if engine_stale(&engine_label, &cfg) {
+                    engine = build_engine(&cfg, &logger);
+                    if let Err(err) = engine.warmup() {
+                        logger.log(Event::Error {
+                            module: "asr".into(),
+                            code: asr_code(&err),
+                        });
+                    }
+                    *lock_or_recover(&engine_label) = engine.id().as_str().to_string();
+                    *lock_or_recover(&app.state::<UiShared>().engine) =
+                        engine.id().as_str().to_string();
+                }
+                post = match cfg.general.post_processing {
+                    plume_config::PostProcessing::Rules => Box::new(plume_text::FrenchProcessor),
+                    _ => Box::new(PassThroughProcessor),
+                };
+                #[cfg(target_os = "windows")]
+                if reopen_device {
+                    let mut slot = lock_or_recover(&capture_meter);
+                    *slot = build_capture(&cfg.audio.device, &logger);
+                }
+                inserter = build_inserter(&cfg);
+
+                let deps = Deps {
+                    capture: &mut capture,
+                    vad: &vad,
+                    transcriptor: &*engine,
+                    post: &*post,
+                    inserter: &mut *inserter,
+                    focus: &focus_reader,
+                };
+                orch = Orchestrator::new(
+                    orch_cfg,
+                    deps,
+                    make_sink(&app, &logger, &engine_label, &pill),
+                    &clock,
+                );
+                if let Some(t) = last {
+                    orch.restore_buffer(t);
+                }
+            }
             Ok(WorkerMsg::Shutdown) => break,
             Err(RecvTimeoutError::Timeout) => {
+                tick = tick.wrapping_add(1);
                 orch.handle(InputEvent::Tick);
+                // RF-08 : micro déconnecté → l'orchestrateur a eu l'erreur de
+                // fin de prise ; hors de toute prise, la capture est
+                // reconstruite (orchestrateur ré-assemblé, tampon RF-22
+                // préservé). Lecture via l'Arc partagé : l'orchestrateur
+                // tient un emprunt exclusif de sa voie à lui.
+                let device_lost_now = {
+                    #[cfg(target_os = "windows")]
+                    {
+                        lock_or_recover(&capture_meter).device_lost()
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        false
+                    }
+                };
+                #[cfg(target_os = "windows")]
+                if device_lost_now
+                    && matches!(
+                        orch.state(),
+                        DictationState::Idle | DictationState::Recovery { .. }
+                    )
+                {
+                    logger.log(Event::DeviceEvent {
+                        kind: "device-lost-rebuild".into(),
+                    });
+                    let now_cfg = lock_or_recover(&shared.config).clone();
+                    let last = orch.last_transcript().cloned();
+                    let orch_cfg = to_orchestrator_cfg(&now_cfg, pro_profiles);
+                    drop(orch);
+                    {
+                        let mut slot = lock_or_recover(&capture_meter);
+                        *slot = build_capture(&now_cfg.audio.device, &logger);
+                    }
+                    let deps = Deps {
+                        capture: &mut capture,
+                        vad: &vad,
+                        transcriptor: &*engine,
+                        post: &*post,
+                        inserter: &mut *inserter,
+                        focus: &focus_reader,
+                    };
+                    orch = Orchestrator::new(
+                        orch_cfg,
+                        deps,
+                        make_sink(&app, &logger, &engine_label, &pill),
+                        &clock,
+                    );
+                    if let Some(t) = last {
+                        orch.restore_buffer(t);
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                let _ = device_lost_now;
+                // RF-09 : vumètre — échantillonné 1 fois sur 4 (~200 ms),
+                // lecture intérieure au verrou du proxy (très bref).
+                if tick % 4 == 0 {
+                    let level = lock_or_recover(&capture_meter).level();
+                    let _ = app.emit(
+                        "meter://level",
+                        LevelPayload {
+                            level: (level * 1000.0).round() / 1000.0,
+                            at_ms: now_ms(),
+                        },
+                    );
+                }
                 sync_rescue_buffer(&app, &orch);
+                maybe_record_history(&app, &orch, &engine_label, &mut last_recorded_text);
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -249,22 +445,60 @@ fn sync_rescue_buffer(app: &AppHandle<Wry>, orch: &Orchestrator<'_>) {
 
 // ------------------------------------------------- configuration -> noyau ---
 
-fn to_orchestrator_cfg(c: &Config) -> OrchestratorCfg {
+fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
+    let style_of = |s: plume_config::Style| match s {
+        plume_config::Style::Verbatim => plume_core::Style::Verbatim,
+        plume_config::Style::Punctuated => plume_core::Style::Punctuated,
+    };
+    // RF-25 : liaisons profil-app ; RF-39 : « profils multiples » est une
+    // fonctionnalité Pro — hors licence, seul le profil par défaut est
+    // actif (les liaisons restent configurées mais inactives, indiqué à
+    // l'écran des profils).
+    let bindings = if pro_bindings {
+        let profile_of = |p: &plume_config::ProfileCfg| Profile {
+            style: style_of(p.style),
+            insertion: plume_core::InsertionPolicy::ClipboardFirst,
+            dictionary: p.dictionary.clone(),
+        };
+        let mut b = Vec::new();
+        if !c.profiles.code.matches.is_empty() {
+            b.push(ProfileBinding {
+                matches: c.profiles.code.matches.clone(),
+                profile: profile_of(&c.profiles.code),
+            });
+        }
+        if !c.profiles.email.matches.is_empty() {
+            b.push(ProfileBinding {
+                matches: c.profiles.email.matches.clone(),
+                profile: profile_of(&c.profiles.email),
+            });
+        }
+        b
+    } else {
+        Vec::new()
+    };
+    let profile_of = |p: &plume_config::ProfileCfg| Profile {
+        style: style_of(p.style),
+        insertion: plume_core::InsertionPolicy::ClipboardFirst,
+        dictionary: p.dictionary.clone(),
+    };
     OrchestratorCfg {
         pre_roll_ms: c.audio.pre_roll_ms,
         max_recording: Duration::from_secs(c.audio.max_recording_seconds as u64),
         min_speech_ms: c.audio.vad.min_speech_ms,
         remember_target_at_start: c.insertion.remember_target_at_start,
-        profile: Profile {
-            style: match c.profiles.default.style {
-                plume_config::Style::Verbatim => plume_core::Style::Verbatim,
-                plume_config::Style::Punctuated => plume_core::Style::Punctuated,
-            },
-            insertion: plume_core::InsertionPolicy::ClipboardFirst,
-        },
+        profile: profile_of(&c.profiles.default),
+        profile_bindings: bindings,
         excluded_apps: c.insertion.excluded_apps.clone(),
         language: Some(c.general.language.clone()).filter(|s| !s.is_empty()),
-        initial_prompt: None, // amorce métier (RF-24) : V1
+        initial_prompt: None, // amorce construite du dictionnaire (RF-24)
+        auto_language_min: Duration::from_millis(1_500),
+        auto_language_fallback: Some(c.general.language.clone()).filter(|s| !s.is_empty()),
+        trigger: match c.hotkeys.mode {
+            TriggerModeCfg::Hold => TriggerMode::Hold,
+            TriggerModeCfg::Toggle => TriggerMode::Toggle,
+            TriggerModeCfg::DoublePushLock => TriggerMode::DoublePushLock,
+        },
     }
 }
 
@@ -280,7 +514,39 @@ fn model_path(cfg: &Config) -> std::path::PathBuf {
 }
 
 fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
-    // Parakeet n'est pas livré en P0 (ADR-03) : consigne explicite.
+    // Parakeet (ADR-03 point 2, feature `parakeet-asr`) : choix explicite,
+    // ou repli `auto` quand whisper n'a pas de modèle installé.
+    #[cfg(feature = "parakeet-asr")]
+    {
+        let parakeet_selected = matches!(cfg.general.engine, EngineChoice::Parakeet);
+        let parakeet_auto =
+            matches!(cfg.general.engine, EngineChoice::Auto) && !whisper_available(cfg);
+        if parakeet_selected || parakeet_auto {
+            if parakeet_model_dir(cfg).is_dir() {
+                match ParakeetOnnxEngine::load(&parakeet_model_dir(cfg), 2) {
+                    Ok(engine) => {
+                        logger.log(Event::EngineLoaded {
+                            engine: "parakeet".into(),
+                            model_id: "parakeet-tdt-0.6b-v3".into(),
+                        });
+                        return Box::new(engine);
+                    }
+                    Err(err) => {
+                        logger.log(Event::Error {
+                            module: "asr".into(),
+                            code: asr_code(&err),
+                        });
+                    }
+                }
+            } else if parakeet_selected {
+                logger.log(Event::Error {
+                    module: "asr".into(),
+                    code: 7,
+                });
+            }
+        }
+    }
+    #[cfg(not(feature = "parakeet-asr"))]
     if matches!(cfg.general.engine, EngineChoice::Parakeet) {
         logger.log(Event::Error {
             module: "asr".into(),
@@ -288,28 +554,30 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
         });
     }
     // whisper.cpp (feature `real-asr`) pour `whisper` et `auto` si le modèle
-    // est installé par scripts/fetch-model.ps1.
+    // est installé (gestionnaire de modèles ou scripts/fetch-model.ps1).
     #[cfg(feature = "real-asr")]
     if !matches!(cfg.general.engine, EngineChoice::Parakeet) {
         let path = model_path(cfg);
-        match WhisperCppEngine::load(&path) {
-            Ok(engine) => {
-                let model_id = path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                logger.log(Event::EngineLoaded {
-                    engine: "whisper.cpp".into(),
-                    model_id,
-                });
-                return Box::new(engine);
-            }
-            // Modèle absent : repli visible au journal, jamais silencieux.
-            Err(err) => {
-                logger.log(Event::Error {
-                    module: "asr".into(),
-                    code: asr_code(&err),
-                });
+        if path.is_file() {
+            match WhisperCppEngine::load(&path) {
+                Ok(engine) => {
+                    let model_id = path
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    logger.log(Event::EngineLoaded {
+                        engine: "whisper.cpp".into(),
+                        model_id,
+                    });
+                    return Box::new(engine);
+                }
+                // Modèle absent ou illisible : repli visible, jamais silencieux.
+                Err(err) => {
+                    logger.log(Event::Error {
+                        module: "asr".into(),
+                        code: asr_code(&err),
+                    });
+                }
             }
         }
     }
@@ -320,9 +588,77 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
     Box::new(FakeEngine::default())
 }
 
+/// Dossier du modèle Parakeet installé (gestionnaire de modèles).
+#[cfg(feature = "parakeet-asr")]
+fn parakeet_model_dir(_cfg: &Config) -> std::path::PathBuf {
+    Config::default_dir()
+        .join("models")
+        .join("sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
+}
+
+/// Disponibilité du moteur whisper réelle (feature + modèle présent).
+#[cfg(feature = "real-asr")]
+fn whisper_available(cfg: &Config) -> bool {
+    model_path(cfg).is_file()
+}
+
+#[cfg(not(feature = "real-asr"))]
+fn whisper_available(_cfg: &Config) -> bool {
+    false
+}
+
+/// Disponibilité du moteur Parakeet réelle (feature + dossier présent).
+#[cfg(feature = "parakeet-asr")]
+fn parakeet_available(cfg: &Config) -> bool {
+    parakeet_model_dir(cfg).is_dir()
+}
+
+#[cfg(not(feature = "parakeet-asr"))]
+fn parakeet_available(_cfg: &Config) -> bool {
+    false
+}
+
+/// RF-01 : détecte si le moteur à reconstruire diffère de celui en service —
+/// évite de recharger un modèle coûteux pour un changement sans rapport.
+fn engine_stale(label: &Arc<std::sync::Mutex<String>>, cfg: &Config) -> bool {
+    let wanted = match cfg.general.engine {
+        EngineChoice::Whisper => {
+            if whisper_available(cfg) {
+                "whisper.cpp"
+            } else {
+                "fake"
+            }
+        }
+        EngineChoice::Parakeet => {
+            if parakeet_available(cfg) {
+                "parakeet"
+            } else {
+                "fake"
+            }
+        }
+        EngineChoice::Auto => {
+            if whisper_available(cfg) {
+                "whisper.cpp"
+            } else if parakeet_available(cfg) {
+                "parakeet"
+            } else {
+                "fake"
+            }
+        }
+    };
+    let current = lock_or_recover(label).clone();
+    current != wanted
+}
+
 // ------------------------------------------------- diffusion des événements ---
 
-fn forward_event(app: &AppHandle<Wry>, logger: &Logger, engine_label: &str, ev: CoreEvent) {
+fn forward_event(
+    app: &AppHandle<Wry>,
+    logger: &Logger,
+    engine_label: &str,
+    pill: &PillCtl,
+    ev: CoreEvent,
+) {
     match ev {
         CoreEvent::StateChanged(s) => {
             let shared = app.state::<UiShared>();
@@ -332,6 +668,9 @@ fn forward_event(app: &AppHandle<Wry>, logger: &Logger, engine_label: &str, ev: 
                 to: s.name().into(),
             });
             *lock_or_recover(&shared.state) = s.name().to_string();
+            // RF-09 : la pastille suit la machine à états (masquée à l'état
+            // « idle »), sans jamais porter de contenu (ADR-02, RF-34).
+            pill.set_state(s.name());
             let _ = app.emit(
                 "state://changed",
                 StatePayload {
@@ -355,6 +694,46 @@ fn forward_event(app: &AppHandle<Wry>, logger: &Logger, engine_label: &str, ev: 
                 NoticePayload {
                     kind: "busy",
                     message: strings::MSG_BUSY.into(),
+                },
+            );
+        }
+        // RF-11 : avertissement de durée, une seule fois par prise.
+        CoreEvent::MaxDurationWarning { remaining_ms } => {
+            let _ = app.emit(
+                "notice://notice",
+                NoticePayload {
+                    kind: "max-warning",
+                    message: strings::msg_max_duration(remaining_ms),
+                },
+            );
+        }
+        // RF-02 (c) : verrouillage par double appui.
+        CoreEvent::RecordingLocked => {
+            let _ = app.emit(
+                "notice://notice",
+                NoticePayload {
+                    kind: "locked",
+                    message: strings::MSG_LOCKED.into(),
+                },
+            );
+        }
+        // RF-05 : file d'attente côté application.
+        CoreEvent::QueuedAfterCurrent => {
+            let _ = app.emit(
+                "notice://notice",
+                NoticePayload {
+                    kind: "queued",
+                    message: strings::MSG_QUEUED.into(),
+                },
+            );
+        }
+        // RF-32 : re-ciblage vers la fenêtre au premier plan.
+        CoreEvent::RetargetedToCurrent => {
+            let _ = app.emit(
+                "notice://notice",
+                NoticePayload {
+                    kind: "retarget",
+                    message: strings::MSG_RETARGET.into(),
                 },
             );
         }
@@ -493,5 +872,213 @@ pub fn open_rescue_window(app: &AppHandle<Wry>) -> tauri::Result<()> {
             .resizable(true)
             .visible(true)
             .build();
+    })
+}
+
+// ------------------------------------------------------- helpers d'assemblage ---
+
+/// RF-08 : construction de la capture avec le périphérique configuré.
+/// Chaîne explicite : configuré → défaut → factice (journal documente).
+#[cfg(target_os = "windows")]
+fn build_capture(device: &str, logger: &Logger) -> Box<dyn Capture + Send> {
+    match CpalCapture::new_with_device(device) {
+        Ok(c) => {
+            logger.log(Event::DeviceEvent {
+                kind: format!("capture-opened:{}", c.device_name()),
+            });
+            Box::new(c)
+        }
+        Err(first) => {
+            logger.log(Event::Error {
+                module: "capture".into(),
+                code: capture_code(&first),
+            });
+            // Repli sur le micro par défaut courant avant d'abandonner.
+            match CpalCapture::new() {
+                Ok(c) => {
+                    logger.log(Event::DeviceEvent {
+                        kind: "capture-fallback-default".into(),
+                    });
+                    Box::new(c)
+                }
+                Err(second) => {
+                    logger.log(Event::Error {
+                        module: "capture".into(),
+                        code: capture_code(&second),
+                    });
+                    logger.log(Event::DeviceEvent {
+                        kind: "capture-fallback-fake".into(),
+                    });
+                    Box::new(FakeCapture::with_duration(Duration::from_millis(1600)))
+                }
+            }
+        }
+    }
+}
+
+/// Bornes VAD calées sur l'agressivité choisie (RF-18).
+fn vad_config(cfg: &Config) -> VadConfig {
+    VadConfig {
+        min_speech_ms: cfg.audio.vad.min_speech_ms,
+        threshold_rms: match cfg.audio.vad.aggressiveness {
+            plume_config::Aggressiveness::Low => 0.010,
+            plume_config::Aggressiveness::Balanced => 0.005,
+            plume_config::Aggressiveness::High => 0.002,
+        },
+        ..Default::default()
+    }
+}
+
+/// Inserteur configuré (temps de maintien du presse-papiers par classe).
+#[cfg(target_os = "windows")]
+fn build_inserter(cfg: &Config) -> Box<dyn Inserter> {
+    let mut ins = WindowsInserter::new();
+    ins.hold_ms_default = cfg.insertion.clipboard_hold_ms.default;
+    ins.hold_ms_slow_apps = cfg.insertion.clipboard_hold_ms.slow_apps;
+    ins.hold_ms_remote_desktop = cfg.insertion.clipboard_hold_ms.remote_desktop;
+    ins.exclude_from_clipboard_history = cfg.insertion.exclude_from_clipboard_history;
+    Box::new(ins)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn build_inserter(_cfg: &Config) -> Box<dyn Inserter> {
+    Box::new(InserterStub)
+}
+
+/// Historique activé (RF-33) : mémoire par défaut, disque chiffré quand
+/// (a) la feature `history-disk` est compilée, (b) la licence le permet,
+/// (c) l'option config le demande. Sinon `None` (jamais silencieux :
+/// le choix est journalisé au démarrage).
+#[allow(unused_mut, unused_variables)]
+pub fn build_history(
+    cfg: &Config,
+    licensed_disk: bool,
+    logger: &Logger,
+) -> Option<Box<dyn HistoryStore>> {
+    if !cfg.general.history.enabled {
+        logger.log(Event::DeviceEvent {
+            kind: "history-off".into(),
+        });
+        return None;
+    }
+    #[cfg(feature = "history-disk")]
+    {
+        if cfg.general.history.storage == plume_config::StorageKind::Disk && licensed_disk {
+            let path = Config::default_dir().join("histoire.db");
+            match plume_storage::SqliteStore::open(&path) {
+                Ok(sql) => {
+                    logger.log(Event::DeviceEvent {
+                        kind: "history-disk-encrypted".into(),
+                    });
+                    return Some(Box::new(plume_storage::EncryptedStore::new(
+                        sql,
+                        plume_storage::DpapiCodec,
+                    )));
+                }
+                Err(err) => {
+                    logger.log(Event::Error {
+                        module: "history".into(),
+                        code: 1,
+                    });
+                    let _ = err;
+                }
+            }
+        } else if cfg.general.history.storage == plume_config::StorageKind::Disk && !licensed_disk {
+            // Refus explicite : PAS de repli mémoire masquant l'intention
+            // (RF-33 : l'historique disque exige la licence).
+            logger.log(Event::DeviceEvent {
+                kind: "history-disk-requires-license".into(),
+            });
+            return None;
+        }
+    }
+    #[cfg(not(feature = "history-disk"))]
+    {
+        if cfg.general.history.storage == plume_config::StorageKind::Disk {
+            logger.log(Event::DeviceEvent {
+                kind: "history-disk-feature-off".into(),
+            });
+        }
+    }
+    logger.log(Event::DeviceEvent {
+        kind: "history-memory".into(),
+    });
+    // Borné en mémoire (RF-33) : 200 entrées, la plus récente d'abord.
+    Some(Box::new(MemoryStore::new(200)))
+}
+
+/// (Re)construit le store d'historique de `UiShared` (RF-33) — appelé au
+/// démarrage (main.rs) et à chaque rechargement de configuration (ici).
+pub fn rebuild_history(shared: &UiShared, cfg: &Config, licensed_disk: bool, logger: &Logger) {
+    *lock_or_recover(&shared.history) = build_history(cfg, licensed_disk, logger);
+}
+
+/// RF-33 : écrire la transcription dans l'historique à la retombée à Idle.
+/// Le texte lu est celui du tampon noyau ; l'écriture est stockée dans
+/// `UiShared.history` (chiffré quand le disque est choisi, RF-33) et le
+/// rechargement de configuration ne duplique pas d'entrée
+/// (`last_recorded_text`).
+fn maybe_record_history(
+    app: &AppHandle<Wry>,
+    orch: &Orchestrator<'_>,
+    engine_label: &Arc<std::sync::Mutex<String>>,
+    last_recorded_text: &mut Option<String>,
+) {
+    let shared = app.state::<UiShared>();
+    if lock_or_recover(&shared.history).is_none() {
+        return;
+    }
+    if !lock_or_recover(&shared.config).general.history.enabled {
+        return;
+    }
+    if !matches!(orch.state(), DictationState::Idle) {
+        return;
+    }
+    let Some(t) = orch.last_transcript() else {
+        return;
+    };
+    if last_recorded_text.as_deref() == Some(t.text.as_str()) {
+        return;
+    }
+    *last_recorded_text = Some(t.text.clone());
+    let engine = lock_or_recover(engine_label).clone();
+    let now = now_ms();
+    let mut guard = lock_or_recover(&shared.history);
+    let Some(store) = guard.as_mut() else { return };
+    if store.append(&t.text, &engine, now).is_ok() {
+        // Rétention bornée : fenêtre glissante appliquée après chaque
+        // écriture (coût négligeable, pas de thread dédié).
+        let days = lock_or_recover(&shared.config)
+            .general
+            .history
+            .retention_days as u64;
+        let cutoff = now.saturating_sub(days * 86_400_000);
+        let _ = store.retain_since(cutoff);
+    }
+}
+
+/// Vumètre (RF-09) : niveau instantané [0..1].
+#[derive(Clone, Serialize)]
+struct LevelPayload {
+    level: f32,
+    #[serde(rename = "atMs")]
+    at_ms: u64,
+}
+
+/// Fabrique de fermeture d'événements noyau — reconstruite à chaque
+/// rechargement de l'orchestrateur (les `Arc` sont partagés, coût nul).
+fn make_sink(
+    app: &AppHandle<Wry>,
+    logger: &Arc<Logger>,
+    engine_label: &Arc<std::sync::Mutex<String>>,
+    pill: &PillCtl,
+) -> Box<dyn FnMut(CoreEvent)> {
+    let app = app.clone();
+    let logger = Arc::clone(logger);
+    let label = Arc::clone(engine_label);
+    let pill = pill.clone();
+    Box::new(move |ev: CoreEvent| {
+        let eng = lock_or_recover(&label).clone();
+        forward_event(&app, &logger, &eng, &pill, ev);
     })
 }

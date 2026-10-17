@@ -103,12 +103,65 @@ pub enum InsertionPolicy {
     TypingFirst,
 }
 
-/// Profil applicatif (RF-25). P0 : un profil unique par défaut.
+/// Profil applicatif (RF-25).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Profile {
+    /// Style de sortie demandé (RF-25, RF-26).
     pub style: Style,
+    /// Politique d'insertion (cascade niveau 2/3, ADR-06).
     pub insertion: InsertionPolicy,
+    /// Dictionnaire métier du profil (RF-23) : termes cibles et variantes.
+    /// Vide = aucun remplacement.
+    pub dictionary: Vec<String>,
 }
+
+/// Lie un profil aux applications qui le déclenchent (RF-25). La
+/// correspondance est insensible à la casse sur `app_id`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProfileBinding {
+    /// Noms d'exécutables (ex. `Code.exe`) — comparaison sans casse.
+    pub matches: Vec<String>,
+    pub profile: Profile,
+}
+
+/// Choix de profil : fonction **pure** (RF-25) — le premier binding dont un
+/// motif correspond à `app_id` gagne, sinon `None` (profil par défaut du
+/// champ d'orchestration).
+pub fn select_profile<'a>(bindings: &'a [ProfileBinding], app_id: &str) -> Option<&'a Profile> {
+    bindings
+        .iter()
+        .find(|b| b.matches.iter().any(|m| m.eq_ignore_ascii_case(app_id)))
+        .map(|b| &b.profile)
+}
+
+/// Mode de déclenchement de la dictée (RF-02).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TriggerMode {
+    /// (a) appui maintenu : relâchement = stop (défaut).
+    #[default]
+    Hold,
+    /// (b) bascule : appui démarre, appui suivant arrête.
+    Toggle,
+    /// (c) double appui pour verrouiller : un appui bref (< `lock_window`)
+    /// pendant l'enregistrement le verrouille (arbitraire long) ; l'appui
+    /// suivant l'arrête. Un appui MAINTENU reste stop au relâchement.
+    DoublePushLock,
+}
+
+impl TriggerMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TriggerMode::Hold => "hold",
+            TriggerMode::Toggle => "toggle",
+            TriggerMode::DoublePushLock => "double-push-lock",
+        }
+    }
+}
+
+/// Fenêtre de détection d'un « double appui » du mode (c) : un appui
+/// survenant moins de 400 ms après le début d'une prise la verrouille
+/// (c'est un écho du relâchement immédiat de l'appui de démarrage).
+pub const DOUBLE_PUSH_WINDOW_MS: u64 = 400;
 
 /// Capacités du champ focalisé, lues via UIA (plume-text). Lecture seule :
 /// l'orchestrateur ne connaît pas UIA.

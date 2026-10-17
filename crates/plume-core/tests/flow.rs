@@ -639,3 +639,442 @@ fn t_events_never_carry_content() {
         );
     }
 }
+
+// ---------------------------------------------- modes de déclenchement ----
+
+/// RF-02b (bascule) : appui → démarre ; **le relâchement n'arrête rien** ;
+/// l'appui suivant arrête et transcrit.
+#[test]
+fn t_toggle_mode_press_starts_second_press_stops() {
+    let b = bench(SpeechVerdict::Speech);
+    let mut cfg = OrchestratorCfg::default();
+    cfg.trigger = TriggerMode::Toggle;
+    let (events, last, state) = run_with_cfg(cfg, b, |o| {
+        o.handle(InputEvent::HotkeyPressed);
+        assert_eq!(o.state().name(), "recording");
+        o.handle(InputEvent::HotkeyReleased);
+        assert_eq!(o.state().name(), "recording", "le relâchement n'arrête pas");
+        o.handle(InputEvent::HotkeyPressed);
+    });
+    assert!(matches!(
+        events
+            .iter()
+            .find(|e| matches!(e, CoreEvent::Inserted { .. })),
+        Some(CoreEvent::Inserted { .. })
+    ));
+    assert_eq!(state, DictationState::Idle);
+    assert!(last.is_some());
+}
+
+/// RF-02c (double appui pour verrouiller) : appui bref démarre une prise qui
+/// survive au relâchement ; double appui → verrouillage (RecordingLocked) ;
+/// appui suivant (hors fenêtre) arrête et transcrit.
+#[test]
+fn t_double_push_lock_full_cycle() {
+    let b = bench(SpeechVerdict::Speech);
+    let clock_base = Rc::new(Cell::new(0u64));
+    let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+    let mut capture = b.capture;
+    let vad = FixedVad(b.vad);
+    let engine = b.engine;
+    let post = IdentityPost;
+    let mut inserter = b.inserter;
+    let focus = b.focus;
+    let sink_events = events.clone();
+    let clock = SharedClock(clock_base.clone());
+    let mut cfg = OrchestratorCfg::default();
+    cfg.trigger = TriggerMode::DoublePushLock;
+    let mut orch = Orchestrator::new(
+        cfg,
+        Deps {
+            capture: &mut capture,
+            vad: &vad,
+            transcriptor: &engine,
+            post: &post,
+            inserter: &mut inserter,
+            focus: &focus,
+        },
+        Box::new(move |e| sink_events.borrow_mut().push(e)),
+        &clock,
+    );
+
+    // Appui bref : démarre et survit au relâchement (tap).
+    orch.handle(InputEvent::HotkeyPressed);
+    clock_base.set(100); // relâchement 100 ms après l'appui
+    orch.handle(InputEvent::HotkeyReleased);
+    assert_eq!(orch.state().name(), "recording", "le tap n'arrête pas (c)");
+
+    // Double appui rapproché (250 ms) : verrouillage.
+    orch.handle(InputEvent::HotkeyPressed);
+    let evs = events.borrow();
+    assert!(evs.iter().any(|e| matches!(e, CoreEvent::RecordingLocked)));
+    drop(evs);
+    clock_base.set(300);
+    orch.handle(InputEvent::HotkeyReleased);
+    assert_eq!(orch.state().name(), "recording", "prise verrouillée");
+
+    // Appui suivant, bien au-delà de la fenêtre : arrêt + transcription.
+    clock_base.set(5_000);
+    orch.handle(InputEvent::HotkeyPressed);
+    assert_eq!(orch.state().name(), "idle");
+    let evs = events.borrow();
+    assert!(matches!(
+        evs.iter().find(|e| matches!(e, CoreEvent::Inserted { .. })),
+        Some(CoreEvent::Inserted { .. })
+    ));
+}
+
+/// RF-02c : un appui MAINTENU au-delà de la fenêtre arrête la prise.
+#[test]
+fn t_double_push_hold_stops() {
+    let b = bench(SpeechVerdict::Speech);
+    let clock_base = Rc::new(Cell::new(0u64));
+    let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+    let mut capture = b.capture;
+    let vad = FixedVad(b.vad);
+    let engine = b.engine;
+    let post = IdentityPost;
+    let mut inserter = b.inserter;
+    let focus = b.focus;
+    let sink_events = events.clone();
+    let clock = SharedClock(clock_base.clone());
+    let mut cfg = OrchestratorCfg::default();
+    cfg.trigger = TriggerMode::DoublePushLock;
+    let mut orch = Orchestrator::new(
+        cfg,
+        Deps {
+            capture: &mut capture,
+            vad: &vad,
+            transcriptor: &engine,
+            post: &post,
+            inserter: &mut inserter,
+            focus: &focus,
+        },
+        Box::new(move |e| sink_events.borrow_mut().push(e)),
+        &clock,
+    );
+    orch.handle(InputEvent::HotkeyPressed);
+    clock_base.set(800);
+    orch.handle(InputEvent::HotkeyReleased);
+    assert_eq!(orch.state().name(), "idle", "appui maintenu = arrêt");
+    assert!(events
+        .borrow()
+        .iter()
+        .any(|e| matches!(e, CoreEvent::Inserted { .. })));
+}
+
+/// RF-11 : avertissement émi une seule fois 30 s avant le plafond.
+#[test]
+fn t_max_duration_warning_once() {
+    let b = bench(SpeechVerdict::Speech);
+    let clock_base = Rc::new(Cell::new(0u64));
+    let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+    let mut capture = b.capture;
+    let vad = FixedVad(b.vad);
+    let engine = b.engine;
+    let post = IdentityPost;
+    let mut inserter = b.inserter;
+    let focus = b.focus;
+    let sink_events = events.clone();
+    let clock = SharedClock(clock_base.clone());
+    let mut cfg = OrchestratorCfg::default();
+    cfg.max_recording = Duration::from_secs(60);
+    let mut orch = Orchestrator::new(
+        cfg,
+        Deps {
+            capture: &mut capture,
+            vad: &vad,
+            transcriptor: &engine,
+            post: &post,
+            inserter: &mut inserter,
+            focus: &focus,
+        },
+        Box::new(move |e| sink_events.borrow_mut().push(e)),
+        &clock,
+    );
+    orch.handle(InputEvent::HotkeyPressed);
+
+    clock_base.set(29_000); // pas encore
+    orch.handle(InputEvent::Tick);
+    assert!(!events
+        .borrow()
+        .iter()
+        .any(|e| matches!(e, CoreEvent::MaxDurationWarning { .. })));
+
+    clock_base.set(35_000); // 30 s avant la fin
+    orch.handle(InputEvent::Tick);
+    let evs = events.borrow();
+    assert!(matches!(
+        evs.iter()
+            .find(|e| matches!(e, CoreEvent::MaxDurationWarning { .. })),
+        Some(CoreEvent::MaxDurationWarning {
+            remaining_ms: 25_000
+        })
+    ));
+    drop(evs);
+
+    clock_base.set(40_000); // un seul avertissement
+    orch.handle(InputEvent::Tick);
+    assert_eq!(
+        events
+            .borrow()
+            .iter()
+            .filter(|e| matches!(e, CoreEvent::MaxDurationWarning { .. }))
+            .count(),
+        1
+    );
+}
+
+/// RF-16 : la détection automatique est interdite sous 1,5 s — repli de
+/// langue explicite ; au-delà, aucune langue n'est forcée.
+#[test]
+fn t_language_autodetect_guard() {
+    type Recorded = Arc<std::sync::Mutex<Option<TranscribeOptions>>>;
+    struct RecordingEngine(Recorded);
+    impl Transcriptor for RecordingEngine {
+        fn warmup(&self) -> Result<(), AsrError> {
+            Ok(())
+        }
+        fn transcribe(
+            &self,
+            _a: &AudioBuffer,
+            o: &TranscribeOptions,
+        ) -> Result<Transcript, AsrError> {
+            *self.0.lock().unwrap() = Some(o.clone());
+            Ok(Transcript {
+                text: "ok".into(),
+                confidence: 1.0,
+                duration: Duration::ZERO,
+                engine: EngineId::Fake,
+                model: None,
+            })
+        }
+        fn id(&self) -> EngineId {
+            EngineId::Fake
+        }
+    }
+
+    /// Capture synthétique paramétrable : un buffer de `seconds` secondes.
+    struct TimedCapture {
+        seconds: u32,
+        started: bool,
+    }
+    impl Capture for TimedCapture {
+        fn start(&mut self, _pre_roll_ms: u32) -> Result<(), CaptureError> {
+            self.started = true;
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<AudioBuffer, CaptureError> {
+            if !self.started {
+                return Err(CaptureError::NotStarted);
+            }
+            self.started = false;
+            Ok(AudioBuffer::new(
+                vec![0.5; 16_000 * self.seconds as usize],
+                16_000,
+            ))
+        }
+        fn level(&self) -> Level {
+            0.5
+        }
+    }
+
+    for (seconds, expected) in [(1, Some("fr")), (3, None)] {
+        let recorded: Recorded = std::sync::Mutex::new(None).into();
+        let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+        let mut capture = TimedCapture {
+            seconds,
+            started: false,
+        };
+        let vad = FixedVad(SpeechVerdict::Speech);
+        let engine = RecordingEngine(recorded.clone());
+        let post = IdentityPost;
+        let mut inserter = FakeInserter {
+            fail_all: Rc::new(Cell::new(false)),
+            inserts: Rc::new(RefCell::new(Vec::new())),
+            excluded: Vec::new(),
+        };
+        let focus = FakeFocus(Some(snapshot()));
+        let clock = SharedClock(Rc::new(Cell::new(0)));
+        let sink_events = events.clone();
+        let mut cfg = OrchestratorCfg::default();
+        cfg.language = None; // détection automatique demandée
+        cfg.auto_language_min = Duration::from_millis(1_500);
+        cfg.max_recording = Duration::from_secs(600);
+        let mut orch = Orchestrator::new(
+            cfg,
+            Deps {
+                capture: &mut capture,
+                vad: &vad,
+                transcriptor: &engine,
+                post: &post,
+                inserter: &mut inserter,
+                focus: &focus,
+            },
+            Box::new(move |e| sink_events.borrow_mut().push(e)),
+            &clock,
+        );
+        orch.handle(InputEvent::HotkeyPressed);
+        orch.handle(InputEvent::HotkeyReleased);
+        let opts = recorded.lock().unwrap().clone().expect("moteur appelé");
+        assert_eq!(opts.language.as_deref(), expected, "énoncé de {seconds} s");
+    }
+}
+
+/// RF-24 + RF-25 : le profil de l'application cible est résolu, le mode
+/// verbatim est passé au moteur et l'amorce est construite du dictionnaire.
+#[test]
+fn t_profile_per_app_and_initial_prompt() {
+    type Recorded = Arc<std::sync::Mutex<Option<TranscribeOptions>>>;
+    struct RecordingEngine(Recorded);
+    impl Transcriptor for RecordingEngine {
+        fn warmup(&self) -> Result<(), AsrError> {
+            Ok(())
+        }
+        fn transcribe(
+            &self,
+            _a: &AudioBuffer,
+            o: &TranscribeOptions,
+        ) -> Result<Transcript, AsrError> {
+            *self.0.lock().unwrap() = Some(o.clone());
+            Ok(Transcript {
+                text: "ok".into(),
+                confidence: 1.0,
+                duration: Duration::ZERO,
+                engine: EngineId::Fake,
+                model: None,
+            })
+        }
+        fn id(&self) -> EngineId {
+            EngineId::Fake
+        }
+    }
+
+    let recorded: Recorded = std::sync::Mutex::new(None).into();
+    let mut snap = snapshot();
+    snap.app_id = "Code.exe".into();
+    let bindings = vec![ProfileBinding {
+        matches: vec!["code.exe".into()],
+        profile: Profile {
+            style: Style::Verbatim,
+            insertion: InsertionPolicy::TypingFirst,
+            dictionary: vec!["serde".into(), "assistant".into()],
+        },
+    }];
+    let mut capture = FakeCapture {
+        content: 1,
+        ..Default::default()
+    };
+    let vad = FixedVad(SpeechVerdict::Speech);
+    let engine = RecordingEngine(recorded.clone());
+    let post = IdentityPost;
+    let mut inserter = FakeInserter {
+        fail_all: Rc::new(Cell::new(false)),
+        inserts: Rc::new(RefCell::new(Vec::new())),
+        excluded: Vec::new(),
+    };
+    let focus = FakeFocus(Some(snap));
+    let clock = SharedClock(Rc::new(Cell::new(0)));
+    let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+    let sink_events = events.clone();
+    let mut cfg = OrchestratorCfg::default();
+    cfg.profile_bindings = bindings;
+    cfg.max_recording = Duration::from_secs(600);
+    let mut orch = Orchestrator::new(
+        cfg,
+        Deps {
+            capture: &mut capture,
+            vad: &vad,
+            transcriptor: &engine,
+            post: &post,
+            inserter: &mut inserter,
+            focus: &focus,
+        },
+        Box::new(move |e| sink_events.borrow_mut().push(e)),
+        &clock,
+    );
+    orch.handle(InputEvent::HotkeyPressed);
+    orch.handle(InputEvent::HotkeyReleased);
+
+    let opts = recorded.lock().unwrap().clone().expect("moteur appelé");
+    assert!(
+        opts.verbatim,
+        "le profil code est verbatim — aucune règle locale"
+    );
+    assert_eq!(
+        opts.initial_prompt.as_deref(),
+        Some("serde, assistant"),
+        "amorce construite du dictionnaire (RF-24)"
+    );
+}
+
+/// RF-32 (option « fenêtre actuelle ») : la fenêtre a changé entre le
+/// démarrage et l'insertion → la cible est relue, indication émise, l'insertion
+/// réussit dans la fenêtre courante.
+#[test]
+fn t_retarget_to_current_when_not_remembering() {
+    struct ChangingFocus(Rc<Cell<u32>>);
+    impl FocusReader for ChangingFocus {
+        fn snapshot(&self) -> Option<FocusSnapshot> {
+            let n = self.0.get();
+            self.0.set(n + 1);
+            let mut s = snapshot();
+            if n >= 1 {
+                // À partir du 2e appel (moment d'insérer) : l'utilisateur a
+                // changé de fenêtre.
+                s.app_id = "word.exe".into();
+                s.title = "Rapport — Word".into();
+            }
+            Some(s)
+        }
+    }
+
+    let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
+    let mut capture = FakeCapture {
+        content: 1,
+        ..Default::default()
+    };
+    let vad = FixedVad(SpeechVerdict::Speech);
+    let engine = FakeEngine {
+        fail: Arc::new(AtomicBool::new(false)),
+        calls: Arc::new(AtomicU32::new(0)),
+        text: "Compte rendu de réunion.",
+    };
+    let post = IdentityPost;
+    let mut inserter = FakeInserter {
+        fail_all: Rc::new(Cell::new(false)),
+        inserts: Rc::new(RefCell::new(Vec::new())),
+        excluded: Vec::new(),
+    };
+    let focus = ChangingFocus(Rc::new(Cell::new(0)));
+    let clock = SharedClock(Rc::new(Cell::new(0)));
+    let sink_events = events.clone();
+    let mut cfg = OrchestratorCfg::default();
+    cfg.remember_target_at_start = false;
+    let mut orch = Orchestrator::new(
+        cfg,
+        Deps {
+            capture: &mut capture,
+            vad: &vad,
+            transcriptor: &engine,
+            post: &post,
+            inserter: &mut inserter,
+            focus: &focus,
+        },
+        Box::new(move |e| sink_events.borrow_mut().push(e)),
+        &clock,
+    );
+    orch.handle(InputEvent::HotkeyPressed);
+    orch.handle(InputEvent::HotkeyReleased);
+
+    let evs = events.borrow();
+    assert!(evs
+        .iter()
+        .any(|e| matches!(e, CoreEvent::RetargetedToCurrent)));
+    assert!(matches!(
+        evs.iter().find(|e| matches!(e, CoreEvent::Inserted { .. })),
+        Some(CoreEvent::Inserted { .. })
+    ));
+    drop(evs);
+    assert_eq!(orch.state(), &DictationState::Idle);
+}

@@ -15,6 +15,9 @@ models/
 *.gguf
 *.bin.md5
 
+# Clé de signature des licences (déploiement interdit) — RF-38
+.keys/
+
 # Diagnostics locaux, profils, dumps
 *.log
 *.profraw
