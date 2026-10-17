@@ -316,17 +316,17 @@ pub struct ModelInfo {
 /// (attribution CC-BY-4.0, THIRD-PARTY-LICENSES.md).
 const MODEL_CATALOG: &[(&str, &str, &str, Option<u64>, &str)] = &[
     (
-        "ggml-base-q5_0.bin",
-        "Whisper base (FR, quantisé)",
+        "ggml-base-q5_1.bin",
+        "Whisper base (multilingue, quantisé — 57 Mo)",
         "whisper",
         Some(57),
         "MIT — ggerganov/whisper.cpp",
     ),
     (
-        "ggml-small-q5_0.bin",
-        "Whisper small (FR, quantisé)",
+        "ggml-small-q5_1.bin",
+        "Whisper small (multilingue, quantisé — 181 Mo)",
         "whisper",
-        Some(180),
+        Some(181),
         "MIT — ggerganov/whisper.cpp",
     ),
     (
@@ -448,13 +448,25 @@ pub fn models_download(
         .name("plume-model-download".into())
         .spawn(move || {
             let res = download_model_thread(&handle, &id_owned, &url, kind, &cancel);
-            if res.is_err() {
+            if let Err(reason) = res {
+                // Raison consignée au journal (RF-34 : métadonnées de
+                // réseau, jamais de contenu dicté) — l'échec silencieux
+                // du premier jet rendait le diagnostic impossible.
+                handle
+                    .state::<UiShared>()
+                    .logger
+                    .log(Event::DeviceEvent {
+                        kind: format!(
+                            "téléchargement-échec:{}",
+                            reason.chars().take(96).collect::<String>()
+                        ),
+                    });
                 // Le succès est émis par le thread ; un échec (annulation,
-                // réseau, extraction) doit eux aussi clore la progression
+                // réseau, extraction) doit lui aussi clore la progression
                 // côté interface — jamais de barre bloquée.
                 let _ = handle.emit(
                     "models://done",
-                    serde_json::json!({ "id": id_owned, "ok": false, "reason": res.unwrap_err() }),
+                    serde_json::json!({ "id": id_owned, "ok": false, "reason": reason }),
                 );
             }
             let shared = handle.state::<UiShared>();

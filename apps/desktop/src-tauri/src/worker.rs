@@ -562,7 +562,7 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
 fn model_path(cfg: &Config) -> std::path::PathBuf {
     let dir = Config::default_dir().join("models");
     let name = if cfg.general.model.is_empty() || cfg.general.model == "auto" {
-        "ggml-base-q5_0.bin"
+        "ggml-base-q5_1.bin"
     } else {
         cfg.general.model.as_str()
     };
