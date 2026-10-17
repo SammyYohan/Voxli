@@ -320,6 +320,9 @@ async function refreshModels(): Promise<void> {
         try {
           await invoke("models_download", { id: m.id });
           const bar = $id("model-progress");
+          // Reprise visible à zéro : la première mise à jour serveur
+          // réajuste (le % résiduel de l'essai précédent n'a pas de sens).
+          (document.getElementById("model-progress-fill") as HTMLElement).style.width = "0%";
           bar.hidden = false;
           ($id("model-status") as HTMLElement).textContent = "téléchargement…";
         } catch (err) {

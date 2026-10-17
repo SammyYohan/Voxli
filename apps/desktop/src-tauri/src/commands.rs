@@ -28,7 +28,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
 
 use plume_config::Config;
-use plume_diagnostics::Logger;
+use plume_diagnostics::{Event, Logger};
 use plume_license::Entitlement as LicenseEntitlement;
 
 use crate::strings;
@@ -482,33 +482,59 @@ fn download_model_thread(
     kind: &str,
     cancel: &AtomicBool,
 ) -> Result<(), String> {
+    let shared = app.state::<UiShared>();
     let models_dir = Config::default_dir().join("models");
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
-    let is_zip = kind == "parakeet";
-    let (dest, tmp) = if is_zip {
-        (
-            models_dir.join(id),
-            models_dir.join(format!("{id}.part.bz2")),
-        )
-    } else {
-        (models_dir.join(id), models_dir.join(format!("{id}.part")))
-    };
-    let start_from = if is_zip || !tmp.exists() {
-        0u64
-    } else {
-        std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0)
-    };
+    let is_archive = kind == "parakeet";
+    let dest = models_dir.join(id);
+    // Partiel unique sous `{id}.part` pour tous les formats : un préfixe
+    // contigu du flux serveur, il permet de reprendre sans tout re-télé-
+    // charger. Le nom fantaisiste `.part.bz2` du premier jet est nettoyé
+    // (fichier orphelin constaté en test réel, 192 Mo sans utilité).
+    let tmp = models_dir.join(format!("{id}.part"));
+    let legacy = models_dir.join(format!("{id}.part.bz2"));
+    if legacy.is_file() {
+        let _ = std::fs::remove_file(&legacy);
+    }
+    let mut start_from = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    shared.logger.log(Event::DeviceEvent {
+        kind: "téléchargement-démarré".into(),
+    });
 
-    let reader = ureq::get(url)
-        .timeout(std::time::Duration::from_secs(600))
+    // Échéance par INACTIVITÉ (30 s sans octet), pas de plafond global : un
+    // téléchargement long sur ligne lente doit pouvoir finir (RF-20), une
+    // connexion morte doit échouer tôt et reprendre ensuite. Le diction de
+    // 600 s global du premier jet coupait les téléchargements volumineux.
+    let agent: ureq::Agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(20))
+        .timeout_read(std::time::Duration::from_secs(30))
+        .build();
+    let resp = agent
+        .get(url)
         .set("Range", &format!("bytes={start_from}-"))
         .call()
-        .map_err(|e| e.to_string())?;
-    let total = reader
+        .map_err(|e| format!("réseau : {e}"))?;
+    // Code du serveur : 206 = l'amorce de plage est accordée (reprise);
+    // 200 = contenu ENTIER envoyé sans tenir compte de la plage — repartir
+    // de zéro IMPÉRATIVEMENT, sinon le fichier serait corrompu (préfixe
+    // conservé + flux complet). Sans ce test, aucune reprise n'était sûre.
+    let content_len = resp
         .header("content-length")
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(0);
-    let mut file = if start_from > 0 && !is_zip {
+    let (from, expected_total) = if start_from > 0 && resp.status() == 206 {
+        (start_from, content_len + start_from)
+    } else if start_from > 0 {
+        shared.logger.log(Event::DeviceEvent {
+            kind: "téléchargement-reprise-refusée".into(),
+        });
+        start_from = 0;
+        (0u64, content_len)
+    } else {
+        (0u64, content_len)
+    };
+
+    let mut file = if from > 0 {
         std::fs::OpenOptions::new()
             .append(true)
             .open(&tmp)
@@ -516,51 +542,60 @@ fn download_model_thread(
     } else {
         std::fs::File::create(&tmp).map_err(|e| e.to_string())?
     };
-    let mut reader = reader.into_reader();
+    let mut reader = resp.into_reader();
     let mut buf = vec![0u8; DOWNLOAD_CHUNK];
-    let mut downloaded = start_from;
+    let mut downloaded = from;
     let mut next_emit = downloaded + 512 * 1024;
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err("annulé".into());
         }
-        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        let n = reader.read(&mut buf).map_err(|e| format!("réseau : {e}"))?;
         if n == 0 {
             break;
         }
         use std::io::Write;
         file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
         downloaded += n as u64;
-        if total > 0 && downloaded >= next_emit {
+        if expected_total > 0 && downloaded >= next_emit {
             next_emit = downloaded + 512 * 1024;
             let _ = app.emit(
                 "models://progress",
                 serde_json::json!({
                     "id": id,
                     "downloaded": downloaded,
-                    "total": if start_from > 0 { total + start_from } else { total },
+                    "total": expected_total,
                 }),
             );
         }
     }
+    shared.logger.log(Event::DeviceEvent {
+        kind: "téléchargement-fini".into(),
+    });
     // Extraction / renommage final.
-    if is_zip {
-        let out = models_dir.join(id);
-        let out_str = out.display().to_string();
+    if is_archive {
+        // Le répertoire cible doit exister AVANT `tar -C` : l'oubli du
+        // premier jet faisait échouer toute extraction (défaut constaté
+        // en test réel, l'archive complète restait inexploitable).
+        std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+        let out_str = dest.display().to_string();
         let input = tmp.display().to_string();
         let status = std::process::Command::new("tar")
             .args(["-xjf", &input, "-C", &out_str])
             .status()
-            .map_err(|e| e.to_string())?;
-        let _ = std::fs::remove_file(&tmp);
+            .map_err(|e| format!("extraction : {e}"))?;
+        // Le partiel/archivé n'est supprimé que si l'extraction a réussi :
+        // en cas d'échec, les octets déjà reçus restent réutilisables
+        // (RF-20) — le premier jet perdait tout en cas d'échec.
         if !status.success() {
             return Err("extraction de l'archive impossible (tar requis)".to_string());
         }
+        let _ = std::fs::remove_file(&tmp);
         // L'archive contient un dossier du même nom : ramener les fichiers
-        // au niveau du dossier choisi (id). Correction silencieuse si déjà
-        // au bon format.
-        if !out.join("tokens.txt").is_file() {
-            if let Ok(entries) = std::fs::read_dir(&out) {
+        // au niveau du dossier choisi (dest). Correction silencieuse si
+        // déjà au bon format.
+        if !dest.join("tokens.txt").is_file() {
+            if let Ok(entries) = std::fs::read_dir(&dest) {
                 for e in entries.flatten() {
                     let inner = e.path();
                     if inner.join("tokens.txt").is_file() {
@@ -575,7 +610,7 @@ fn download_model_thread(
                         ] {
                             let src = inner.join(f);
                             if src.is_file() {
-                                let _ = std::fs::rename(&src, out.join(f));
+                                let _ = std::fs::rename(&src, dest.join(f));
                             }
                         }
                         break;
