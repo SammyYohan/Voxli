@@ -1,0 +1,6 @@
+# Dépendances autorisées à exécuter leurs scripts d'installation.
+# esbuild a besoin de son script postinstall pour préparer son binaire
+# (utilisé par Vite). Aucune autre dépendance n'en a besoin.
+packages: []
+allowBuilds:
+  esbuild: true

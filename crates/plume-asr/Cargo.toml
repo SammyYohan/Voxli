@@ -1,0 +1,19 @@
+[package]
+name = "plume-asr"
+description = "Moteurs de transcription derrière le trait Transcriptor : whisper.cpp (FFI), Parakeet ONNX (à venir P3), moteur factice de test."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+plume-core = { path = "../plume-core" }
+thiserror = { workspace = true }
+
+# Moteur réel — activé explicitement (feature `whisper`) : la compilation
+# embarque whisper.cpp via CMake ; voir scripts/fetch-model.ps1.
+whisper-rs = { version = "0.16", optional = true }
+
+[features]
+default = []
+whisper = ["dep:whisper-rs"]
+remote = []

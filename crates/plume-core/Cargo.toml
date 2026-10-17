@@ -1,0 +1,9 @@
+[package]
+name = "plume-core"
+description = "Noyau de Plume : types partagés, machine à états, orchestrateur, ports (traits)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }

@@ -1,0 +1,434 @@
+//! Application de bureau Plume — assemblage (docs/05 §1 et §3).
+//!
+//! Ici uniquement de la colle : le comportement métier vit dans plume-core,
+//! les interopérations système dans plume-win/plume-audio/plume-asr.
+//! Règles respectées :
+//! - aucune écriture de configuration directe par le webview (ADR-02) ;
+//! - un seul mécanisme d'enregistrement des raccourcis : le plugin
+//!   `tauri-plugin-global-shortcut`, validé par plume-hotkeys ; échec
+//!   d'enregistrement consigné, jamais de panique (ADR-05) ;
+//! - logs uniquement via plume-diagnostics — aucun `println!`.
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod commands;
+mod strings;
+mod worker;
+
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, Wry};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+use plume_config::Config;
+use plume_core::InputEvent;
+use plume_diagnostics::{Event, Logger};
+use plume_hotkeys::{validate_before_register, Combo, HotkeyError, Key};
+use plume_win::uia::Uia;
+
+use commands::UiShared;
+use worker::WorkerMsg;
+
+// ------------------------------------------------------------- démarrage ---
+
+fn main() {
+    let data_dir = Config::default_dir();
+    let _ = std::fs::create_dir_all(&data_dir);
+    let logger = Arc::new(Logger::file_logger(&data_dir.join("logs")));
+
+    // Configuration : chargement validé + migrations ; fallback valeurs
+    // sûres, consigné — jamais de refus de démarrage (valeur sûre par défaut).
+    let config = match Config::load(&Config::default_path()) {
+        Ok(c) => c,
+        Err(err) => {
+            logger.log(Event::Error {
+                module: "config".into(),
+                code: config_code(&err),
+            });
+            Config::default()
+        }
+    };
+
+    let (tx, rx) = mpsc::channel::<WorkerMsg>();
+
+    // Préchauffage UIA (COM) : le premier appel peut prendre plusieurs
+    // centaines de millisecondes — mieux vaut le payer au démarrage qu'à la
+    // première dictée (RF-19).
+    if Uia::new().is_ok() {
+        logger.log(Event::DeviceEvent {
+            kind: "uia-warmup-ok".into(),
+        });
+    }
+
+    let logger_run = Arc::clone(&logger);
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .setup(move |app| {
+            let config_path = Config::default_path();
+            app.manage(UiShared {
+                tx: tx.clone(),
+                config: Mutex::new(config.clone()),
+                config_path,
+                last: Mutex::new(None),
+                state: Mutex::new("idle".into()),
+                engine: Mutex::new(String::new()),
+                logger: Arc::clone(&logger_run),
+            });
+
+            setup_main_window(app)?;
+
+            let handle: AppHandle<Wry> = app.handle().clone();
+            let thread_logger = Arc::clone(&logger_run);
+            thread_logger.log(Event::DeviceEvent {
+                kind: "démarrage".into(),
+            });
+            let worker_logger = Arc::clone(&thread_logger);
+            std::thread::Builder::new()
+                .name("plume-pipeline".into())
+                .spawn(move || worker::run(handle, worker_logger, rx))
+                .map_err(|_| strings::ERR_WORKER.to_string())?;
+
+            register_shortcuts(app.handle(), &config, &thread_logger)?;
+            setup_tray(app.handle())?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::config_get,
+            commands::config_set,
+            commands::state_get,
+            commands::rescue_last,
+            commands::rescue_paste_again,
+            commands::rescue_retry,
+            commands::rescue_close,
+            commands::cancel_dictation,
+            commands::diagnostics_export,
+        ])
+        .run(tauri::generate_context!());
+
+    if let Err(_err) = result {
+        // Aucun `println!` par convention : l'échec de la boucle de vie est
+        // consigné, puis le processus sort avec un code non nul.
+        logger.log(Event::Error {
+            module: "lancement".into(),
+            code: 1,
+        });
+        std::process::exit(1);
+    }
+}
+
+// ------------------------------------------------------- fenêtre principale ---
+
+/// La fenêtre de réglages est masquée au lancement (app tray) ; la croix la
+/// masque plutôt que de fermer le processus.
+fn setup_main_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
+    if let Some(w) = app.get_webview_window("main") {
+        // La fenêtre masquée au lancement : la croix la cache au tray au
+        // lieu de tuer le processus (l'app vit sur le tray).
+        let hidden_window = w.clone();
+        w.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = hidden_window.hide();
+            }
+        });
+    }
+    Ok(())
+}
+
+// ------------------------------------------------------------- tray ---
+
+fn setup_tray(app: &AppHandle<Wry>) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "reglages", "Réglages…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quitter", "Quitter Plume", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+
+    let mut builder = TrayIconBuilder::with_id("plume-tray")
+        .tooltip("Plume — dictée locale (Ctrl+Alt+Espace)")
+        .menu(&menu)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "reglages" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "quitter" => {
+                app.exit(0);
+            }
+            _ => {}
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder
+        .on_tray_icon_event(|tray, event| {
+            // Clic gauche : ouvrir/masquer les réglages (menu doublé au clic droit).
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                if let Some(w) = app.get_webview_window("main") {
+                    let visible = w.is_visible().unwrap_or(false);
+                    if visible {
+                        let _ = w.hide();
+                    } else {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
+// ------------------------------------------------- raccourcis globaux ---
+
+/// Un seul mécanisme d'enregistrement (plugin global-shortcut). Règles :
+/// - combinaisons réservées refusées d'office avec consigne au journal
+///   (plume-hotkeys) ;
+/// - conflit `RegisterHotKey` → consigne, **jamais de panique** (ADR-05) ;
+/// - Push-to-talk suit appui/relâchement ; les deux actions discrètes agissent
+///   à l'appui.
+fn register_shortcuts(app: &AppHandle<Wry>, cfg: &Config, logger: &Logger) -> tauri::Result<()> {
+    // Push-to-talk (RF-01) : appui → enregistrement, relâchement → pipeline.
+    if let Ok(combo) = Combo::parse(&cfg.hotkeys.push_to_talk) {
+        log_registration(logger, &combo, "pushToTalk");
+        if validate_before_register(&combo).is_ok() {
+            match to_shortcut(&combo) {
+                Ok(sc) => {
+                    let res = app
+                        .global_shortcut()
+                        .on_shortcut(sc, |app, _shortcut, event| {
+                            let ev = match event.state {
+                                ShortcutState::Pressed => InputEvent::HotkeyPressed,
+                                _ => InputEvent::HotkeyReleased,
+                            };
+                            let _ = app.state::<UiShared>().tx.send(WorkerMsg::Input(ev));
+                        });
+                    if let Err(err) = res {
+                        logger.log(Event::Error {
+                            module: "hotkeys".into(),
+                            code: 4,
+                        });
+                        logger.log(Event::DeviceEvent {
+                            kind: format!("register-pushToTalk-infructueux:{err}").into(),
+                        });
+                    }
+                }
+                Err(_err) => logger.log(Event::Error {
+                    module: "hotkeys".into(),
+                    code: 1,
+                }),
+            }
+        } else {
+            logger.log(Event::Error {
+                module: "hotkeys".into(),
+                code: 2,
+            });
+        }
+    } else {
+        logger.log(Event::Error {
+            module: "hotkeys".into(),
+            code: 1,
+        });
+    }
+
+    // « Coller à nouveau » (RF-22) : ré-insertion du dernier texte.
+    register_discrete(
+        app,
+        &cfg.hotkeys.paste_last_transcript,
+        "pasteLastTranscript",
+        logger,
+        |app| {
+            let _ = app
+                .state::<UiShared>()
+                .tx
+                .send(WorkerMsg::Input(InputEvent::PasteAgain));
+        },
+    );
+    // « Montrer le dernier texte » (Shift+Alt+X) : fenêtre de secours.
+    register_discrete(
+        app,
+        &cfg.hotkeys.show_last_transcript,
+        "showLastTranscript",
+        logger,
+        |app| {
+            let _ = app.state::<UiShared>().tx.send(WorkerMsg::ShowRescue);
+        },
+    );
+    Ok(())
+}
+
+/// Action discrète : un seul envoi à l'appui (le relâchement est ignoré, le
+/// plugin délivre les deux états).
+fn register_discrete<F>(app: &AppHandle<Wry>, raw: &str, name: &str, logger: &Logger, action: F)
+where
+    F: Fn(&AppHandle<Wry>) + Send + Sync + 'static,
+{
+    let Ok(combo) = Combo::parse(raw) else {
+        logger.log(Event::Error {
+            module: "hotkeys".into(),
+            code: 1,
+        });
+        return;
+    };
+    log_registration(logger, &combo, name);
+    if validate_before_register(&combo).is_err() {
+        logger.log(Event::Error {
+            module: "hotkeys".into(),
+            code: 2,
+        });
+        return;
+    }
+    let shortcut = match to_shortcut(&combo) {
+        Ok(s) => s,
+        Err(_) => {
+            logger.log(Event::Error {
+                module: "hotkeys".into(),
+                code: 1,
+            });
+            return;
+        }
+    };
+    let res = app
+        .global_shortcut()
+        .on_shortcut(shortcut, move |app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                action(app);
+            }
+        });
+    if let Err(err) = res {
+        logger.log(Event::Error {
+            module: "hotkeys".into(),
+            code: 4,
+        });
+        logger.log(Event::DeviceEvent {
+            kind: format!("register-{name}-infructueux:{err}").into(),
+        });
+    }
+}
+
+fn log_registration(logger: &Logger, combo: &Combo, purpose: &str) {
+    logger.log(Event::DeviceEvent {
+        kind: format!("raccourci-{purpose}={}", combo.canonical()),
+    });
+}
+
+/// plume_hotkeys::Combo → plugin `Shortcut` (nommage physique des touches).
+fn to_shortcut(combo: &Combo) -> Result<Shortcut, HotkeyError> {
+    let key = combo
+        .key
+        .ok_or_else(|| HotkeyError::Unparsable("aucune touche".into()))?;
+    let code =
+        code_of(key).ok_or_else(|| HotkeyError::Unparsable("touche non prise en charge".into()))?;
+    let mut mods = Modifiers::empty();
+    if combo.ctrl {
+        mods |= Modifiers::CONTROL;
+    }
+    if combo.shift {
+        mods |= Modifiers::SHIFT;
+    }
+    if combo.alt {
+        mods |= Modifiers::ALT;
+    }
+    if combo.win {
+        mods |= Modifiers::META;
+    }
+    Ok(Shortcut::new(Some(mods), code))
+}
+
+fn code_of(k: Key) -> Option<Code> {
+    match k {
+        Key::Space => Some(Code::Space),
+        Key::Tab => Some(Code::Tab),
+        Key::Enter => Some(Code::Enter),
+        Key::Backquote => Some(Code::Backquote),
+        Key::Letter(c) => match c.to_ascii_uppercase() {
+            'A' => Some(Code::KeyA),
+            'B' => Some(Code::KeyB),
+            'C' => Some(Code::KeyC),
+            'D' => Some(Code::KeyD),
+            'E' => Some(Code::KeyE),
+            'F' => Some(Code::KeyF),
+            'G' => Some(Code::KeyG),
+            'H' => Some(Code::KeyH),
+            'I' => Some(Code::KeyI),
+            'J' => Some(Code::KeyJ),
+            'K' => Some(Code::KeyK),
+            'L' => Some(Code::KeyL),
+            'M' => Some(Code::KeyM),
+            'N' => Some(Code::KeyN),
+            'O' => Some(Code::KeyO),
+            'P' => Some(Code::KeyP),
+            'Q' => Some(Code::KeyQ),
+            'R' => Some(Code::KeyR),
+            'S' => Some(Code::KeyS),
+            'T' => Some(Code::KeyT),
+            'U' => Some(Code::KeyU),
+            'V' => Some(Code::KeyV),
+            'W' => Some(Code::KeyW),
+            'X' => Some(Code::KeyX),
+            'Y' => Some(Code::KeyY),
+            'Z' => Some(Code::KeyZ),
+            _ => None,
+        },
+        Key::Digit(d) => match d {
+            0 => Some(Code::Digit0),
+            1 => Some(Code::Digit1),
+            2 => Some(Code::Digit2),
+            3 => Some(Code::Digit3),
+            4 => Some(Code::Digit4),
+            5 => Some(Code::Digit5),
+            6 => Some(Code::Digit6),
+            7 => Some(Code::Digit7),
+            8 => Some(Code::Digit8),
+            9 => Some(Code::Digit9),
+            _ => None,
+        },
+        Key::Function(n) => match n {
+            1 => Some(Code::F1),
+            2 => Some(Code::F2),
+            3 => Some(Code::F3),
+            4 => Some(Code::F4),
+            5 => Some(Code::F5),
+            6 => Some(Code::F6),
+            7 => Some(Code::F7),
+            8 => Some(Code::F8),
+            9 => Some(Code::F9),
+            10 => Some(Code::F10),
+            11 => Some(Code::F11),
+            12 => Some(Code::F12),
+            13 => Some(Code::F13),
+            14 => Some(Code::F14),
+            15 => Some(Code::F15),
+            16 => Some(Code::F16),
+            17 => Some(Code::F17),
+            18 => Some(Code::F18),
+            19 => Some(Code::F19),
+            20 => Some(Code::F20),
+            21 => Some(Code::F21),
+            22 => Some(Code::F22),
+            23 => Some(Code::F23),
+            24 => Some(Code::F24),
+            _ => None,
+        },
+    }
+}
+
+// ------------------------------------------------------------- divers ---
+
+fn config_code(err: &plume_config::ConfigError) -> u32 {
+    match err {
+        plume_config::ConfigError::Io(_) => 1,
+        plume_config::ConfigError::Json(_) => 2,
+        plume_config::ConfigError::UnknownSchema { .. } => 3,
+    }
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plume — Texte de secours</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body class="rescue">
+    <header>
+      <h1>Texte de secours</h1>
+      <p class="muted">
+        Ce texte vient d'être dicté&nbsp;: il n'a pas pu être inséré dans
+        l'application cible. Il reste sur votre machine, dans le tampon
+        interne de Plume — rien d'autre n'en a gardé trace.
+      </p>
+    </header>
+
+    <textarea id="text" readonly spellcheck="false"></textarea>
+    <p id="empty-hint" class="muted" hidden></p>
+
+    <div class="actions">
+      <button id="btn-retry">Réessayer</button>
+      <button id="btn-paste">Coller à nouveau</button>
+      <button id="btn-copy">Sélectionner tout</button>
+      <button id="btn-close" class="secondary">Fermer</button>
+    </div>
+
+    <script type="module" src="/src/rescue.ts"></script>
+  </body>
+</html>

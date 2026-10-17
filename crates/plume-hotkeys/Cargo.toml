@@ -1,0 +1,10 @@
+[package]
+name = "plume-hotkeys"
+description = "Raccourcis globaux : normalisation, validation, conflits (RF-01, RF-03). Enregistrement réel via RegisterHotKey côté application."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+serde = { workspace = true }

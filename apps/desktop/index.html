@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plume — Réglages</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Plume</h1>
+      <p class="muted">
+        Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
+        machine.
+      </p>
+      <div id="notice" class="notice" hidden></div>
+    </header>
+
+    <section>
+      <h2>État</h2>
+      <p class="status">
+        <span id="badge" class="badge">…</span>
+        <span class="engine">moteur&nbsp;: <b id="engine">…</b></span>
+      </p>
+    </section>
+
+    <section>
+      <h2>Raccourcis</h2>
+      <table class="keys">
+        <tr><th>Dictée (appui maintenu)</th><td id="hk-push">…</td></tr>
+        <tr><th>Coller le dernier texte</th><td id="hk-paste">…</td></tr>
+        <tr><th>Montrer le dernier texte</th><td id="hk-show">…</td></tr>
+      </table>
+      <p class="muted">Modifiables après édition du fichier de configuration, puis relance.</p>
+    </section>
+
+    <section>
+      <h2>Réglages audio</h2>
+      <form id="form-audio">
+        <label for="pre-roll">Anticipation avant l'appui (pré-roll, ms)</label>
+        <input id="pre-roll" type="number" min="100" max="1000" step="25" />
+        <label for="max-rec">Durée maximale d'une prise (s)</label>
+        <input id="max-rec" type="number" min="30" max="1800" step="5" />
+        <button type="submit">Enregistrer</button>
+        <span id="audio-result" class="muted"></span>
+      </form>
+      <p class="muted">Pris en compte au prochain démarrage de Plume.</p>
+    </section>
+
+    <section>
+      <h2>Vie privée</h2>
+      <table class="keys">
+        <tr><th>Mode local strict</th><td id="pv-strict">…</td></tr>
+        <tr><th>Contexte lu</th><td id="pv-context">…</td></tr>
+        <tr><th>Télémétrie</th><td id="pv-telemetry">…</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Diagnostic</h2>
+      <button id="btn-export">Exporter le rapport de diagnostic</button>
+      <span id="export-result" class="muted"></span>
+      <p class="muted">
+        Le rapport ne contient, par conception, ni caractère dicté, ni audio,
+        ni contenu de presse-papiers. Relisez-le avant tout envoi.
+      </p>
+    </section>
+
+    <footer class="muted">
+      Plume&nbsp;P0 — les réglages détaillés vivent dans
+      <code>%APPDATA%\Plume\config.json</code>.
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

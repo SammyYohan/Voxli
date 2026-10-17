@@ -1,0 +1,24 @@
+# Rust
+**/target/
+target/
+
+# Node / frontend
+**/node_modules/
+apps/desktop/dist/
+.pnpm-store/
+
+# Tauri build artifacts
+apps/desktop/src-tauri/gen/
+
+# Modèles ASR téléchargés (scripts/fetch-model.ps1)
+models/
+*.gguf
+*.bin.md5
+
+# Diagnostics locaux, profils, dumps
+*.log
+*.profraw
+
+# Outils
+.vscode/
+.idea/

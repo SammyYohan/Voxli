@@ -1,0 +1,71 @@
+# CI Plume — conforme docs/06 §1 et §2 :
+# - tests purs à chaque PR (sans Windows natif requis pour les modules durs) ;
+# - runner Windows pour la capture (plume-win, plume-audio/capture) ;
+# - arbre applicatif compilé (plume-desktop) ; l'inférence réelle (whisper) et
+#   les bancs M1/M2 restent hors CI (machine dédiée).
+#
+# Aucune connexion réseau du produit n'est testée ici : le runner vérifie
+# uniquement la compilation et les tests unitaires déterministes.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tests-purs:
+    name: Tests purs (+ ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]   # modules Windows (plume-win) testés ici
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Tests des modules (fonctionnalités par défaut)
+        run: cargo test -p plume-core -p plume-config -p plume-license -p plume-storage -p plume-diagnostics -p plume-audio -p plume-hotkeys -p plume-asr -p plume-secure -p plume-text -p plume-win
+
+      - name: Tests SQLite (fonctionnalité opt-in)
+        run: cargo test -p plume-storage --features sqlite
+
+      - name: Tests DPAPI (fonctionnalité opt-in)
+        run: cargo test -p plume-secure --features dpapi
+
+  application:
+    name: Compilation arbre applicatif (plume-desktop)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Icônes de bundle (requis par tauri-build)
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/make-icons.ps1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Interface (typecheck + build Vite)
+        run: |
+          pnpm --dir apps/desktop install
+          pnpm --dir apps/desktop check
+          pnpm --dir apps/desktop build
+
+      - name: cargo check (arbre Tauri complet)
+        run: cargo check -p plume-desktop

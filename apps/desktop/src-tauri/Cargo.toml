@@ -1,0 +1,33 @@
+[package]
+name = "plume-desktop"
+description = "Application de bureau Plume : assemblage du noyau, tray natif, raccourci global, commandes IPC."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "plume-desktop"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico"] }
+tauri-plugin-global-shortcut = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+plume-core = { path = "../../../crates/plume-core" }
+plume-config = { path = "../../../crates/plume-config" }
+plume-audio = { path = "../../../crates/plume-audio" }
+plume-asr = { path = "../../../crates/plume-asr" }
+plume-text = { path = "../../../crates/plume-text" }
+plume-hotkeys = { path = "../../../crates/plume-hotkeys" }
+plume-storage = { path = "../../../crates/plume-storage" }
+plume-secure = { path = "../../../crates/plume-secure" }
+plume-diagnostics = { path = "../../../crates/plume-diagnostics" }
+plume-win = { path = "../../../crates/plume-win" }
+
+# Moteur ASR réel — opt-in (voir README) :
+[features]
+default = []
+real-asr = ["plume-asr/whisper"]
+
