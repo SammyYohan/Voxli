@@ -156,7 +156,9 @@ function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
   langInput.value = cfg.general.language;
   // RF-39 : profils multiples = fonctionnalité Pro — avertissement clair.
   const lock = $id("profiles-lock");
-  const pro = lic.state === "active" && lic.features.includes("extra-profiles");
+  const pro =
+    (lic.state === "active" || lic.state === "grace") &&
+    lic.features.includes("extra-profiles");
   lock.textContent = pro
     ? ""
     : "Profils multiples : fonctionnalité Pro. Sans licence, seul le profil " +
@@ -260,6 +262,12 @@ async function refreshLicense(): Promise<LicenseInfo> {
   const line = $id("license-line");
   if (lic.state === "active") {
     line.textContent = `Licence active — titulaire : ${lic.licensee}.`;
+  } else if (lic.state === "grace") {
+    const remaining = lic.expiresAtSecs ?? 0;
+    const days = Math.max(0, Math.ceil((remaining - Date.now() / 1000) / 86_400));
+    line.textContent =
+      `Licence expirée — période de grâce hors ligne : encore ${days} jour(s) ` +
+      "de fonctionnalités Pro, puis retour à l'édition gratuite.";
   } else {
     line.textContent =
       "Édition gratuite — tout le local fonctionne ; les fonctions Pro " +
@@ -483,9 +491,14 @@ async function main(): Promise<void> {
         `${Math.round(ev.payload.downloaded / (1024 * 1024))} Mo téléchargés`;
     },
   );
-  void listen("models://done", () => {
+  void listen<{ id: string; ok?: boolean; reason?: string }>("models://done", (ev) => {
     ($id("model-progress") as HTMLElement).hidden = true;
     ($id("model-status") as HTMLElement).textContent = "";
+    if (ev.payload.ok === false) {
+      showNotice(
+        `Téléchargement interrompu (${"reason" in ev.payload && ev.payload.reason !== "" && ev.payload.reason !== undefined ? ev.payload.reason : "erreur réseau"}). Vous pouvez recommencer : il reprendra là où il s'était arrêté.`,
+      );
+    }
     void refreshModels();
   });
 }

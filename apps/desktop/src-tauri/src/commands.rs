@@ -129,8 +129,15 @@ fn license_info_from(ent: LicenseEntitlement) -> LicenseInfo {
             features.push(f.as_str().to_string());
         }
     }
+    // `verify` accepte une licence périmée dans la fenêtre de grâce (RF-38) :
+    // on le signale — « grace », pas « active ».
+    let now = now_secs();
+    let state = match ent.expires_at_secs() {
+        Some(e) if e <= now => "grace".to_string(),
+        _ => "active".to_string(),
+    };
     LicenseInfo {
-        state: "active".into(),
+        state,
         licensee: ent.licensee().to_string(),
         features,
         expires: None,
@@ -180,6 +187,12 @@ pub fn license_import(shared: State<'_, UiShared>, blob: String) -> Result<Licen
     std::fs::write(license_path(), blob.trim())
         .map_err(|e| format!("{} : {e}", strings::ERR_WRITE))?;
     *lock_or_recover(&shared.license) = info.clone();
+    // Les droits prennent effet **immédiatement** : le worker relit la
+    // licence à chaque reconstruction — on lui envoie le signal, sans
+    // recharger le moteur (`engine_stale` le voit inchangé).
+    let _ = shared.tx.send(WorkerMsg::ConfigChanged(Box::new(
+        lock_or_recover(&shared.config).clone(),
+    )));
     Ok(info)
 }
 
@@ -434,7 +447,16 @@ pub fn models_download(
     std::thread::Builder::new()
         .name("plume-model-download".into())
         .spawn(move || {
-            let _ = download_model_thread(&handle, &id_owned, &url, kind, &cancel);
+            let res = download_model_thread(&handle, &id_owned, &url, kind, &cancel);
+            if res.is_err() {
+                // Le succès est émis par le thread ; un échec (annulation,
+                // réseau, extraction) doit eux aussi clore la progression
+                // côté interface — jamais de barre bloquée.
+                let _ = handle.emit(
+                    "models://done",
+                    serde_json::json!({ "id": id_owned, "ok": false, "reason": res.unwrap_err() }),
+                );
+            }
             let shared = handle.state::<UiShared>();
             *lock_or_recover(&shared.download_busy) = false;
         })
