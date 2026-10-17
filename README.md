@@ -148,7 +148,17 @@ dernier texte ; `Shift+Alt+X` affiche la fenêtre de secours.
 
 ### 6.4 Moteur réel (opt-in, toujours hors ligne)
 
+Prérequis toolchain (coût unique, vérifié le 17/10/2026) : `whisper-rs-sys`
+(bindgen) exige **libclang** — absent de votre VS Community 18 par défaut. Il
+faut le composant « C++ Clang Compiler for Windows (with libclang) »,
+puis redéfinir `LIBCLANG_PATH` vers son dossier `bin` :
+
 ```powershell
+# Installer le composant VS (admin, ~1 Go) :
+#   VS Installer → Modify → « C++ Clang Compiler for Windows (with libclang) »
+#   (composant Microsoft.VisualStudio.Component.VC.Llvm.ClangWithLibclang)
+$env:LIBCLANG_PATH = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin"
+
 cargo test -p plume-storage --features sqlite         # historique disque
 cargo test -p plume-secure --features dpapi           # secrets Windows
 
