@@ -214,6 +214,16 @@ function listOfApps(inputId: string): string[] {
     .filter((s) => s.length > 0);
 }
 
+/** Simple / Avancé : préférence locale à la fenêtre (localStorage) —
+ * choix de présentation, pas une configuration produit. */
+const MODE_KEY = "plume.ui.avance";
+
+function applyUiMode(): void {
+  const avance = localStorage.getItem(MODE_KEY) === "1";
+  document.body.classList.toggle("mode-avance", avance);
+  ($id("mode-avance") as HTMLInputElement).checked = avance;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replaceAll("&", "&amp;")
@@ -335,6 +345,12 @@ async function refreshModels(): Promise<void> {
     tr.appendChild(td);
     body.appendChild(tr);
   }
+  // Règle Simple/Avancé : dès qu'UNE voix dicte, le catalogue technique
+  // n'a plus besoin d'être vu au quotidien (il reste en Mode avancé) ;
+  // sans moteur réel, l'écran Simple garde l'installation sous la main.
+  document
+    .getElementById("sec-modeles")
+    ?.classList.toggle("advanced", models.some((m) => m.installed));
 }
 
 async function refreshDevices(): Promise<void> {
@@ -389,6 +405,13 @@ async function importDict(profile: string, csv: string): Promise<void> {
 }
 
 function wireEvents(): void {
+  // Simple / Avancé (préférence de présentation, hors configuration) :
+  // « mode-avance » plie/délie tout ce qui est marqué classe « advanced ».
+  const modeBox = $id("mode-avance") as HTMLInputElement;
+  modeBox.addEventListener("change", () => {
+    localStorage.setItem(MODE_KEY, modeBox.checked ? "1" : "0");
+    document.body.classList.toggle("mode-avance", modeBox.checked);
+  });
   $id("btn-save-general").addEventListener("click", () => {
     void sendConfig();
   });
@@ -462,6 +485,7 @@ async function main(): Promise<void> {
   const lic = await refreshLicense();
   paintConfig(config, lic);
   wireEvents();
+  applyUiMode();
 
   const state = await invoke<StateInfo>("state_get");
   ($id("badge") as HTMLElement).textContent = fr_state[state.state] ?? state.state;

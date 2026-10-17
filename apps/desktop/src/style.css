@@ -307,3 +307,34 @@ button {
   margin-right: 6px;
 }
 
+/* ================================================== Simple / Avancé
+   Préférence de présentation seulement (localStorage, hors
+   configuration produit) : tant que « mode-avance » n'est pas coché,
+   tout ce qui est annexe au quotidien est replié (dictionnaires,
+   réglages fins, licence, consentements, diagnostic). */
+body:not(.mode-avance) .advanced {
+  display: none;
+}
+
+body.mode-avance .simple-only {
+  display: none;
+}
+
+#mode-bar {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+#mode-bar label {
+  cursor: pointer;
+  user-select: none;
+}
+
+#mode-bar input {
+  accent-color: var(--plume);
+  margin-right: 8px;
+}
+

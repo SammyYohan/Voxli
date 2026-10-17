@@ -11,10 +11,18 @@
       <h1>Plume</h1>
       <p class="muted">
         Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
-        machine — sauf si vous le demandez explicitement (RF-36).
+        machine — sauf si vous le demandez explicitement.
       </p>
       <div id="notice" class="notice" hidden></div>
     </header>
+
+    <!-- ================================================ Simple / Avancé -->
+    <div id="mode-bar">
+      <label>
+        <input id="mode-avance" type="checkbox" />
+        Mode avancé — tous les réglages
+      </label>
+    </div>
 
     <!-- ================================================== état + vumètre -->
     <section>
@@ -94,7 +102,7 @@
         <label for="hk-push">Dictée</label>
         <input id="hk-push" type="text" spellcheck="false" />
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="hk-mode">Mode de déclenchement</label>
         <select id="hk-mode">
           <option value="hold">appui maintenu</option>
@@ -102,11 +110,11 @@
           <option value="double-push-lock">double appui = verrouillé</option>
         </select>
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="hk-paste">Coller le dernier texte</label>
         <input id="hk-paste" type="text" spellcheck="false" />
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="hk-show">Montrer le dernier texte</label>
         <input id="hk-show" type="text" spellcheck="false" />
       </div>
@@ -126,15 +134,15 @@
         </select>
         <button id="btn-devices" type="button">Rafraîchir la liste</button>
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="pre-roll">Anticipation avant l'appui (pré-roll, ms)</label>
         <input id="pre-roll" type="number" min="100" max="1000" step="25" />
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="max-rec">Durée maximale d'une prise (s)</label>
         <input id="max-rec" type="number" min="30" max="1800" step="5" />
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="vad-aggr">Détection de voix</label>
         <select id="vad-aggr">
           <option value="low">permissive — capte la parole lointaine</option>
@@ -142,13 +150,13 @@
           <option value="high">stricte — ignore le bruit</option>
         </select>
       </div>
-      <button id="btn-save-general" type="button">Envoyer</button>
+      <button id="btn-save-general" type="button">Enregistrer les réglages</button>
       <span id="save-result" class="muted"></span>
     </section>
 
     <!-- ================================================== modèles -->
-    <section>
-      <h2>Modèles de reconnaissance</h2>
+    <section id="sec-modeles">
+      <h2>Voix (moteur de reconnaissance)</h2>
       <p class="muted">
         Le téléchargement est <b>votre action explicite</b>, ici, et la
         <b>seule</b> connexion réseau de Plume depuis cet écran. Chaque fichier
@@ -172,7 +180,7 @@
     </section>
 
     <!-- ================================================== profils -->
-    <section>
+    <section class="advanced">
       <h2>Profils &amp; dictionnaires</h2>
       <div id="profiles-lock" class="notice" hidden></div>
       <div class="row">
@@ -212,14 +220,14 @@
           <option value="yes">oui — je le veux, supprimables à tout instant</option>
         </select>
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="hist-storage">Où conserver</label>
         <select id="hist-storage">
           <option value="memory">mémoire vive seule (disparaît à l'extinction)</option>
           <option value="disk">disque chiffré (clé Windows, DPAPI)</option>
         </select>
       </div>
-      <div class="row">
+      <div class="row advanced">
         <label for="hist-retention">Rétention (jours)</label>
         <input id="hist-retention" type="number" min="1" max="365" step="1" />
       </div>
@@ -239,7 +247,7 @@
     </section>
 
     <!-- ================================================== licence -->
-    <section>
+    <section class="advanced">
       <h2>Licence</h2>
       <p id="license-line">…</p>
       <ul id="license-features" class="muted"></ul>
@@ -253,7 +261,12 @@
     </section>
 
     <!-- ================================================== vie privée -->
-    <section>
+    <p class="simple-only muted">
+      Totalement local : rien ne quitte cette machine sans votre accord
+      explicite. Les détails (consentements, lecture du contexte) sont dans le
+      mode avancé.
+    </p>
+    <section class="advanced">
       <h2>Vie privée</h2>
       <div class="row">
         <label for="pv-strict">Mode local strict</label>
@@ -293,7 +306,7 @@
     </section>
 
     <!-- ================================================== diagnostic -->
-    <section>
+    <section class="advanced">
       <h2>Diagnostic &amp; données</h2>
       <button id="btn-export">Exporter le rapport de diagnostic</button>
       <span id="export-result" class="muted"></span>
