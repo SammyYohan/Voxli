@@ -5,7 +5,7 @@
 //! affiche le texte depuis le tampon (exception RF-31), pas depuis ce module.
 
 /// Titre de la fenêtre de secours (RF-31).
-pub const RESCUE_WINDOW_TITLE: &str = "Plume — Texte de secours";
+pub const RESCUE_WINDOW_TITLE: &str = "Voxli — Texte de secours";
 
 // -------------------------------------------------------- notifications ---
 
@@ -47,7 +47,7 @@ pub const MSG_ERROR_TMPL: &str =
 
 pub const ERR_CONFIG_SAVE: &str = "Enregistrement de la configuration impossible";
 pub const ERR_HOTKEY_P0: &str =
-    "Les raccourcis ne sont pas modifiables depuis l'interface en P0. Modifiez %APPDATA%\\Plume\\config.json puis relancez Plume.";
+    "Les raccourcis ne sont pas modifiables depuis l'interface en P0. Modifiez %APPDATA%\\Voxli\\config.json puis relancez Voxli.";
 pub const ERR_WRITE: &str = "Écriture du fichier impossible";
 pub const ERR_WORKER: &str = "Démarrage du thread pipeline impossible";
 
@@ -74,7 +74,7 @@ pub fn msg_error(module: &str, code: u32) -> String {
 
 /// Titre de la pastille (RF-09) — invisible (sans décor), réservé
 /// à l'accessibilité.
-pub const PILL_WINDOW_TITLE: &str = "Plume — pastille d'état";
+pub const PILL_WINDOW_TITLE: &str = "Voxli — pastille d'état";
 
 // ------------------------------------------------------------ nouveautés ---
 

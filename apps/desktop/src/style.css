@@ -1,4 +1,4 @@
-/* Plume — styles partagés par les deux fenêtres. Palette sobre, sans
+﻿/* Voxli — styles partagés par les deux fenêtres. Palette sobre, sans
    ressource distante (CSP docs/05 §3) ; police système uniquement. */
 
 :root {
@@ -6,8 +6,8 @@
   --ink: #23212a;
   --muted: #6d6a75;
   --line: #e0ddd6;
-  --plume: #3e458a;
-  --plume-soft: #b9bef2;
+  --Voxli: #3e458a;
+  --Voxli-soft: #b9bef2;
   --ok: #1d7a4f;
   --bad: #a13c3c;
   --radius: 10px;
@@ -37,7 +37,7 @@ body {
 h1 {
   font-size: 22px;
   margin: 0 0 4px;
-  color: var(--plume);
+  color: var(--Voxli);
 }
 
 h2 {
@@ -89,8 +89,8 @@ button {
 }
 
 .badge {
-  background: var(--plume-soft);
-  color: var(--plume);
+  background: var(--Voxli-soft);
+  color: var(--Voxli);
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 999px;
@@ -161,7 +161,7 @@ form button {
 }
 
 button {
-  background: var(--plume);
+  background: var(--Voxli);
   color: #fff;
   border: none;
   border-radius: var(--radius);
@@ -299,7 +299,7 @@ table.list .wrap {
 .meter-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, var(--ok), var(--plume));
+  background: linear-gradient(90deg, var(--ok), var(--Voxli));
   transition: width 0.15s ease-out;
 }
 
@@ -315,8 +315,8 @@ html[data-theme="dark"] {
   --ink: #ece9f2;
   --muted: #a19baf;
   --line: #353140;
-  --plume: #a2aaff;
-  --plume-soft: #4a4f8f;
+  --Voxli: #a2aaff;
+  --Voxli-soft: #4a4f8f;
   --ok: #52d9a0;
   --bad: #ff9d9d;
 }
@@ -363,7 +363,7 @@ body.mode-avance .simple-only {
 }
 
 #mode-bar input {
-  accent-color: var(--plume);
+  accent-color: var(--Voxli);
   margin-right: 8px;
 }
 

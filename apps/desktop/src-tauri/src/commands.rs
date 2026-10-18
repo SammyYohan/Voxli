@@ -27,9 +27,9 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
 
-use plume_config::Config;
-use plume_diagnostics::{Event, Logger};
-use plume_license::Entitlement as LicenseEntitlement;
+use voxli_config::Config;
+use voxli_diagnostics::{Event, Logger};
+use voxli_license::Entitlement as LicenseEntitlement;
 
 use crate::strings;
 use crate::worker::WorkerMsg;
@@ -57,7 +57,7 @@ pub struct UiShared {
     pub license: Mutex<LicenseInfo>,
     /// Store d'historique (RF-33) : partagé entre le worker (écriture à la
     /// fin de session) et les commandes IPC (lecture/suppression).
-    pub history: Mutex<Option<Box<dyn plume_storage::HistoryStore>>>,
+    pub history: Mutex<Option<Box<dyn voxli_storage::HistoryStore>>>,
     /// Téléchargement de modèle en cours (un seul à la fois, RF-20).
     pub download_busy: Mutex<bool>,
     pub download_cancel: Arc<AtomicBool>,
@@ -98,17 +98,17 @@ pub(crate) fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Vérifie le fichier de licence (`license.txt`) contre la clé publique
 /// embarquée ; période de grâce hors ligne 30 jours (RF-38/ADR-08).
 pub fn license_from_file(path: &std::path::Path) -> LicenseInfo {
-    let Some(key) = plume_license::embedded_public_key() else {
+    let Some(key) = voxli_license::embedded_public_key() else {
         return LicenseInfo::free();
     };
     let Ok(blob) = std::fs::read_to_string(path) else {
         return LicenseInfo::free();
     };
     let grace = std::time::Duration::from_secs(30 * 86_400);
-    match plume_license::verify(
+    match voxli_license::verify(
         &blob,
         &key,
-        plume_license::PRODUCT,
+        voxli_license::PRODUCT,
         std::time::SystemTime::now(),
         grace,
     ) {
@@ -118,7 +118,7 @@ pub fn license_from_file(path: &std::path::Path) -> LicenseInfo {
 }
 
 fn license_info_from(ent: LicenseEntitlement) -> LicenseInfo {
-    use plume_core::{Entitlement as _, Feature};
+    use voxli_core::{Entitlement as _, Feature};
     let mut features = Vec::new();
     for f in [
         Feature::HistoryOnDisk,
@@ -169,16 +169,16 @@ fn license_path() -> PathBuf {
 /// persisté **seulement si valide**.
 #[tauri::command]
 pub fn license_import(shared: State<'_, UiShared>, blob: String) -> Result<LicenseInfo, String> {
-    let Some(key) = plume_license::embedded_public_key() else {
+    let Some(key) = voxli_license::embedded_public_key() else {
         return Err(
             "Aucune clé publique embarquée dans ce binaire — import impossible.".to_string(),
         );
     };
     let grace = std::time::Duration::from_secs(30 * 86_400);
-    let ent = plume_license::verify(
+    let ent = voxli_license::verify(
         &blob,
         &key,
-        plume_license::PRODUCT,
+        voxli_license::PRODUCT,
         std::time::SystemTime::now(),
         grace,
     )
@@ -282,7 +282,7 @@ pub struct DeviceInfo {
 
 #[tauri::command]
 pub fn devices_list() -> Vec<DeviceInfo> {
-    plume_audio::list_input_devices()
+    voxli_audio::list_input_devices()
         .into_iter()
         .map(|d| DeviceInfo {
             id: d.id,
@@ -423,7 +423,7 @@ pub fn models_download_cancel(shared: State<'_, UiShared>) -> Result<(), String>
 /// Téléchargement d'un modèle du catalogue : UNE action explicite de
 /// l'utilisateur (RF-36), un seul à la fois, reprise `Range` supportée,
 /// SHA-256 calculé et consigné dans `manifests.json` (RF-20). La connexion
-/// est la SEULE voie réseau de Plume — uniquement depuis cet écran, jamais
+/// est la SEULE voie réseau de Voxli — uniquement depuis cet écran, jamais
 /// au démarrage ni en tâche de fond.
 #[tauri::command]
 pub fn models_download(
@@ -452,7 +452,7 @@ pub fn models_download(
     let cancel = Arc::clone(&shared.download_cancel);
     let id_owned = id.clone();
     std::thread::Builder::new()
-        .name("plume-model-download".into())
+        .name("voxli-model-download".into())
         .spawn(move || {
             let res = download_model_thread(&handle, &id_owned, &url, kind, &cancel);
             if let Err(reason) = res {
@@ -706,7 +706,7 @@ pub struct HistoryItem {
     pub created_ms: u64,
 }
 
-fn item_of(e: plume_storage::Entry) -> HistoryItem {
+fn item_of(e: voxli_storage::Entry) -> HistoryItem {
     HistoryItem {
         id: e.id,
         text: e.text,
@@ -799,7 +799,7 @@ pub fn dictionaries_import(
 #[tauri::command]
 pub fn context_preview(shared: State<'_, UiShared>) -> Result<Option<(String, String)>, String> {
     let mode = lock_or_recover(&shared.config).privacy.context_read;
-    if matches!(mode, plume_config::ContextRead::None) {
+    if matches!(mode, voxli_config::ContextRead::None) {
         return Err("contexte désactivé (mode strict, RF-37)".into());
     }
     #[cfg(target_os = "windows")]
@@ -808,8 +808,8 @@ pub fn context_preview(shared: State<'_, UiShared>) -> Result<Option<(String, St
             .insertion
             .excluded_apps
             .clone();
-        let reader = plume_text::WindowsFocusReader::new(excluded);
-        Ok(plume_core::FocusReader::snapshot(&reader).map(|s| (s.app_id, s.title)))
+        let reader = voxli_text::WindowsFocusReader::new(excluded);
+        Ok(voxli_core::FocusReader::snapshot(&reader).map(|s| (s.app_id, s.title)))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -822,7 +822,7 @@ pub fn context_preview(shared: State<'_, UiShared>) -> Result<Option<(String, St
 /// Export de données utilisateur (RF-33 : maîtrise) : copie la configuration,
 /// les dictionnaires et le rapport de diagnostic dans un dossier fourni —
 /// jamais de texte dicté ni de clé API dans l'export. Destination par
-/// défaut : `Bureau\plume-export-…`.
+/// défaut : `Bureau\voxli-export-…`.
 #[tauri::command]
 pub fn data_export(
     shared: State<'_, UiShared>,
@@ -836,10 +836,10 @@ pub fn data_export(
                 .map(|u| PathBuf::from(u).join("Desktop"))
                 .unwrap_or_else(std::env::temp_dir)
         })
-        .join("Plume");
+        .join("Voxli");
     fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     let dir = Config::default_dir();
-    let stamp = format!("plume-export-epoch-{}", now_secs());
+    let stamp = format!("voxli-export-epoch-{}", now_secs());
     let out = dest.join(&stamp);
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     // Configuration (lisible, sans secrets).
@@ -852,10 +852,10 @@ pub fn data_export(
         fs::write(out.join("models").join("manifests.json"), raw).map_err(|e| e.to_string())?;
     }
     // Rapport de support.
-    let log_file = dir.join("logs").join("plume.log");
+    let log_file = dir.join("logs").join("voxli.log");
     let raw = fs::read_to_string(&log_file).unwrap_or_default();
     let lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
-    let report = plume_diagnostics::export_report(&lines, shared.logger.uptime());
+    let report = voxli_diagnostics::export_report(&lines, shared.logger.uptime());
     fs::write(out.join("rapport-diagnostic.txt"), report).map_err(|e| e.to_string())?;
     Ok(out.display().to_string())
 }
@@ -881,7 +881,7 @@ pub fn rescue_last(shared: State<'_, UiShared>) -> Option<String> {
 pub fn rescue_paste_again(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
         .tx
-        .send(WorkerMsg::Input(plume_core::InputEvent::PasteAgain));
+        .send(WorkerMsg::Input(voxli_core::InputEvent::PasteAgain));
     Ok(())
 }
 
@@ -891,7 +891,7 @@ pub fn rescue_paste_again(shared: State<'_, UiShared>) -> Result<(), String> {
 pub fn rescue_retry(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
         .tx
-        .send(WorkerMsg::Input(plume_core::InputEvent::Retry));
+        .send(WorkerMsg::Input(voxli_core::InputEvent::Retry));
     Ok(())
 }
 
@@ -911,30 +911,30 @@ pub fn rescue_close(app: AppHandle<Wry>) -> Result<(), String> {
 pub fn cancel_dictation(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
         .tx
-        .send(WorkerMsg::Input(plume_core::InputEvent::Cancel));
+        .send(WorkerMsg::Input(voxli_core::InputEvent::Cancel));
     Ok(())
 }
 
 // ------------------------------------------------- diagnostic RF-34 ----
 
 /// Exporte le rapport de support (rédigé par construction). Destination :
-/// chemin fourni, sinon `Bureau\rapport-diagnostic-plume.txt`.
+/// chemin fourni, sinon `Bureau\rapport-diagnostic-voxli.txt`.
 #[tauri::command]
 pub fn diagnostics_export(
     shared: State<'_, UiShared>,
     destination: Option<String>,
 ) -> Result<String, String> {
-    let log_file = plume_config::Config::default_dir()
+    let log_file = voxli_config::Config::default_dir()
         .join("logs")
-        .join("plume.log");
+        .join("voxli.log");
     let raw = std::fs::read_to_string(&log_file).unwrap_or_default();
     let lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
-    let report = plume_diagnostics::export_report(&lines, shared.logger.uptime());
+    let report = voxli_diagnostics::export_report(&lines, shared.logger.uptime());
     let path = destination.map(PathBuf::from).unwrap_or_else(|| {
         std::env::var_os("USERPROFILE")
             .map(|u| PathBuf::from(u).join("Desktop"))
             .unwrap_or_else(std::env::temp_dir)
-            .join("rapport-diagnostic-plume.txt")
+            .join("rapport-diagnostic-voxli.txt")
     });
     std::fs::write(&path, report).map_err(|e| format!("{} : {e}", strings::ERR_WRITE))?;
     Ok(path.display().to_string())

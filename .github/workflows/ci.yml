@@ -1,7 +1,7 @@
-# CI Plume — conforme docs/06 §1 et §2 :
+# CI Voxli — conforme docs/06 §1 et §2 :
 # - tests purs à chaque PR (sans Windows natif requis pour les modules durs) ;
-# - runner Windows pour la capture (plume-win, plume-audio/capture) ;
-# - arbre applicatif compilé (plume-desktop) ; l'inférence réelle (whisper) et
+# - runner Windows pour la capture (voxli-win, voxli-audio/capture) ;
+# - arbre applicatif compilé (voxli-desktop) ; l'inférence réelle (whisper) et
 #   les bancs M1/M2 restent hors CI (machine dédiée).
 #
 # Aucune connexion réseau du produit n'est testée ici : le runner vérifie
@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]   # modules Windows (plume-win) testés ici
+        os: [windows-latest]   # modules Windows (voxli-win) testés ici
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,16 +35,16 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Tests des modules (fonctionnalités par défaut)
-        run: cargo test -p plume-core -p plume-config -p plume-license -p plume-storage -p plume-diagnostics -p plume-audio -p plume-hotkeys -p plume-asr -p plume-secure -p plume-text -p plume-win
+        run: cargo test -p voxli-core -p voxli-config -p voxli-license -p voxli-storage -p voxli-diagnostics -p voxli-audio -p voxli-hotkeys -p voxli-asr -p voxli-secure -p voxli-text -p voxli-win
 
       - name: Tests SQLite (fonctionnalité opt-in)
-        run: cargo test -p plume-storage --features sqlite
+        run: cargo test -p voxli-storage --features sqlite
 
       - name: Tests DPAPI (fonctionnalité opt-in)
-        run: cargo test -p plume-secure --features dpapi
+        run: cargo test -p voxli-secure --features dpapi
 
   application:
-    name: Compilation arbre applicatif (plume-desktop)
+    name: Compilation arbre applicatif (voxli-desktop)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,4 +68,4 @@ jobs:
           pnpm --dir apps/desktop build
 
       - name: cargo check (arbre Tauri complet)
-        run: cargo check -p plume-desktop
+        run: cargo check -p voxli-desktop

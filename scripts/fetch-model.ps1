@@ -1,8 +1,8 @@
-# Téléchargement du modèle whisper.cpp pour le moteur ASR réel (opt-in).
+﻿# Téléchargement du modèle whisper.cpp pour le moteur ASR réel (opt-in).
 #
 # RF-36 / ADR-08 : aucune connexion réseau par l'application elle-même.
 # Le téléchargement est **une action explicite de l'utilisateur** (ce script),
-# jamais un comportement du produit installé. Après coup, Plume fonctionne
+# jamais un comportement du produit installé. Après coup, Voxli fonctionne
 #strictement hors ligne.
 #
 # Exécuter : powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1
@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$dest_dir = Join-Path $env:APPDATA 'Plume\models'
+$dest_dir = Join-Path $env:APPDATA 'Voxli\models'
 $dest = Join-Path $dest_dir $Model
 
 Write-Host ""
@@ -23,7 +23,7 @@ Write-Host "Modèle   : $Model"
 Write-Host "Source   : $Source$Model"
 Write-Host "Après    : $dest"
 Write-Host ""
-Write-Host "Aucun autre accès réseau n'est effectué par Plume pendant l'usage." -ForegroundColor Yellow
+Write-Host "Aucun autre accès réseau n'est effectué par Voxli pendant l'usage." -ForegroundColor Yellow
 $confirm = Read-Host 'Continuer le téléchargement ? (o/N)'
 if ($confirm -notmatch '^[oO]') {
     Write-Host 'Abandon — aucune connexion.'
@@ -43,4 +43,4 @@ Write-Host ''
 Write-Host ('SHA-256 : {0}' -f $hash)
 Write-Host ('Taille  : {0} Mo' -f [math]::Round((Get-Item $dest).Length / 1MB, 1))
 Write-Host ''
-Write-Host 'Fait. Relancez Plume compilé avec la fonctionnalité `real-asr` pour utiliser le moteur réel.'
+Write-Host 'Fait. Relancez Voxli compilé avec la fonctionnalité `real-asr` pour utiliser le moteur réel.'

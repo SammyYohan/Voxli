@@ -1,4 +1,4 @@
-# Bancs de mesures — Plume
+# Bancs de mesures — Voxli
 
 Deux bancs seulement, en P0, avec un cadre reproductible (docs/06 §4). Les
 résultats vont dans `benchmarks/resultats-<date>.md` (non suivi).
@@ -8,7 +8,7 @@ résultats vont dans `benchmarks/resultats-<date>.md` (non suivi).
 Cible P0 : **p95 ≤ 1,0 s pour 10 s d'audio** (moteur réel). Le moteur factice
 sert de référence pure logique (l'inférence n'est pas mesurée là).
 
-Ce que mesure le produit déjà, via `plume-diagnostics` (aucune instrumentation
+Ce que mesure le produit déjà, via `voxli-diagnostics` (aucune instrumentation
 supplémentaire) :
 
 | Étape | Champ journal | Champ utile au calcul |
@@ -20,10 +20,10 @@ supplémentaire) :
 | insertion | `Latency { stage: "insert", micros }` | — |
 
 Protocole :
-1. lancer Plume compilé en `--release` (profil `lto = "thin"`) ;
+1. lancer Voxli compilé en `--release` (profil `lto = "thin"`) ;
 2. dicter 3 séries de 10 phrases calmes de ~10 s (fixtures `long-10s.wav`
    pour la répétabilité hors micro, le micro pour la représentativité) ;
-3. extraire les micros par étape : `grep '"event":"latency"' plume.log`
+3. extraire les micros par étape : `grep '"event":"latency"' voxli.log`
    et calculer p50/p95 par étape et cumulés (t0 → SessionFinished).
 
 ## M2 — Mémoire
@@ -49,4 +49,3 @@ référence P0.
   10 s d'audio), largement sous le seuil perceptuel.
 - **Confort des longues dictées** (dérive mémoire) — banc M2 : clichés à T0,
   T+30 min, T+2 h ; dérive max +15 %.
-

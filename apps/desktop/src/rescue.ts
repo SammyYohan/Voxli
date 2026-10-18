@@ -37,7 +37,7 @@ document.getElementById("btn-paste")?.addEventListener("click", () => {
 });
 
 document.getElementById("btn-copy")?.addEventListener("click", () => {
-  // Copie volontaire de l'utilisateur : pas de presse-papiers côté Plume
+  // Copie volontaire de l'utilisateur : pas de presse-papiers côté Voxli
   // sans ce geste explicite (RF-30).
   text.removeAttribute("readonly");
   text.select();

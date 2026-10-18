@@ -1,9 +1,9 @@
 {
-  "name": "plume-desktop-ui",
+  "name": "voxli-desktop-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Interface Plume (fenêtre réglages + fenêtre de secours) — aucune dépendance de rendu, TypeScript strict.",
+  "description": "Interface Voxli (fenêtre réglages + fenêtre de secours) — aucune dépendance de rendu, TypeScript strict.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -3,12 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Plume — Réglages</title>
+    <title>Voxli — Réglages</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <script>
       /** Thème appliqué avant la première peinture (préférence locale,
        * jamais une configuration produit). */
       (function () {
-        var pref = localStorage.getItem("plume.ui.theme") || "system";
+        var pref = localStorage.getItem("voxli.ui.theme") || localStorage.getItem("plume.ui.theme") || "system";
         var dark =
           pref === "dark"
             ? true
@@ -22,7 +23,10 @@
   </head>
   <body>
     <header>
-      <h1>Plume</h1>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="/logo.svg" alt="Voxli logo" width="38" height="38" style="border-radius: 8px;" />
+        <h1 style="margin: 0;">Voxli</h1>
+      </div>
       <p class="muted">
         Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
         machine — sauf si vous le demandez explicitement.
@@ -242,7 +246,7 @@
       <h2>Voix (moteur de reconnaissance)</h2>
       <p class="muted">
         Le téléchargement est <b>votre action explicite</b>, ici, et la
-        <b>seule</b> connexion réseau de Plume depuis cet écran. Chaque fichier
+        <b>seule</b> connexion réseau de Voxli depuis cet écran. Chaque fichier
         est vérifié après réception ; la preuve reste dans un journal local.
       </p>
       <table id="models" class="list">
@@ -337,7 +341,7 @@
       <details>
         <summary>Importer un code de licence</summary>
         <p class="muted">La vérification est locale et hors ligne (signature Ed25519). Aucun envoi.</p>
-        <textarea id="license-blob" rows="5" spellcheck="false" placeholder="plume-license-v1&#10;…"></textarea>
+        <textarea id="license-blob" rows="5" spellcheck="false" placeholder="voxli-license-v1&#10;…"></textarea>
         <button id="btn-license-import" type="button">Vérifier et importer</button>
         <span id="license-result" class="muted"></span>
       </details>
@@ -403,8 +407,8 @@
     </section>
 
     <footer class="muted">
-      Plume — 100 % local. Réglages avancés accessibles dans
-      <code>%APPDATA%\Plume\config.json</code>.
+      Voxli — 100 % local. Réglages avancés accessibles dans
+      <code>%APPDATA%\Voxli\config.json</code>.
     </footer>
 
     <script type="module" src="/src/main.ts"></script>

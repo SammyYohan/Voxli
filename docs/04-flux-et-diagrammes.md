@@ -1,4 +1,4 @@
-# Livrable 4 — Diagrammes et flux
+﻿# Livrable 4 — Diagrammes et flux
 
 Les diagrammes sont en syntaxe Mermaid (rendus par GitHub, VS Code et la plupart des visionneuses
 Markdown). Ils décrivent le comportement **cible** ; l'écart avec le prototype P0 sera documenté
@@ -11,7 +11,7 @@ dans le journal de mesures.
 ```mermaid
 flowchart TB
     subgraph Machine["Poste de travail Windows (frontière de confiance)"]
-        subgraph Proc["Processus Plume.exe (non élevé)"]
+        subgraph Proc["Processus Voxli.exe (non élevé)"]
             UI["Interface Tauri / WebView2<br/>(réglages, historique, onboarding)"]
             Core["Noyau Rust — chemin critique"]
             Audio["Capture WASAPI<br/>(cpal, thread temps réel)"]

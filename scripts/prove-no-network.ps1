@@ -1,23 +1,23 @@
-# Preuve d'absence de connexion sortante (RF-36, docs/06 §5.3).
+﻿# Preuve d'absence de connexion sortante (RF-36, docs/06 §5.3).
 #
 # Pendant la fenêtre d'observation, relaie via Get-NetTCPConnection toutes les
-# sockets TCP du processus Plume. Un seul ESTABLISHED sortant non local est un
+# sockets TCP du processus Voxli. Un seul ESTABLISHED sortant non local est un
 # échec. Le rapport craché à la fin sert de preuve pour la recette.
 #
 # Exécuter :
-#   lancez Plume, puis :
+#   lancez Voxli, puis :
 #   powershell -ExecutionPolicy Bypass -File scripts/prove-no-network.ps1 -Seconds 120
 
 param(
     [int] $Seconds = 120,
-    [string] $ProcessName = 'Plume'
+    [string] $ProcessName = 'Voxli'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $procs = Get-Process -Name $ProcessName -ErrorAction Stop
 $pids = $procs.Id
-Write-Host ("Surveillance réseau de Plume (PID {0}) pendant {1} s..." -f ($pids -join ', '), $Seconds)
+Write-Host ("Surveillance réseau de Voxli (PID {0}) pendant {1} s..." -f ($pids -join ', '), $Seconds)
 Write-Host "Pendant ce temps : dicitez normalement, y compris une transcription complete."
 
 $end = (Get-Date).AddSeconds($Seconds)
@@ -48,7 +48,7 @@ if ($violations.Count -eq 0) {
     Write-Host ("PREUVE : aucune connexion sortante établie détectée sur {0} points d'échantillon." -f ($seen -as [int])) -ForegroundColor Green
     $report = Join-Path (Get-Location) 'preuve-no-reseau.txt'
     @(
-        "Preuve d'absence de connexion sortante — Plume"
+        "Preuve d'absence de connexion sortante — Voxli"
         "Date        : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         "Observation : $Seconds s autour du PID(s) $($pids -join ', ')"
         "Connexions potentielles observées : $(if ($seen) { $seen } else { 'aucune' })"

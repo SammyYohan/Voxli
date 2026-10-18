@@ -2898,132 +2898,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "plume-asr"
-version = "0.1.0"
-dependencies = [
- "plume-core",
- "plume-win",
- "serde_json",
- "sherpa-onnx",
- "thiserror 2.0.21",
- "ureq",
- "whisper-rs",
-]
-
-[[package]]
-name = "plume-audio"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "plume-core",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-config"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-core"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-desktop"
-version = "0.1.0"
-dependencies = [
- "plume-asr",
- "plume-audio",
- "plume-config",
- "plume-core",
- "plume-diagnostics",
- "plume-hotkeys",
- "plume-license",
- "plume-secure",
- "plume-storage",
- "plume-text",
- "plume-win",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-global-shortcut",
- "ureq",
-]
-
-[[package]]
-name = "plume-diagnostics"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-hotkeys"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-license"
-version = "0.1.0"
-dependencies = [
- "ed25519-dalek",
- "getrandom 0.3.4",
- "plume-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-secure"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.21",
- "windows",
-]
-
-[[package]]
-name = "plume-storage"
-version = "0.1.0"
-dependencies = [
- "plume-core",
- "plume-secure",
- "rusqlite",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-text"
-version = "0.1.0"
-dependencies = [
- "plume-core",
- "plume-win",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "plume-win"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.21",
- "windows",
-]
-
-[[package]]
 name = "png"
 version = "0.17.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4690,6 +4564,132 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "voxli-asr"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sherpa-onnx",
+ "thiserror 2.0.21",
+ "ureq",
+ "voxli-core",
+ "voxli-win",
+ "whisper-rs",
+]
+
+[[package]]
+name = "voxli-audio"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "thiserror 2.0.21",
+ "voxli-core",
+]
+
+[[package]]
+name = "voxli-config"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "voxli-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "voxli-desktop"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-global-shortcut",
+ "ureq",
+ "voxli-asr",
+ "voxli-audio",
+ "voxli-config",
+ "voxli-core",
+ "voxli-diagnostics",
+ "voxli-hotkeys",
+ "voxli-license",
+ "voxli-secure",
+ "voxli-storage",
+ "voxli-text",
+ "voxli-win",
+]
+
+[[package]]
+name = "voxli-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "voxli-hotkeys"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "voxli-license"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "voxli-core",
+]
+
+[[package]]
+name = "voxli-secure"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "windows",
+]
+
+[[package]]
+name = "voxli-storage"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "thiserror 2.0.21",
+ "voxli-core",
+ "voxli-secure",
+]
+
+[[package]]
+name = "voxli-text"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "voxli-core",
+ "voxli-win",
+]
+
+[[package]]
+name = "voxli-win"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "windows",
+]
 
 [[package]]
 name = "vswhom"

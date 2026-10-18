@@ -1,16 +1,16 @@
-//! Application de bureau Plume — assemblage (docs/05 §1 et §3).
+//! Application de bureau Voxli — assemblage (docs/05 §1 et §3).
 //!
-//! Ici uniquement de la colle : le comportement métier vit dans plume-core,
-//! les interopérations système dans plume-win/plume-audio/plume-asr.
+//! Ici uniquement de la colle : le comportement métier vit dans voxli-core,
+//! les interopérations système dans voxli-win/voxli-audio/voxli-asr.
 //! Règles respectées :
 //! - aucune écriture de configuration directe par le webview (ADR-02) ;
 //! - un seul mécanisme d'enregistrement des raccourcis : le plugin
-//!   `tauri-plugin-global-shortcut`, validé par plume-hotkeys ; échec
+//!   `tauri-plugin-global-shortcut`, validé par voxli-hotkeys ; échec
 //!   d'enregistrement consigné, jamais de panique (ADR-05) ;
-//! - logs uniquement via plume-diagnostics — aucun `println!`.
+//! - logs uniquement via voxli-diagnostics — aucun `println!`.
 
 // Console Windows supprimée, y compris en debug : rien n'est écrit sur
-// stdout (logs → fichier plume.log), une fenêtre noire à l'ouverture
+// stdout (logs → fichier voxli.log), une fenêtre noire à l'ouverture
 // n'apportait que de la confusion.
 #![windows_subsystem = "windows"]
 
@@ -26,11 +26,11 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-use plume_config::Config;
-use plume_core::InputEvent;
-use plume_diagnostics::{Event, Logger};
-use plume_hotkeys::{validate_before_register, Combo, HotkeyError, Key};
-use plume_win::uia::Uia;
+use voxli_config::Config;
+use voxli_core::InputEvent;
+use voxli_diagnostics::{Event, Logger};
+use voxli_hotkeys::{validate_before_register, Combo, HotkeyError, Key};
+use voxli_win::uia::Uia;
 
 use commands::{lock_or_recover, UiShared};
 use worker::WorkerMsg;
@@ -112,7 +112,7 @@ fn main() {
             });
             let worker_logger = Arc::clone(&thread_logger);
             std::thread::Builder::new()
-                .name("plume-pipeline".into())
+                .name("voxli-pipeline".into())
                 .spawn(move || worker::run(handle, worker_logger, rx))
                 .map_err(|_| strings::ERR_WORKER.to_string())?;
 
@@ -353,11 +353,11 @@ fn setup_main_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
 
 fn setup_tray(app: &AppHandle<Wry>) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "reglages", "Réglages…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quitter", "Quitter Plume", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quitter", "Quitter Voxli", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
-    let mut builder = TrayIconBuilder::with_id("plume-tray")
-        .tooltip("Plume — dictée locale (Ctrl+Alt+Espace)")
+    let mut builder = TrayIconBuilder::with_id("voxli-tray")
+        .tooltip("Voxli — dictée locale (Ctrl+Alt+Espace)")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "reglages" => {
@@ -415,7 +415,7 @@ pub(crate) fn re_register_shortcuts(app: &AppHandle<Wry>, cfg: &Config) {
 
 /// Un seul mécanisme d'enregistrement (plugin global-shortcut). Règles :
 /// - combinaisons réservées refusées d'office avec consigne au journal
-///   (plume-hotkeys) ;
+///   (voxli-hotkeys) ;
 /// - conflit `RegisterHotKey` → consigne, **jamais de panique** (ADR-05) ;
 /// - Push-to-talk suit appui/relâchement ; les deux actions discrètes agissent
 ///   à l'appui.
@@ -558,7 +558,7 @@ fn log_registration(logger: &Logger, combo: &Combo, purpose: &str) {
     });
 }
 
-/// plume_hotkeys::Combo → plugin `Shortcut` (nommage physique des touches).
+/// voxli_hotkeys::Combo → plugin `Shortcut` (nommage physique des touches).
 fn to_shortcut(combo: &Combo) -> Result<Shortcut, HotkeyError> {
     let key = combo
         .key
@@ -661,10 +661,10 @@ fn code_of(k: Key) -> Option<Code> {
 
 // ------------------------------------------------------------- divers ---
 
-fn config_code(err: &plume_config::ConfigError) -> u32 {
+fn config_code(err: &voxli_config::ConfigError) -> u32 {
     match err {
-        plume_config::ConfigError::Io(_) => 1,
-        plume_config::ConfigError::Json(_) => 2,
-        plume_config::ConfigError::UnknownSchema { .. } => 3,
+        voxli_config::ConfigError::Io(_) => 1,
+        voxli_config::ConfigError::Json(_) => 2,
+        voxli_config::ConfigError::UnknownSchema { .. } => 3,
     }
 }

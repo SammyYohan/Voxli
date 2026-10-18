@@ -1,10 +1,10 @@
 [package]
-name = "plume-desktop"
-description = "Application de bureau Plume : assemblage du noyau, tray natif, raccourci global, commandes IPC."
+name = "voxli-desktop"
+description = "Application de bureau Voxli : assemblage du noyau, tray natif, raccourci global, commandes IPC."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-default-run = "plume-desktop"
+default-run = "voxli-desktop"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -20,31 +20,30 @@ serde_json = { workspace = true }
 ureq = "2"
 sha2 = "0.10"
 
-plume-core = { path = "../../../crates/plume-core" }
-plume-config = { path = "../../../crates/plume-config" }
-plume-audio = { path = "../../../crates/plume-audio" }
-plume-asr = { path = "../../../crates/plume-asr" }
-plume-text = { path = "../../../crates/plume-text" }
-plume-hotkeys = { path = "../../../crates/plume-hotkeys" }
-plume-storage = { path = "../../../crates/plume-storage" }
-plume-secure = { path = "../../../crates/plume-secure" }
-plume-diagnostics = { path = "../../../crates/plume-diagnostics" }
-plume-license = { path = "../../../crates/plume-license" }
-plume-win = { path = "../../../crates/plume-win" }
+voxli-core = { path = "../../../crates/voxli-core" }
+voxli-config = { path = "../../../crates/voxli-config" }
+voxli-audio = { path = "../../../crates/voxli-audio" }
+voxli-asr = { path = "../../../crates/voxli-asr" }
+voxli-text = { path = "../../../crates/voxli-text" }
+voxli-hotkeys = { path = "../../../crates/voxli-hotkeys" }
+voxli-storage = { path = "../../../crates/voxli-storage" }
+voxli-secure = { path = "../../../crates/voxli-secure" }
+voxli-diagnostics = { path = "../../../crates/voxli-diagnostics" }
+voxli-license = { path = "../../../crates/voxli-license" }
+voxli-win = { path = "../../../crates/voxli-win" }
 
 # Moteur ASR réel — opt-in (voir README) :
 [features]
 default = []
-real-asr = ["plume-asr/whisper"]
-parakeet-asr = ["plume-asr/parakeet"]
+real-asr = ["voxli-asr/whisper"]
+parakeet-asr = ["voxli-asr/parakeet"]
 # Nemotron 3.5 streaming (SDK NeMo-Speech.cpp, ADR-06) — opt-in : la
-# compilation exige le SDK installé (build.rs de plume-win lie et copie
+# compilation exige le SDK installé (build.rs de voxli-win lie et copie
 # les DLL à côté de l'exécutable), le build nominal reste vert sans lui.
-nemo-stream = ["plume-asr/nemo-stream"]
+nemo-stream = ["voxli-asr/nemo-stream"]
 # Historique sur disque chiffré DPAPI (RF-33) — opt-in explicite.
-history-disk = ["plume-storage/secure-disk"]
+history-disk = ["voxli-storage/secure-disk"]
 # Embarquer l'interface construite (`../dist`) dans le binaire : OBLIGATOIRE
 # pour lancer l'application sans serveur Vite (`pnpm dev`) — sans elle, les
 # fenêtres affichent une page vide (mode dev → devUrl port 5173).
 custom-protocol = ["tauri/custom-protocol"]
-

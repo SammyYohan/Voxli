@@ -18,7 +18,7 @@ const fr_state: Record<string, string> = {
   recovery: "incident",
 };
 
-/** Noms des touches en français (:seuls les libellés de plume-hotkeys). */
+/** Noms des touches en français (:seuls les libellés de voxli-hotkeys). */
 const fr_keys: Record<string, string> = {
   Space: "Espace",
   Control: "Ctrl",

@@ -1,6 +1,6 @@
 # Support
 
-Ce document explique comment diagnostiquer Plume **sans jamais transmettre
+Ce document explique comment diagnostiquer Voxli **sans jamais transmettre
 de contenu dicté**. La conception (RF-34, ADR-10) fait en sorte que le
 journal ne contienne pas le texte des transcriptions ; lisez tout de même
 le fichier avant de l'envoyer (Règle d'or §3).
@@ -9,12 +9,12 @@ le fichier avant de l'envoyer (Règle d'or §3).
 
 | Source de données | Chemin |
 |---|---|
-| Journal (JSON, sans contenu) | `%APPDATA%\Plume\logs\plume.log` |
-| Configuration | `%APPDATA%\Plume\config.json` |
-| Modèles téléchargés + empreintes | `%APPDATA%\Plume\models\` + `manifests.json` |
-| Historique (si activé, chiffré) | `%APPDATA%\Plume\history.sqlite` |
-| Licence | `%APPDATA%\Plume\license.txt` |
-| Secrets (clé d'API distante, opt-in P4) | DPAPI via `plume-secure`, jamais en clair |
+| Journal (JSON, sans contenu) | `%APPDATA%\Voxli\logs\voxli.log` |
+| Configuration | `%APPDATA%\Voxli\config.json` |
+| Modèles téléchargés + empreintes | `%APPDATA%\Voxli\models\` + `manifests.json` |
+| Historique (si activé, chiffré) | `%APPDATA%\Voxli\history.sqlite` |
+| Licence | `%APPDATA%\Voxli\license.txt` |
+| Secrets (clé d'API distante, opt-in P4) | DPAPI via `voxli-secure`, jamais en clair |
 
 ## 2. Ce qu'un rapport de diagnostic contient
 
@@ -45,7 +45,7 @@ Chaque ligne est un événement JSON :
   raccourcis (`register-pushToTalk-infructueux:…` = combinaison déjà prise
   par une autre application, ADR-05 — le produit continue sans elle).
 - `event: "engine_loaded"` : moteur réellement retenu (`fake` en
-  développement, `whisper.cpp` / `parakeet` avec la feature + le modèle).
+  développement, `whisper.cpp` / `parakeet` / `nemo` avec la feature + le modèle).
 - `event: "state_changed"` : machine à états (`idle` → `recording` → …).
 - Aucune ligne ne contiendra le texte transcrit (garantie RF-34, testée).
 
@@ -59,7 +59,7 @@ explicitement.
 
 ## 5. Réinitialisation complète
 
-Fermer Plume (tray → Quitter), puis supprimer le dossier `%APPDATA%\Plume`
-avant relance. Les modèles téléchargés devront être récupérés (RF-20) ; la
-licence Pro devra être réimportée à partir de votre fichier `license.txt`
-d'origine.
+Pour restaurer les réglages d'usine sans désinstaller :
+1. Quitter Voxli depuis le tray.
+2. Supprimer ou renommer `%APPDATA%\Voxli\config.json`.
+3. Relancer Voxli. Les modèles déjà téléchargés sont conservés.

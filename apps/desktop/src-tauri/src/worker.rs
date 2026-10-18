@@ -1,4 +1,4 @@
-//! Thread pipeline de l'application (ADR-12) : il possède l'orchestrateur et
+﻿//! Thread pipeline de l'application (ADR-12) : il possède l'orchestrateur et
 //! ses dépendances, les alimente en événements (`InputEvent`) via un canal,
 //! et relaie chaque `CoreEvent` vers la journalisation et l'interface.
 //!
@@ -24,27 +24,27 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
-use plume_asr::FakeEngine;
+use voxli_asr::FakeEngine;
 #[cfg(feature = "nemo-stream")]
-use plume_asr::NemoEngine;
+use voxli_asr::NemoEngine;
 #[cfg(feature = "parakeet-asr")]
-use plume_asr::ParakeetOnnxEngine;
+use voxli_asr::ParakeetOnnxEngine;
 #[cfg(feature = "real-asr")]
-use plume_asr::WhisperCppEngine;
-use plume_asr::{StreamingEngine, StreamingSession};
-use plume_audio::{CaptureTap, CpalCapture, EnergyVad, FakeCapture, VadConfig};
-use plume_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
-use plume_core::{
+use voxli_asr::WhisperCppEngine;
+use voxli_asr::{StreamingEngine, StreamingSession};
+use voxli_audio::{CaptureTap, CpalCapture, EnergyVad, FakeCapture, VadConfig};
+use voxli_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
+use voxli_core::{
     orchestrator::{asr_code, capture_code},
     AudioBuffer, Capture, CaptureError, CoreEvent, Deps, DictationState, InputEvent, Inserter,
     Level, Orchestrator, OrchestratorCfg, Profile, ProfileBinding, SteadyClock, Transcriptor,
     TriggerMode,
 };
-use plume_diagnostics::{Event, Logger};
-use plume_storage::{HistoryStore, MemoryStore};
-use plume_text::PassThroughProcessor;
+use voxli_diagnostics::{Event, Logger};
+use voxli_storage::{HistoryStore, MemoryStore};
+use voxli_text::PassThroughProcessor;
 #[cfg(target_os = "windows")]
-use plume_text::{WindowsFocusReader, WindowsInserter};
+use voxli_text::{WindowsFocusReader, WindowsInserter};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::commands::{lock_or_recover, UiShared};
@@ -518,15 +518,15 @@ struct StreamTranscriptor {
 }
 
 impl Transcriptor for StreamTranscriptor {
-    fn warmup(&self) -> Result<(), plume_core::AsrError> {
+    fn warmup(&self) -> Result<(), voxli_core::AsrError> {
         self.inner.warmup()
     }
 
     fn transcribe(
         &self,
         audio: &AudioBuffer,
-        opts: &plume_core::TranscribeOptions,
-    ) -> Result<plume_core::Transcript, plume_core::AsrError> {
+        opts: &voxli_core::TranscribeOptions,
+    ) -> Result<voxli_core::Transcript, voxli_core::AsrError> {
         let began = std::time::Instant::now();
         // Fermeture via le pilote, **bornée** (2,5 s) : si le SDK est
         // enrayé, la borne s'ouvre et la voie batch reprend son rang
@@ -542,7 +542,7 @@ impl Transcriptor for StreamTranscriptor {
             self.slot.logger.log(Event::DeviceEvent {
                 kind: "transcription-via-stream".into(),
             });
-            return Ok(plume_core::Transcript {
+            return Ok(voxli_core::Transcript {
                 text: outcome.text,
                 confidence: outcome.confidence,
                 duration: began.elapsed(),
@@ -558,7 +558,7 @@ impl Transcriptor for StreamTranscriptor {
         self.inner.transcribe(audio, opts)
     }
 
-    fn id(&self) -> plume_core::EngineId {
+    fn id(&self) -> voxli_core::EngineId {
         self.inner.id()
     }
 }
@@ -658,20 +658,20 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     stream.update_mount(
         engine.streaming.clone(),
         Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
-        cfg.profiles.default.style == plume_config::Style::Verbatim,
+        cfg.profiles.default.style == voxli_config::Style::Verbatim,
     );
 
     // --- Post-traitement (RF-26) : niveau 1 quand `rules` est choisi ;
     // identité sinon (le profil verbatim la garantit de toute façon).
-    let mut post: Box<dyn plume_core::PostProcessor> = match cfg.general.post_processing {
-        plume_config::PostProcessing::Rules => Box::new(plume_text::FrenchProcessor),
+    let mut post: Box<dyn voxli_core::PostProcessor> = match cfg.general.post_processing {
+        voxli_config::PostProcessing::Rules => Box::new(voxli_text::FrenchProcessor),
         _ => Box::new(PassThroughProcessor),
     };
 
     // --- Historique (RF-33) : le store vit dans `UiShared` (partagé avec
     // les commandes IPC de lecture RF-33) ; le worker n'y touche qu'au
     // moment opportun via `maybe_record_history`.
-    // --- Focus + insertion (plume-text / plume-win).
+    // --- Focus + insertion (voxli-text / voxli-win).
     #[cfg(target_os = "windows")]
     let focus_reader = WindowsFocusReader::new(excluded);
     #[cfg(not(target_os = "windows"))]
@@ -767,7 +767,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 stream.update_mount(
                     engine.streaming.clone(),
                     Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
-                    cfg.profiles.default.style == plume_config::Style::Verbatim,
+                    cfg.profiles.default.style == voxli_config::Style::Verbatim,
                 );
                 if engine_stale(&engine_label, &cfg) {
                     engine = build_engine(&cfg, &logger);
@@ -783,12 +783,12 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     stream.update_mount(
                         engine.streaming.clone(),
                         Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
-                        cfg.profiles.default.style == plume_config::Style::Verbatim,
+                        cfg.profiles.default.style == voxli_config::Style::Verbatim,
                     );
                     streamed.inner = Arc::clone(&engine.batch);
                 }
                 post = match cfg.general.post_processing {
-                    plume_config::PostProcessing::Rules => Box::new(plume_text::FrenchProcessor),
+                    voxli_config::PostProcessing::Rules => Box::new(voxli_text::FrenchProcessor),
                     _ => Box::new(PassThroughProcessor),
                 };
                 #[cfg(target_os = "windows")]
@@ -847,12 +847,12 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     stream.update_mount(
                         engine.streaming.clone(),
                         Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
-                        cfg.profiles.default.style == plume_config::Style::Verbatim,
+                        cfg.profiles.default.style == voxli_config::Style::Verbatim,
                     );
                     streamed.inner = Arc::clone(&engine.batch);
                     post = match cfg.general.post_processing {
-                        plume_config::PostProcessing::Rules => {
-                            Box::new(plume_text::FrenchProcessor)
+                        voxli_config::PostProcessing::Rules => {
+                            Box::new(voxli_text::FrenchProcessor)
                         }
                         _ => Box::new(PassThroughProcessor),
                     };
@@ -992,18 +992,18 @@ fn sync_rescue_buffer(app: &AppHandle<Wry>, orch: &Orchestrator<'_>) {
 // ------------------------------------------------- configuration -> noyau ---
 
 fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
-    let style_of = |s: plume_config::Style| match s {
-        plume_config::Style::Verbatim => plume_core::Style::Verbatim,
-        plume_config::Style::Punctuated => plume_core::Style::Punctuated,
+    let style_of = |s: voxli_config::Style| match s {
+        voxli_config::Style::Verbatim => voxli_core::Style::Verbatim,
+        voxli_config::Style::Punctuated => voxli_core::Style::Punctuated,
     };
     // RF-25 : liaisons profil-app ; RF-39 : « profils multiples » est une
     // fonctionnalité Pro — hors licence, seul le profil par défaut est
     // actif (les liaisons restent configurées mais inactives, indiqué à
     // l'écran des profils).
     let bindings = if pro_bindings {
-        let profile_of = |p: &plume_config::ProfileCfg| Profile {
+        let profile_of = |p: &voxli_config::ProfileCfg| Profile {
             style: style_of(p.style),
-            insertion: plume_core::InsertionPolicy::ClipboardFirst,
+            insertion: voxli_core::InsertionPolicy::ClipboardFirst,
             dictionary: p.dictionary.clone(),
         };
         let mut b = Vec::new();
@@ -1023,9 +1023,9 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
     } else {
         Vec::new()
     };
-    let profile_of = |p: &plume_config::ProfileCfg| Profile {
+    let profile_of = |p: &voxli_config::ProfileCfg| Profile {
         style: style_of(p.style),
-        insertion: plume_core::InsertionPolicy::ClipboardFirst,
+        insertion: voxli_core::InsertionPolicy::ClipboardFirst,
         dictionary: p.dictionary.clone(),
     };
     OrchestratorCfg {
@@ -1092,8 +1092,8 @@ fn nemo_available(_cfg: &Config) -> bool {
 /// jamais de contenu dicté (RF-34). (Souvent utilisé : un seul appelant,
 /// sous `nemo-stream` ; le noyau sans SDK n'a pas de détail à porter.)
 #[cfg(feature = "nemo-stream")]
-fn log_engine_failure(logger: &Logger, err: &plume_core::AsrError) {
-    if let plume_core::AsrError::Runtime(detail) = err {
+fn log_engine_failure(logger: &Logger, err: &voxli_core::AsrError) {
+    if let voxli_core::AsrError::Runtime(detail) = err {
         let compact: String = detail.chars().take(160).collect();
         logger.log(Event::DeviceEvent {
             kind: format!("moteur-échec:{compact}"),
@@ -1580,9 +1580,9 @@ fn vad_config(cfg: &Config) -> VadConfig {
     VadConfig {
         min_speech_ms: cfg.audio.vad.min_speech_ms,
         threshold_rms: match cfg.audio.vad.aggressiveness {
-            plume_config::Aggressiveness::Low => 0.010,
-            plume_config::Aggressiveness::Balanced => 0.005,
-            plume_config::Aggressiveness::High => 0.002,
+            voxli_config::Aggressiveness::Low => 0.010,
+            voxli_config::Aggressiveness::Balanced => 0.005,
+            voxli_config::Aggressiveness::High => 0.002,
         },
         ..Default::default()
     }
@@ -1622,16 +1622,16 @@ pub fn build_history(
     }
     #[cfg(feature = "history-disk")]
     {
-        if cfg.general.history.storage == plume_config::StorageKind::Disk && licensed_disk {
+        if cfg.general.history.storage == voxli_config::StorageKind::Disk && licensed_disk {
             let path = Config::default_dir().join("histoire.db");
-            match plume_storage::SqliteStore::open(&path) {
+            match voxli_storage::SqliteStore::open(&path) {
                 Ok(sql) => {
                     logger.log(Event::DeviceEvent {
                         kind: "history-disk-encrypted".into(),
                     });
-                    return Some(Box::new(plume_storage::EncryptedStore::new(
+                    return Some(Box::new(voxli_storage::EncryptedStore::new(
                         sql,
-                        plume_storage::DpapiCodec,
+                        voxli_storage::DpapiCodec,
                     )));
                 }
                 Err(err) => {
@@ -1642,7 +1642,7 @@ pub fn build_history(
                     let _ = err;
                 }
             }
-        } else if cfg.general.history.storage == plume_config::StorageKind::Disk && !licensed_disk {
+        } else if cfg.general.history.storage == voxli_config::StorageKind::Disk && !licensed_disk {
             // Refus explicite : PAS de repli mémoire masquant l'intention
             // (RF-33 : l'historique disque exige la licence).
             logger.log(Event::DeviceEvent {
@@ -1653,7 +1653,7 @@ pub fn build_history(
     }
     #[cfg(not(feature = "history-disk"))]
     {
-        if cfg.general.history.storage == plume_config::StorageKind::Disk {
+        if cfg.general.history.storage == voxli_config::StorageKind::Disk {
             logger.log(Event::DeviceEvent {
                 kind: "history-disk-feature-off".into(),
             });

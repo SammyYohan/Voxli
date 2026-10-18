@@ -1,4 +1,4 @@
-# Livrable 1 — Étude produit et concurrentielle
+﻿# Livrable 1 — Étude produit et concurrentielle
 
 **Date de rédaction : 17 octobre 2026.** Toutes les vérifications de prix, de versions et de
 fonctionnalités ont été faites à cette date. Les prix et les fonctions concurrentes bougent vite :

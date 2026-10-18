@@ -1,4 +1,4 @@
-# Livrable 3 — Architecture technique
+﻿# Livrable 3 — Architecture technique
 
 Ce document justifie chaque décision structurante sous forme d'ADR (Architecture Decision Record)
 et documente les versions, licences et contraintes **réellement vérifiées** au 17/10/2026.
@@ -24,7 +24,7 @@ et documente les versions, licences et contraintes **réellement vérifiées** a
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Processus unique (Plume.exe)                                          │
+│ Processus unique (Voxli.exe)                                          │
 │                                                                       │
 │  ┌───────────────────┐        ┌───────────────────────────────────┐   │
 │  │ Tauri / WebView2  │◄──IPC──►│ Noyau Rust (chemin critique)     │   │
@@ -218,13 +218,13 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
 
 - **Décision** :
   - **Configuration** : fichier JSON versionné (schéma explicite, migration à chaque version),
-    lisible et exportable, dans `%APPDATA%\Plume\`.
+    lisible et exportable, dans `%APPDATA%\Voxli\`.
   - **Secrets** (clés d'API des services distants, jeton d'activation) : **Windows Credential
     Manager** ou protection DPAPI par utilisateur (`CryptProtectData`) — jamais dans le JSON, jamais
     dans le stockage du webview (`localStorage`).
   - **Historique** (optionnel) : SQLite local, base chiffrée au niveau des champs sensibles ou du
     fichier, liée au compte Windows ; rétention configurable ; purge à la désinstallation.
-  - **Modèles** : répertoire configurable (`%LOCALAPPDATA%\Plume\models\` par défaut), avec empreinte
+  - **Modèles** : répertoire configurable (`%LOCALAPPDATA%\Voxli\models\` par défaut), avec empreinte
     SHA-256 vérifiée à l'installation et au chargement.
 - **Justification** : le stockage du webview est un vecteur d'exfiltration et de fuite (scripts,
   extensions), et un fichier JSON unique contenant à la fois secrets et contenu rend impossible toute

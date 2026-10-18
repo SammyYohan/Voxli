@@ -217,11 +217,11 @@ function listOfApps(inputId: string): string[] {
 
 /** Simple / Avancé : préférence locale à la fenêtre (localStorage) —
  * choix de présentation, pas une configuration produit. */
-const MODE_KEY = "plume.ui.avance";
+const MODE_KEY = "voxli.ui.avance";
 
 /** Thème : clair / sombre / celui du système. Préférence locale, appliquée
  * dès le script de tête de la page (pas de flash). */
-const THEME_KEY = "plume.ui.theme";
+const THEME_KEY = "voxli.ui.theme";
 const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 function applyTheme(): void {
@@ -500,11 +500,11 @@ function wireEvents(): void {
   });
   $id("dict-code-export").addEventListener("click", async () => {
     const csv = (await invoke("dictionaries_export", { profile: "code" })) as string;
-    downloadTextFile("plume-dictionnaire-code.csv", csv);
+    downloadTextFile("voxli-dictionnaire-code.csv", csv);
   });
   $id("dict-email-export").addEventListener("click", async () => {
     const csv = (await invoke("dictionaries_export", { profile: "email" })) as string;
-    downloadTextFile("plume-dictionnaire-email.csv", csv);
+    downloadTextFile("voxli-dictionnaire-email.csv", csv);
   });
 }
 

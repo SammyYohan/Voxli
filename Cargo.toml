@@ -1,24 +1,24 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/plume-core",
-    "crates/plume-config",
-    "crates/plume-audio",
-    "crates/plume-asr",
-    "crates/plume-text",
-    "crates/plume-hotkeys",
-    "crates/plume-storage",
-    "crates/plume-secure",
-    "crates/plume-license",
-    "crates/plume-diagnostics",
-    "crates/plume-win",
+    "crates/voxli-core",
+    "crates/voxli-config",
+    "crates/voxli-audio",
+    "crates/voxli-asr",
+    "crates/voxli-text",
+    "crates/voxli-hotkeys",
+    "crates/voxli-storage",
+    "crates/voxli-secure",
+    "crates/voxli-license",
+    "crates/voxli-diagnostics",
+    "crates/voxli-win",
     "apps/desktop/src-tauri",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Plume"]
+authors = ["Voxli"]
 license = "Proprietary"
 
 [workspace.dependencies]

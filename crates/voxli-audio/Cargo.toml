@@ -1,0 +1,13 @@
+[package]
+name = "voxli-audio"
+description = "Capture WASAPI (cpal), pré-roll 400 ms, conversion mono 16 kHz f32 filtrée, VAD minimal (RF-06/07/12/13/18)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+voxli-core = { path = "../voxli-core" }
+thiserror = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+cpal = "0.18"

@@ -45,7 +45,7 @@ multi-plateformes masque exactement ce qui compte : le matériel bas de gamme.
 |---|---|---|
 | Installateur NSIS (`.exe`) | Taille du fichier de release | Mo, arrondi au Mo |
 | Installateur MSI | Idem | Mo |
-| Empreinte installée (hors modèles) | Comparaison avant/après installation, fichiers sous `Program Files` + `%LOCALAPPDATA%\Plume` hors `models\` | Mo |
+| Empreinte installée (hors modèles) | Comparaison avant/après installation, fichiers sous `Program Files` + `%LOCALAPPDATA%\Voxli` hors `models\` | Mo |
 | Modèles (par modèle) | Taille téléchargée affichée et réelle | Mo par modèle, dans un tableau |
 | Empreinte mémoire disque du cache | Max observé après 20 dictées | Mo |
 
@@ -106,7 +106,7 @@ défaut ; p95 ≤ 1,2 s sur M2 avec accélération GPU.
 |---|---|---|---|
 | FLEURS `fr_fr` (extrait de 300 énoncés) | Lecture, propre | Corpus public de recherche | Comparabilité avec les chiffres publiés |
 | Common Voice `fr` (extrait de 300 énoncés) | Locuteurs variés, accents, bruit | CC0 | Réalisme des accents |
-| **Interne « Plume-FR »** (60 énoncés, à enregistrer) | Vocabulaire métier (juridique, santé, technique), noms propres, nombres, unités, sigles, code-switching FR/EN | Consentement écrit des locuteurs, non diffusé | **Le seul corpus qui prédit l'usage réel** |
+| **Interne « Voxli-FR »** (60 énoncés, à enregistrer) | Vocabulaire métier (juridique, santé, technique), noms propres, nombres, unités, sigles, code-switching FR/EN | Consentement écrit des locuteurs, non diffusé | **Le seul corpus qui prédit l'usage réel** |
 | Silence et bruit (20 fichiers de 10 s) | Silence complet, clavier, ventilateur, musique | Interne | Mesure des hallucinations (exigence RF-18) |
 
 ### 5.2 Méthode

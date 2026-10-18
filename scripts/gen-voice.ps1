@@ -1,11 +1,11 @@
-# Génère une voix de test (SAPI de Windows → WAV 16 kHz mono PCM 16 bits)
+﻿# Génère une voix de test (SAPI de Windows → WAV 16 kHz mono PCM 16 bits)
 # pour les essais de débit du streaming sans microphone. Répété et
 # déterministe : même phrase à chaque appel.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Speech
-$dir = Join-Path $env:APPDATA "Plume\test"
+$dir = Join-Path $env:APPDATA "Voxli\test"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $wav = Join-Path $dir "voix.wav"
 
@@ -18,7 +18,7 @@ $synth.SetOutputToWaveFile($wav, $fmt)
 $synth.Rate = 0
 # Phrase longue (~10 s) : le débit streaming se mesure sur la durée.
 $synth.Speak(
-    "Bonjour, je teste la dictee vocale locale en francais avec Plume. " +
+    "Bonjour, je teste la dictee vocale locale en francais avec Voxli. " +
     "Cette phrase longue sert a mesurer la latence du texte en direct, " +
     "du premier mot jusqu'a la fin de la prise.")
 $synth.Dispose()

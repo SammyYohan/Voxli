@@ -1,4 +1,4 @@
-# Vérification de l'environnement de développement Windows pour Plume.
+﻿# Vérification de l'environnement de développement Windows pour Voxli.
 # Affiche un tableau de présence/absence pour chaque outil documenté dans
 # docs/03 §2 (prérequis de construction).
 #
@@ -50,9 +50,9 @@ $sdk = Get-ChildItem $sdkRoot -ErrorAction SilentlyContinue | Sort-Object Name -
 if ($sdk) { Write-Output ("  OK   windows-sdk   {0}" -f $sdk.Name) } else { Write-Output '  MANQUANT windows-sdk' }
 
 # Modèle ASR local (facultatif : la démo tourne avec le moteur factice)
-$models = Join-Path $env:APPDATA 'Plume\models'
+$models = Join-Path $env:APPDATA 'Voxli\models'
 $bin = Get-ChildItem $models -Filter 'ggml-*.bin' -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($bin) { Write-Output ("  OK   modele-whisper {0}" -f $bin.Name) } else { Write-Output '  (info) aucun modele ggml dans %APPDATA%\Plume\models — run scripts/fetch-model.ps1 pour le moteur reel' }
+if ($bin) { Write-Output ("  OK   modele-whisper {0}" -f $bin.Name) } else { Write-Output '  (info) aucun modele ggml dans %APPDATA%\Voxli\models — run scripts/fetch-model.ps1 pour le moteur reel' }
 
 Write-Output ''
-Write-Output 'Note : les modules purs (plume-core, tests) compilent sans microphone ni modele.'
+Write-Output 'Note : les modules purs (Voxli-core, tests) compilent sans microphone ni modele.'

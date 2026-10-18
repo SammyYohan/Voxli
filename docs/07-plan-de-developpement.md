@@ -72,7 +72,7 @@ Prérequis : Rust stable (toolchain `x86_64-pc-windows-msvc`), Visual Studio Bui
 rustc --version ; cargo --version ; cmake --version ; node --version ; pnpm --version
 
 # 2. Compilation du noyau seul (tests unitaires hors Windows : machine à états, plan d'insertion)
-cargo test -p plume-core
+cargo test -p voxli-core
 
 # 3. Récupération d'un modèle de test (une seule fois, depuis le dépôt officiel whisper.cpp)
 #    Taille annoncée à l'utilisateur dans l'application ; ici, poste de développement.
@@ -83,13 +83,13 @@ pnpm install
 pnpm tauri dev
 
 # 5. Banc de latence (rejoue le corpus de recette et écrit un CSV daté)
-cargo run --release -p plume-bench -- --corpus tests/fixtures/audio/latency --out benchmarks/latency-$(Get-Date -Format yyyyMMdd).csv
+cargo run --release -p voxli-bench -- --corpus tests/fixtures/audio/latency --out benchmarks/latency-$(Get-Date -Format yyyyMMdd).csv
 
 # 6. Mesure mémoire (échantillonnage du processus pendant 30 dictées)
 .\scripts\measure-memory.ps1 -DurationSeconds 900 -Out benchmarks\memory-$(Get-Date -Format yyyyMMdd).csv
 
 # 7. Preuve d'absence de connexion sortante (mode local strict, pare-feu local)
-.\scripts\prove-no-network.ps1 -Exe .\target\release\plume.exe
+.\scripts\prove-no-network.ps1 -Exe .\target\release\Voxli.exe
 
 # 8. Build de l'installateur (P1 : signé ; P0 : non signé et étiqueté comme tel)
 pnpm tauri build
@@ -99,7 +99,7 @@ pnpm tauri build
 
 - La compatibilité avec l'ensemble de la matrice d'applications (6 applications sur 12, dont aucune
   application élevée).
-- La qualité du français en usage métier (aucun corpus « Plume-FR » à ce stade : il doit être
+- La qualité du français en usage métier (aucun corpus « Voxli-FR » à ce stade : il doit être
   enregistré en P1).
 - La tenue sur 60 minutes (l'endurance est mesurée en P1).
 - La conformité réglementaire ou la robustesse face à un EDR d'entreprise.
@@ -248,6 +248,6 @@ utilisateur que Handy ou Superwhisper, **ne se finance pas**.
    l'essai gratuit).
 3. **Autoriser le spike P0** (2 semaines) ou demander d'abord une validation marché plus poussée.
 4. **Trancher le modèle moteur par défaut** (`docs/03` ADR-03) après le spike.
-5. **Confirmer le nom du produit** et la politique de marque (le nom `Plume` est un nom de travail).
+5. **Nom du produit confirmé** : `Voxli`.
 6. **Décider de la politique de mise à jour** : fenêtre de mises à jour fonctionnelles incluse dans
    la licence perpétuelle (24 mois proposés) et durée de support de sécurité (24 ou 36 mois).

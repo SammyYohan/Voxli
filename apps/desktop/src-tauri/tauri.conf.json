@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Plume",
+  "productName": "Voxli",
   "version": "0.1.0",
-  "identifier": "app.plume.desktop",
+  "identifier": "app.voxli.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Plume — Réglages",
+        "title": "Voxli — Réglages",
         "width": 780,
         "height": 620,
         "minWidth": 620,

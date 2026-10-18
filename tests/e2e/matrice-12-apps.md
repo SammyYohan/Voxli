@@ -5,7 +5,7 @@ sous-ensemble ① — 6 lignes « P0-spike » — est exigé pour le go/no-go de
 spike, les 6 suivantes arrivent avant la release V1).
 
 Protocole par ligne :
-1. compiler et lancer Plume ; noter la version dans le tableau ;
+1. compiler et lancer Voxli ; noter la version dans le tableau ;
 2. positionner le focus dans le champ décrit ci-dessous ;
 3. dicter la phrase de référence (« Deux mois de dictée, aucun souci. ») ;
 4. relever : niveau utilisé (journal `InsertResult`), temps d'insertion

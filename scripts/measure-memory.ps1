@@ -1,13 +1,13 @@
-# Mesure mémoire (docs/06 §4 : cible de mémoire de repos sous 210 Mo).
+﻿# Mesure mémoire (docs/06 §4 : cible de mémoire de repos sous 210 Mo).
 #
-# Échantillonne le jeu de travail + mémoire privée du processus Plume,
+# Échantillonne le jeu de travail + mémoire privée du processus Voxli,
 # pendant une fenêtre d'observation, en affichant min/moy/max.
 #
 # Exécuter : powershell -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Seconds 60
 
 param(
     [int] $Seconds = 60,
-    [string] $ProcessName = 'Plume'
+    [string] $ProcessName = 'Voxli'
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -26,7 +26,7 @@ while ((Get-Date) -lt $end) {
         $points.Add($mb) | Out-Null
         Write-Output (('{0:HH:mm:ss}  {1,7:F1} Mo' -f (Get-Date), $mb))
     } else {
-        Write-Output ('{0:HH:mm:ss}  processus introuvable — lancez Plume d''abord' -f (Get-Date))
+        Write-Output ('{0:HH:mm:ss}  processus introuvable — lancez Voxli d''abord' -f (Get-Date))
         Start-Sleep 2
     }
     Start-Sleep -Milliseconds 1000

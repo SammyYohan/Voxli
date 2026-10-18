@@ -1,4 +1,4 @@
-# Génération des fixtures audio (tests/fixtures/audio).
+﻿# Génération des fixtures audio (tests/fixtures/audio).
 #
 # Écrit des WAV PCM16 mono 16 kHz déterministes (aucun fichier binaire suivi
 # dans le dépôt). Ces fixtures servent à la recette manuelle et aux futurs

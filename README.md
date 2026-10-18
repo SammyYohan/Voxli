@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="assets/logo.svg" width="120" height="120" alt="Voxli Logo" />
+</p>
+
 # Voxli — dictée IA locale pour Windows
 
-> **Voxli** (nom de code de développement : `Plume`) est une application de dictée vocale assistée par IA 100 % locale, respectueuse de la vie privée, sans dépendance cloud et conçue pour Windows.
+> **Voxli** est une application de dictée vocale assistée par IA 100 % locale, respectueuse de la vie privée, sans dépendance cloud et conçue pour Windows (nom de code de développement initial : `Plume`).
 
 **Statut : P1 → P4 implémentées — en phase de test.** La conception (7 livrables) est
 terminée ; les quatre phases de développement sont codées : réglages à chaud,
@@ -58,7 +62,7 @@ provenant d'un concurrent ou d'un site d'affiliation, donc à confiance limitée
 3. **Choisir le moteur par défaut** : Whisper `small`/`large-v3-turbo` (large couverture
    linguistique) ou Parakeet v3 (meilleur WER français annoncé, CPU-friendly, 25 langues
    européennes, licence CC-BY-4.0 avec attribution obligatoire) — voir `docs/03`, ADR-03.
-4. **Nom du produit** : Confirmé sous le nom **Voxli** (les modules et crates internes conservent le préfixe technique `plume-*`).
+4. **Nom du produit** : Confirmé sous le nom **Voxli** (workspace et 11 crates unifiés sous `voxli-*`).
 5. **Autoriser le spike P0** (2 semaines) : c'est lui qui produit les seules mesures réellement
    décisives (latence, fiabilité d'insertion, RAM) avant d'engager 3 à 6 mois de développement.
 
@@ -86,20 +90,20 @@ Détail, critères de sortie et risques : [`docs/07-plan-de-developpement.md`](d
 
 ```
 crates/                        11 modules, toit Cargo workspace
-├── plume-core                 noyau pur : état, orchestrateur, types partagés
-├── plume-config               %APPDATA%\Plume\config.json (schéma v4, migrations)
-├── plume-diagnostics          journal sans contenu (RF-34), rapport de support
-├── plume-license              licences Ed25519 hors ligne (grâce incluse)
-├── plume-storage              historique : mémoire (défaut) / SQLite chiffré DPAPI (opt-in)
-├── plume-secure               secrets : DPAPI (opt-in), jamais dans le JSON
-├── plume-hotkeys              politique des raccourcis (validation, réservées)
-├── plume-audio                 mono 16 kHz f32, pré-roll 400 ms, VAD énergie à
+├── voxli-core                 noyau pur : état, orchestrateur, types partagés
+├── voxli-config               %APPDATA%\Voxli\config.json (schéma v4, migrations)
+├── voxli-diagnostics          journal sans contenu (RF-34), rapport de support
+├── voxli-license              licences Ed25519 hors ligne (grâce incluse)
+├── voxli-storage              historique : mémoire (défaut) / SQLite chiffré DPAPI (opt-in)
+├── voxli-secure               secrets : DPAPI (opt-in), jamais dans le JSON
+├── voxli-hotkeys              politique des raccourcis (validation, réservées)
+├── voxli-audio                mono 16 kHz f32, pré-roll 400 ms, VAD énergie à
 │                              trois niveaux, liste des micros (cpal 0.18)
-├── plume-asr                  moteur factice ; whisper.cpp et Parakeet ONNX
+├── voxli-asr                  moteur factice ; whisper.cpp, Nemotron 3.5 et Parakeet ONNX
 │                              (opt-in) ; transcription distante BYOK (opt-in)
-├── plume-win                  tout le `unsafe` Win32 : presse-papiers, UIA,
-│                              SendInput, fenêtre active
-└── plume-text                 plan d'insertion (pur) + exécution cascade +
+├── voxli-win                  tout le `unsafe` Win32 : presse-papiers, UIA,
+│                              SendInput, fenêtre active, liaison NeMo
+└── voxli-text                 plan d'insertion (pur) + exécution cascade +
                                règles françaises RF-26 + dictionnaire RF-23
 
 apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
@@ -114,7 +118,7 @@ apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
 
 - Invariant 1 (docs/04 §3) : le texte transcrit est dans le tampon **avant**
   toute tentative d'insertion et n'est jamais perdu — testé par
-  `crates/plume-core/tests/flow.rs` (13 tests d'état, y compris panne de
+  `crates/voxli-core/tests/flow.rs` (13 tests d'état, y compris panne de
   moteur → réessayer, échec d'insertion → secours, fuite de contenu).
 - Invariant 2 : une seule dictée à la fois ; option **refus explicite** de RF-05
   (`RejectedBusy`) **et** file d'attente de 1 (RF-05 b, `QueuedAfterCurrent`).
@@ -123,7 +127,7 @@ apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
   exceptions **documentées dans `docs/05 §3`** sont la fenêtre de secours
   (RF-31) et la lecture d'historique choisie par l'utilisateur (RF-33).
 - Le resampler est maison (sinc fenêtré, 24 taps par rive) —
-  cf. `plume-audio/convert.rs`, anti-repliement testé.
+  cf. `voxli-audio/convert.rs`, anti-repliement testé.
 - RF-16 : la détection automatique de langue est refusée pour les énoncés
   courts (< 1,5 s) — repli sur la langue configurée.
 - RF-22 : le texte transcrit est conservé dans le tampon du noyau même après
@@ -135,22 +139,22 @@ apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
 Tout le workspace passe (`cargo test --workspace`, exit 0) : **22 tests noyau,
 11 config (schéma 4 + migrations 3→4), 16 post-traitement FR, 9 audio
 (cpal 0.18)**, les suites storage/secure/licence/hotkeys/ASR/diagnostics
-toutes vertes ; `cargo check -p plume-desktop` vert **sans avertissement**,
+toutes vertes ; `cargo check -p voxli-desktop` vert **sans avertissement**,
 ainsi qu'avec la feature `history-disk` (SQLite chiffré DPAPI) et
-`cargo test -p plume-asr --features remote` (6 tests). L'application de
+`cargo test -p voxli-asr --features remote` (6 tests). L'application de
 développement démarre et consigne : `license-free` → `history-memory` →
 `capture-opened:…` → `engine_loaded {"engine":"fake"}` ; les raccourcis
 `Shift+Alt+Z/X` s'enregistrent et un conflit possible sur `Ctrl+Alt+Espace`
 est signalé sans paniquer (RF-03). Interface : `tsc --noEmit` et `vite build`
 verts (3 fenêtres : réglages, secours, pastille). **Moteur whisper.cpp réel**
 (aussi au 17/10/2026) : `whisper-rs 0.16` compilé (libclang fourni par LLVM
-23.1.3 via winget, CMake embarqué de VS) ; `cargo test -p plume-asr
---features whisper` vert et `cargo build -p plume-desktop --features
+23.1.3 via winget, CMake embarqué de VS) ; `cargo test -p voxli-asr
+--features whisper` vert et `cargo build -p voxli-desktop --features
 custom-protocol,real-asr` vert — la transcription voix réelle est prête, les
 mesures de latence et de précision restent à produire (§6.4).
-**Liaison NeMo-Speech.cpp (au 18/10/2026)** : `cargo test -p plume-win
+**Liaison NeMo-Speech.cpp (au 18/10/2026)** : `cargo test -p voxli-win
 --features nemo` — la DLL 0.2.0 charge et répond (`nemo-speech-asr 0.2.0`) ;
-`cargo test -p plume-asr --features nemo-stream` — le GGUF réel
+`cargo test -p voxli-asr --features nemo-stream` — le GGUF réel
 (`nemotron-3.5-asr-streaming-0.6b.q8_0.gguf`, 742 090 464 octets,
 téléchargé) charge et l'inférence offline décode une seconde de silence,
 puis le cycle streaming complet (ouverture → 4 pushes → drain → finish)
@@ -192,21 +196,21 @@ pnpm --dir apps/desktop install
 pnpm --dir apps/desktop build          # ../dist pour `frontendDist`
 
 # tests des modules (sans microphone ni modèle)
-cargo test -p plume-core -p plume-config -p plume-license -p plume-storage `
-  -p plume-diagnostics -p plume-audio -p plume-hotkeys -p plume-asr `
-  -p plume-secure -p plume-text -p plume-win
+cargo test -p voxli-core -p voxli-config -p voxli-license -p voxli-storage `
+  -p voxli-diagnostics -p voxli-audio -p voxli-hotkeys -p voxli-asr `
+  -p voxli-secure -p voxli-text -p voxli-win
 
 # application complète — la feature `custom-protocol` embarque l'interface
 # (`../dist`) dans le binaire : SANS elle, un simple `cargo run` reste en
 # « mode dev » (devUrl localhost:5173) et chaque fenêtre webview s'ouvre
 # vide faute de serveur Vite.
-cargo run -p plume-desktop --features custom-protocol
+cargo run -p voxli-desktop --features custom-protocol
 # variante développement de l'interface uniquement :
-#   `pnpm --dir apps/desktop dev` + `cargo run -p plume-desktop`
+#   `pnpm --dir apps/desktop dev` + `cargo run -p voxli-desktop`
 #   (aucune feature, hot reload — sinon fenêtres vides)
 ```
 
-Le tray apparaît (« Plume — dictée locale ») : clic gauche ouvre/ferme les
+Le tray apparaît (« Voxli — dictée locale ») : clic gauche ouvre/ferme les
 réglages ; `Ctrl+Alt+Espace` (appui maintenu) dicte ; `Shift+Alt+Z` recolle le
 dernier texte ; `Shift+Alt+X` affiche la fenêtre de secours.
 
@@ -222,8 +226,8 @@ winget install --id LLVM.LLVM -e --accept-source-agreements --accept-package-agr
 $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
 $env:PATH += ";C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin"
 
-cargo test -p plume-asr --features whisper                 # 2/2 verts
-cargo build -p plume-desktop --features custom-protocol,real-asr
+cargo test -p voxli-asr --features whisper                 # 2/2 verts
+cargo build -p voxli-desktop --features custom-protocol,real-asr
 ```
 
 ```powershell
@@ -235,8 +239,8 @@ $env:LIBCLANG_PATH = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\T
 
 ```powershell
 # Historique disque chiffré + secrets Windows :
-cargo test -p plume-storage --features secure-disk   # SQLite + DPAPI (RF-33)
-cargo test -p plume-secure --features dpapi          # secrets Windows
+cargo test -p voxli-storage --features secure-disk   # SQLite + DPAPI (RF-33)
+cargo test -p voxli-secure --features dpapi          # secrets Windows
 
 # Modèles : le gestionnaire intégré les télécharge depuis la fenêtre
 # Réglages → « Modèles » (RF-15) — empreinte SHA-256 consignée ; à la fin
@@ -259,12 +263,12 @@ réseau au runtime. Le SDK est **opt-in** :
 #    autre emplacement → variable d'env NEMO_SPEECH_PREFIX (build.rs).
 # 2) compiler + tester la liaison (build.rs lie la lib et copie les DLL
 #    du SDK à côté de l'exécutable — aucun PATH à bricoler) :
-cargo test -p plume-win --features nemo          # version du SDK au journal
-cargo test -p plume-asr --features nemo-stream   # façade sûre
-cargo build -p plume-desktop `
+cargo test -p voxli-win --features nemo          # version du SDK au journal
+cargo test -p voxli-asr --features nemo-stream   # façade sûre
+cargo build -p voxli-desktop `
   --features custom-protocol,real-asr,nemo-stream
 # 3) modèle : Réglages → Modèles → « Nemotron 3.5 continu » (ou placer le
-#    GGUF dans %APPDATA%\Plume\models\).
+#    GGUF dans %APPDATA%\Voxli\models\).
 ```
 
 Priorité `auto` avec nemo-stream compilé ET modèle présent : **nemo** →

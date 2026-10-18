@@ -15,7 +15,7 @@ rechargez-les après un `git clean -xd`.
 
 Vérification rapide après une session de dictée :
 
-1. lancer Plume (fenêtre réglages via le tray) ;
-2. vérifier dans le journal (`%APPDATA%\Plume\logs\plume.log`) que chaque
+1. lancer Voxli (fenêtre réglages via le tray) ;
+2. vérifier dans le journal (`%APPDATA%\Voxli\logs\voxli.log`) que chaque
    session consignée en `SessionDone` porte l'étape `vad` et un verdict
    cohérent — le contenu n'apparaît jamais (RF-34).

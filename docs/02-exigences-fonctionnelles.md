@@ -1,4 +1,4 @@
-# Livrable 2 — Exigences fonctionnelles et critères d'acceptation
+﻿# Livrable 2 — Exigences fonctionnelles et critères d'acceptation
 
 Chaque exigence porte un identifiant stable (`RF-xx`), un comportement attendu, un critère
 d'acceptation **vérifiable** et un test. Les tests automatisables sont marqués **[AUTO]**, les tests
