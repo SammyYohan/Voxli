@@ -6,12 +6,18 @@
     <link rel="stylesheet" href="/src/pill.css" />
   </head>
   <body class="pill" data-state="idle">
-    <span id="dot" class="dot"></span>
-    <span id="label" class="label">prête</span>
-    <span id="partial" class="partial"></span>
-    <div class="meter slim">
-      <div id="pill-meter" class="meter-fill"></div>
+    <div id="stage" class="stage">
+      <span id="dot" class="dot"></span>
+      <span id="label" class="label">prête</span>
+      <span id="partial" class="partial"></span>
+      <div class="meter slim">
+        <div id="pill-meter" class="meter-fill"></div>
+      </div>
     </div>
+    <div id="legend" class="legend" aria-hidden="true">
+      <span class="legend-title">Dictée</span>
+      <span id="keys" class="legend-keys">&nbsp;</span>
+    </div>
+    <script type="module" src="/src/pill.ts"></script>
   </body>
-  <script type="module" src="/src/pill.ts"></script>
 </html>

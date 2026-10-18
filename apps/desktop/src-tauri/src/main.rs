@@ -162,11 +162,12 @@ fn main() {
 
 /// Fenêtre pastille (RF-09 v2) : indicateur **permanent** en haut au centre
 /// du moniteur principal. Au repos, un seul point discret (écoute armée :
-/// le raccourci est prêt) ; pendant une prise, la pill complète (état +
+/// le raccourci est prêt) ; pendant une prise, la pilule complète (état +
 /// vumètre + texte en direct du streaming, amendement ADR-02). Transparente
-/// et non interactive : le clic traverse vers la fenêtre dessous. Créée
-/// visible — elle ne se masque jamais ; le webview reflète la machine à
-/// états via `state://changed`.
+/// et non interactive : le clic traverse vers la fenêtre dessous. Un
+/// thread de fond re-sert position, échelle et premier plan (écrans de
+/// toutes tailles, fenêtres plein écran « fenêtrées ») et détecte le
+/// survol — la légende du raccourci est alors montrée sous la pilule.
 fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
     if app.get_webview_window("pill").is_some() {
         return Ok(());
@@ -174,7 +175,9 @@ fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
     let win =
         tauri::WebviewWindowBuilder::new(app, "pill", tauri::WebviewUrl::App("pill.html".into()))
             .title(strings::PILL_WINDOW_TITLE)
-            .inner_size(640.0, 34.0)
+            // 640×34 : la pilule ; 40 px dessous : la zone de la légende
+            // (invisible hors survol, traverse au clic comme le reste).
+            .inner_size(640.0, 74.0)
             .decorations(false)
             .resizable(false)
             .skip_taskbar(true)
@@ -183,20 +186,94 @@ fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
             .transparent(true)
             .shadow(false)
             .build()?;
-    // Position en haut au centre du moniteur principal : calcul en pixels
-    // physiques (640 logiques × échelle), rendu en logiques. Une seule
-    // fois — le webview reflète ensuite seul les changements d'état.
-    if let Ok(Some(m)) = app.primary_monitor() {
-        let scale = m.scale_factor();
-        let win_phys_w = (640.0 * scale).round() as i32;
-        let x = m.position().x + ((m.size().width as i32 - win_phys_w) / 2).max(0);
-        let y = m.position().y + 8;
-        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-    }
+    place_top_center(app.app_handle(), &win);
     // Cliquer à travers l'indicateur : il ne doit jamais créer d'ombre
     // interactive par-dessus l'application en cours (RF-09).
     let _ = win.set_ignore_cursor_events(true);
+
+    // Thread de fond : position/échelle/premier plan réassurés et survol
+    // détecté (clic traversant ⇒ le webview ne sentira jamais la souris,
+    // c'est le noyau qui surveille le curseur). Un échec de spawn ne
+    // bloque que le confort (légende, réassurance) — l'indicateur reste.
+    let handle = app.app_handle().clone();
+    let win_maint = win.clone();
+    std::thread::Builder::new()
+        .name("pill-maintenance".into())
+        .spawn(move || pill_maintenance_loop(handle, win_maint))
+        .ok();
     Ok(())
+}
+
+/// Dimensions de la pastille : largeur logique, hauteur totale, marge haut.
+const PILL_WIDTH: f64 = 640.0;
+const PILL_HEIGHT: f64 = 74.0;
+const PILL_TOP_MARGIN: f64 = 8.0;
+
+/// Place (et repose) la fenêtre en haut au centre du moniteur principal.
+/// Largeur bornée à 85 % de l'écran : du plus ancien PC (1024 px) au 4K à
+/// échelle 200 %, l'indicateur garde sa place et ses proportions (le DPI
+/// est géré en convertissant les logiques en physiques puis en logiques).
+fn place_top_center(app: &tauri::AppHandle<Wry>, win: &tauri::WebviewWindow<Wry>) {
+    let Ok(Some(m)) = app.primary_monitor() else {
+        return;
+    };
+    let scale = m.scale_factor();
+    let screen_w = m.size().width as f64;
+    let target_w = ((PILL_WIDTH * scale).round() as i32).min((screen_w * 0.85) as i32);
+    if let Ok(size) = win.outer_size() {
+        if (size.width as f64 - target_w as f64).abs() > 1.0 {
+            let _ = win.set_size(tauri::LogicalSize::new(
+                target_w as f64 / scale,
+                PILL_HEIGHT,
+            ));
+        }
+    }
+    let x = m.position().x + (m.size().width as i32 - target_w).max(0) / 2;
+    let y = m.position().y + PILL_TOP_MARGIN as i32;
+    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    // L'attribut peut se perdre au changement d'affichage ou à l'ouverture
+    // d'une fenêtre plein écran « fenêtrée » : on le re-sert. Plein écran
+    // exclusif (jeux) : Windows garde le dessus — limite système assumée
+    // (docs/03).
+    let _ = win.set_always_on_top(true);
+}
+
+/// Boucle de maintenance : survol lu à ~120 ms (réponse vive de la
+/// légende), position et premier plan rejoués toutes les ~2,4 s. Coût
+/// minime : une lecture de curseur, un rect de fenêtre.
+fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
+    let mut tick: u32 = 0;
+    let mut inside = false;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        tick = tick.wrapping_add(1);
+        if tick % 20 == 0 {
+            place_top_center(&app, &win);
+        }
+        if hover_point(&app, &win) != inside {
+            inside = !inside;
+            // Événement réservé à la pastille (aucun contenu dicté) :
+            // entrée = la légende du raccourci apparaît, sortie = elle
+            // s'efface.
+            let _ = app.emit_to("pill", "pill://hover", inside);
+        }
+    }
+}
+
+/// Le curseur est-il au-dessus de la fenêtre pastille ? Coordonnées
+/// physiques des deux côtés (`cursor_position` est physique, relative à
+/// l'origine de l'écran principal).
+fn hover_point(app: &tauri::AppHandle<Wry>, win: &tauri::WebviewWindow<Wry>) -> bool {
+    let Ok(cursor) = app.cursor_position() else {
+        return false;
+    };
+    let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
+        return false;
+    };
+    cursor.x >= f64::from(pos.x)
+        && cursor.x < f64::from(pos.x + size.width as i32)
+        && cursor.y >= f64::from(pos.y)
+        && cursor.y < f64::from(pos.y + size.height as i32)
 }
 
 // ------------------------------------------------------- fenêtre principale ---

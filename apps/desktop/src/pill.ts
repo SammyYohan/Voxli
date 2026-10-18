@@ -1,9 +1,12 @@
 /** Pastille RF-09 v2 — indicateur permanent en haut au centre de l'écran.
  * La fenêtre vit du démarrage à l'extinction : au repos elle montre le
  * seul point d'écoute armée, pendant la prise le visuel complet (état,
- * vumètre, texte en direct). Aucun contenu dicté n'est journalisé ni
- * conservé (RF-34) ; les hypothèses streaming sont transitoires
- * (amendement ADR-02) et s'effacent dès la fin de la prise. */
+ * vumètre, texte en direct). Le survol est détecté côté noyau (la fenêtre
+ * est traversée par le clic) : à l'entrée, la légende montre le raccourci
+ * de dictée configuré — relu à chaque survol, il peut changer à chaud.
+ * Aucun contenu dicté n'est journalisé ni conservé (RF-34) ; les
+ * hypothèses streaming sont transitoires (amendement ADR-02) et
+ * s'effacent dès la fin de la prise. */
 
 const fr_state: Record<string, string> = {
   idle: "prête",
@@ -14,6 +17,29 @@ const fr_state: Record<string, string> = {
   inserting: "insertion…",
   recovery: "incident",
 };
+
+/** Noms des touches en français (:seuls les libellés de plume-hotkeys). */
+const fr_keys: Record<string, string> = {
+  Space: "Espace",
+  Control: "Ctrl",
+  Ctrl: "Ctrl",
+  Shift: "Maj",
+  Alt: "Alt",
+  AltGr: "Alt Gr",
+  Meta: "Win",
+  Win: "Win",
+  Enter: "Entrée",
+  Escape: "Échap",
+};
+
+function frKey(raw: string): string {
+  return raw
+    .split("+")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .map((t) => fr_keys[t] ?? t)
+    .join(" + ");
+}
 
 void (async function init() {
   const state = await import("@tauri-apps/api/event").then((m) => m.listen);
@@ -49,6 +75,22 @@ void (async function init() {
     el.textContent = ev.payload.text;
     el.classList.add("live");
     document.body.classList.add("has-partial");
+  });
+
+  // Survol (détection noyau, fenêtre traversée au clic) : la légende
+  // montre le raccourci courant, relu à chaque entrée (RF-01 : changeable
+  // à chaud).
+  void state<boolean>("pill://hover", (ev) => {
+    if (ev.payload) {
+      document.body.classList.add("hover");
+      void (async () => {
+        const cfg = await invoke<{ hotkeys: { pushToTalk: string } }>("config_get");
+        const el = document.getElementById("keys");
+        if (el !== null) el.textContent = frKey(cfg.hotkeys.pushToTalk);
+      })();
+    } else {
+      document.body.classList.remove("hover");
+    }
   });
 
   /** Efface la ligne transitoire (fin de prise — RF-34 : rien ne reste). */

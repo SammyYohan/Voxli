@@ -2,8 +2,9 @@
  * Au repos : un seul point discret (écoute armée — le raccourci est prêt).
  * Pendant une prise : pill complète (état + vumètre + texte en direct du
  * streaming, amendement ADR-02 ; partiels transitoires, jamais conservés,
- * RF-34). La fenêtre est transparente et son contenu n'est jamais
- * interactif : un clic la traverse et atteint la fenêtre dessous. */
+ * RF-34). Au survol (détecté côté noyau — la fenêtre est traversée par le
+ * clic) : la légende du raccourci glisse sous la pilule. La fenêtre est
+ * transparente et son contenu n'est jamais interactif. */
 :root {
   color-scheme: dark;
 }
@@ -17,16 +18,23 @@ body.pill {
   color: #e5e7eb;
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   overflow: hidden;
   user-select: none;
 }
 
-/* Fond arrondi : n'existe QUE pendant les états actifs (le reste du temps
- * la fenêtre est invisible — seul le point d'écoute armée flotte). */
-body.pill::before {
+/* Scène — la pilule (les 34 px du haut). Le fond arrondi n'existe QUE
+ * pendant les états actifs (le reste du temps la fenêtre est invisible,
+ * seul le point d'écoute armée flotte). */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+.stage::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -36,17 +44,15 @@ body.pill::before {
   opacity: 0;
   transition: opacity 0.22s ease;
 }
-body.pill[data-state="recording"]::before,
-body.pill[data-state="finalizing"]::before,
-body.pill[data-state="transcribing"]::before,
-body.pill[data-state="post-processing"]::before,
-body.pill[data-state="inserting"]::before,
-body.pill[data-state="recovery"]::before {
+body[data-state="recording"] .stage::before,
+body[data-state="finalizing"] .stage::before,
+body[data-state="transcribing"] .stage::before,
+body[data-state="post-processing"] .stage::before,
+body[data-state="inserting"] .stage::before,
+body[data-state="recovery"] .stage::before {
   opacity: 1;
 }
-
-/* Le contenu passe au-dessus du fond (::before est positionné). */
-body.pill > * {
+.stage > * {
   position: relative;
   z-index: 1;
 }
@@ -63,10 +69,10 @@ body.pill > * {
 
 /* Repos (idle) : seul le point, centré, respiration discrète — l'app est
  * prête, le raccourci armé. */
-body.pill[data-state="idle"] {
+body[data-state="idle"] .stage {
   justify-content: center;
 }
-body.pill[data-state="idle"] .dot {
+body[data-state="idle"] .dot {
   width: 9px;
   height: 9px;
   background: #9ca3af;
@@ -83,15 +89,18 @@ body.pill[data-state="idle"] .dot {
     opacity: 1;
   }
 }
-body.pill[data-state="idle"] .label,
-body.pill[data-state="idle"] .partial,
-body.pill[data-state="idle"] .meter {
+body[data-state="idle"] .label,
+body[data-state="idle"] .partial,
+body[data-state="idle"] .meter {
   display: none;
 }
+/* Survol : le halo du point répond légèrement (détection côté noyau). */
+body.hover .dot {
+  box-shadow: 0 0 0 5px rgba(13, 17, 21, 0.45);
+}
 
-/* Prise en cours : le point bat (signal vif, sans texte — la parole est
- * le contenu). */
-body.pill[data-state="recording"] .dot {
+/* Prise en cours : le point bat (le texte en direct est le contenu). */
+body[data-state="recording"] .dot {
   background: #ef4444;
   animation: battre 0.9s ease-in-out infinite;
   margin-left: 14px;
@@ -106,14 +115,14 @@ body.pill[data-state="recording"] .dot {
   }
 }
 
-body.pill[data-state="finalizing"] .dot,
-body.pill[data-state="transcribing"] .dot,
-body.pill[data-state="post-processing"] .dot,
-body.pill[data-state="recovery"] .dot {
+body[data-state="finalizing"] .dot,
+body[data-state="transcribing"] .dot,
+body[data-state="post-processing"] .dot,
+body[data-state="recovery"] .dot {
   background: #f59e0b;
   margin-left: 14px;
 }
-body.pill[data-state="inserting"] .dot {
+body[data-state="inserting"] .dot {
   background: #22c55e;
   margin-left: 14px;
 }
@@ -124,12 +133,12 @@ body.pill[data-state="inserting"] .dot {
 }
 /* Pendant la prise, le libellé s'efface dès que le texte en direct
  * apparaît : la parole est le message. */
-body.pill[data-state="recording"].has-partial .label {
+body[data-state="recording"].has-partial .label {
   display: none;
 }
 
-/* Zone contextuelle (wisprflow-like) : le texte s'écrit en direct, une
- * seule ligne, ellipsis, curseur clignotant tant que la prise dure. */
+/* Zone contextuelle : le texte s'écrit en direct, une seule ligne,
+ * ellipsis, curseur clignotant tant que la prise dure. */
 .partial {
   display: none;
   color: #f9fafb;
@@ -177,4 +186,38 @@ body.pill[data-state="recording"].has-partial .label {
 }
 body.has-partial .meter {
   width: 40px;
+}
+
+/* Légende du raccourci (RF-09 v2) : sous la pilule, au survol. Animation
+ * d'entrée — fondu et léger glissement vers le bas. */
+.legend {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(13, 17, 21, 0.96);
+  border: 1px solid #374151;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  color: #9ca3af;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-50%) translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+body.hover .legend {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.legend-keys {
+  color: #f9fafb;
+  background: #1f2937;
+  border: 1px solid #4b5563;
+  border-radius: 6px;
+  padding: 2px 8px;
 }

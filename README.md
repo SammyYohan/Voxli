@@ -282,6 +282,12 @@ vumètre, texte en direct, curseur clignotant) ; clic traversant, jamais
 de focus. Correctif bogue notoire : la fenêtre `pill` était absente de la
 surface de permissions Tauri (« capabilities ») — son webview ne recevait
 ni événement ni commande ; elle est désormais listée (`core:default`).
+Survol (côté noyau, clic traversant) : mini pop-up sous la pilule qui
+montre le raccourci de dictée configuré, relu à chaque survol. Adaptation
+d'écran : position recalculée au moniteur principal ~2,4 s (largeur bornée
+à 85 %, échelle DPI convertie) et « toujours au premier plan » réassuré ;
+plein écran exclusif (jeux DirectX) recouvre n'importe quel `HWND_TOPMOST`
+— limite système.
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
 reproductible — le pipeline complet reste exerçable en CI sans modèle ni

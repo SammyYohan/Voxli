@@ -94,7 +94,13 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   topmost, non activable, clic traversant) dont le rendu est un webview séparé — toute panne de
   ce webview ne peut pas affecter le cycle (T-17/T-21 inchangés). Elle est **permanente** :
   au repos un point discret en haut au centre (écoute armée — le raccourci est prêt, la capture
-  n'est PAS active), pendant la prise le visuel complet (état + vumètre + texte en direct).
+  n'est PAS active), pendant la prise le visuel complet (état + vumètre + texte en direct). Au
+  survol (détecté côté noyau — le clic traverse la fenêtre), la légende du raccourci de dictée
+  glisse sous la pilule. Un thread de maintenance re-sert position (moniteur principal, largeur
+  bornée à 85 %, DPI géré) et l'attribut « toujours au premier plan » — que Windows peut
+  abandonner au changement d'affichage ou à l'ouverture d'une fenêtre plein écran fenêtrée.
+  **Limite assumée** : le plein écran *exclusif* (jeux DirectX) recouvre tout `HWND_TOPMOST` ;
+  Windows n'offre aucune garantie de plan au-dessus d'un échange exclusif GPU.
 - **Conséquence testable** : le test T-17 (reprise pendant transcription) et T-21 (panique moteur)
   s'exécutent avec le webview tué volontairement ; la dictée doit continuer de fonctionner.
 - **Amendement (P2 streaming, 2026)** : la règle « aucun passage de texte dicté par l'IPC » reçoit
