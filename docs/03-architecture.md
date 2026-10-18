@@ -96,7 +96,9 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   au repos un point discret en haut au centre (écoute armée — le raccourci est prêt, la capture
   n'est PAS active), pendant la prise le visuel complet (état + vumètre + texte en direct). Au
   survol (détecté côté noyau — le clic traverse la fenêtre), la légende du raccourci de dictée
-  glisse sous la pilule. Un thread de maintenance re-sert position (moniteur principal, largeur
+  glisse sous la pilule ; le déclencheur est un rayon de 15 px autour du point (hystérésis de
+  sortie à 20 px), pas le rect de la fenêtre. Un thread de maintenance re-sert position
+  (moniteur principal, largeur
   bornée à 85 %, DPI géré) et l'attribut « toujours au premier plan » — que Windows peut
   abandonner au changement d'affichage ou à l'ouverture d'une fenêtre plein écran fenêtrée.
   **Limite assumée** : le plein écran *exclusif* (jeux DirectX) recouvre tout `HWND_TOPMOST` ;

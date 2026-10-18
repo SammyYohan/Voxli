@@ -283,7 +283,9 @@ de focus. Correctif bogue notoire : la fenêtre `pill` était absente de la
 surface de permissions Tauri (« capabilities ») — son webview ne recevait
 ni événement ni commande ; elle est désormais listée (`core:default`).
 Survol (côté noyau, clic traversant) : mini pop-up sous la pilule qui
-montre le raccourci de dictée configuré, relu à chaque survol. Adaptation
+montre le raccourci de dictée configuré, relu à chaque survol — le
+survol est un rayon de 15 px autour du point (hystérésis de sortie à
+20 px : pas de clignotement au bord). Adaptation
 d'écran : position recalculée au moniteur principal ~2,4 s (largeur bornée
 à 85 %, échelle DPI convertie) et « toujours au premier plan » réassuré ;
 plein écran exclusif (jeux DirectX) recouvre n'importe quel `HWND_TOPMOST`

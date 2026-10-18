@@ -32,7 +32,7 @@ use plume_diagnostics::{Event, Logger};
 use plume_hotkeys::{validate_before_register, Combo, HotkeyError, Key};
 use plume_win::uia::Uia;
 
-use commands::UiShared;
+use commands::{lock_or_recover, UiShared};
 use worker::WorkerMsg;
 
 // ------------------------------------------------------------- démarrage ---
@@ -208,6 +208,10 @@ fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
 const PILL_WIDTH: f64 = 640.0;
 const PILL_HEIGHT: f64 = 74.0;
 const PILL_TOP_MARGIN: f64 = 8.0;
+/// Rayon de survol du point (px logiques) : entrée à 15, sortie à 20
+/// (hystérésis — la légende ne clignote pas au bord du rayon).
+const PILL_HOVER_IN: f64 = 15.0;
+const PILL_HOVER_OUT: f64 = 20.0;
 
 /// Place (et repose) la fenêtre en haut au centre du moniteur principal.
 /// Largeur bornée à 85 % de l'écran : du plus ancien PC (1024 px) au 4K à
@@ -250,7 +254,7 @@ fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
         if tick % 20 == 0 {
             place_top_center(&app, &win);
         }
-        if hover_point(&app, &win) != inside {
+        if hover_point(&app, &win, inside) != inside {
             inside = !inside;
             // Événement réservé à la pastille (aucun contenu dicté) :
             // entrée = la légende du raccourci apparaît, sortie = elle
@@ -260,20 +264,50 @@ fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
     }
 }
 
-/// Le curseur est-il au-dessus de la fenêtre pastille ? Coordonnées
-/// physiques des deux côtés (`cursor_position` est physique, relative à
-/// l'origine de l'écran principal).
-fn hover_point(app: &tauri::AppHandle<Wry>, win: &tauri::WebviewWindow<Wry>) -> bool {
+/// Le curseur est-il à moins de 15 px (logiques) du point d'état ? Le
+/// point est **centré** au repos (visuel idle), à gauche de la pilule
+/// (marge 14 + demi-point 5) pendant les états actifs — la légende suit
+/// le point lui-même, pas le rect de la fenêtre. Hystérésis : entrée à
+/// 15 px, sortie à 20 px — jamais de clignotement au bord du rayon.
+/// Coordonnées physiques des deux côtés (`cursor_position` est physique,
+/// relative à l'origine de l'écran principal).
+fn hover_point(app: &tauri::AppHandle<Wry>, win: &tauri::WebviewWindow<Wry>, inside: bool) -> bool {
     let Ok(cursor) = app.cursor_position() else {
         return false;
     };
     let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else {
         return false;
     };
-    cursor.x >= f64::from(pos.x)
-        && cursor.x < f64::from(pos.x + size.width as i32)
-        && cursor.y >= f64::from(pos.y)
-        && cursor.y < f64::from(pos.y + size.height as i32)
+    // Échelle du moniteur principal : l'emplacement du point et le rayon
+    // sont définis en px logiques, comme la mise en page CSS.
+    let scale = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    // Position du point selon la machine à états (mie de la scène = 17
+    // px logiques) : centré au repos, à gauche sinon.
+    let state_now = {
+        let shared = app.state::<UiShared>();
+        let locked = lock_or_recover(&shared.state).clone();
+        locked
+    };
+    let dot_x = if state_now == "idle" {
+        pos.x as f64 + size.width as f64 / 2.0
+    } else {
+        pos.x as f64 + 19.0 * scale
+    };
+    let dot_y = pos.y as f64 + 17.0 * scale;
+    let (r_in, r_out) = (PILL_HOVER_IN * scale, PILL_HOVER_OUT * scale);
+    let dx = cursor.x - dot_x;
+    let dy = cursor.y - dot_y;
+    let d2 = dx * dx + dy * dy;
+    if inside {
+        d2 <= r_out * r_out
+    } else {
+        d2 <= r_in * r_in
+    }
 }
 
 // ------------------------------------------------------- fenêtre principale ---
