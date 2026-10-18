@@ -50,6 +50,20 @@
       </label>
     </div>
 
+    <!-- ================================================ Onboarding 1-clic -->
+    <div id="onboarding-card" class="notice onboarding" hidden>
+      <div class="onboarding-header">
+        <strong>🚀 Bienvenue sur Voxli !</strong>
+        <span>Prêt pour une dictée vocale instantanée, fluide et 100&nbsp;% locale ?</span>
+      </div>
+      <p class="onboarding-desc">
+        Pour démarrer immédiatement, installez le modèle Whisper compact en un clic (57&nbsp;Mo, téléchargé une seule fois, tout tourne hors-ligne) :
+      </p>
+      <div class="onboarding-actions">
+        <button id="btn-onboarding-download" type="button" class="btn-primary">⚡ Télécharger et activer Whisper (1 clic)</button>
+      </div>
+    </div>
+
     <!-- ================================================== état + vumètre -->
     <section>
       <h2>État</h2>
@@ -209,6 +223,40 @@
         Appliqués immédiatement à l'enregistrement (RF-01) — si un raccourci est
         déjà pris par une autre application, un message le signale.
       </p>
+    </section>
+
+    <!-- ================================================== dictionnaire & vocabulaire -->
+    <section id="sec-vocab">
+      <h2>Dictionnaire &amp; Vocabulaire personnalisé</h2>
+      <p class="muted">
+        Enseignez à Voxli vos acronymes, noms propres, entreprises ou jargon métier.
+        Ces termes sont injectés dans Whisper pour une précision chirurgicale (Magic Formatting).
+      </p>
+
+      <div class="vocab-profile-selector">
+        <label for="vocab-profile-select">Profil de vocabulaire&nbsp;:</label>
+        <select id="vocab-profile-select">
+          <option value="default">Général (actif partout)</option>
+          <option value="code">Profil « Code &amp; Dev »</option>
+          <option value="email">Profil « Courriels &amp; Messages »</option>
+        </select>
+      </div>
+
+      <div class="vocab-add-bar">
+        <input id="vocab-new-word" type="text" placeholder="Terme exact (ex&nbsp;: Voxli, CEFIR, SaaS)" spellcheck="false" />
+        <input id="vocab-new-variants" type="text" placeholder="Variantes orales (optionnel, ex&nbsp;: voxi, boxli)" spellcheck="false" />
+        <button id="vocab-btn-add" type="button">+ Ajouter</button>
+      </div>
+
+      <div id="vocab-chips" class="vocab-chips">
+        <!-- Rendu dynamique des jetons -->
+      </div>
+
+      <div class="vocab-footer">
+        <button id="vocab-btn-export" type="button" class="secondary">Exporter en CSV</button>
+        <button id="vocab-btn-import-file" type="button" class="secondary">Importer un fichier CSV</button>
+        <input id="vocab-file-input" type="file" accept=".csv,.txt" style="display: none;" />
+      </div>
     </section>
 
     <!-- ================================================== audio -->

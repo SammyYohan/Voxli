@@ -1,4 +1,4 @@
-﻿//! Orchestrateur de la session de dictée.
+//! Orchestrateur de la session de dictée.
 //!
 //! La logique est **synchrone et pure** : elle pilote les ports (traits) et
 //! émet des événements via un sink injecté. Le threading réel (threads
@@ -552,11 +552,25 @@ impl<'a> Orchestrator<'a> {
         if language.is_none() && audio.duration() < self.cfg.auto_language_min {
             language = self.cfg.auto_language_fallback.clone();
         }
-        // RF-24 : amorce = champ explicite sinon les termes du dictionnaire
-        // (les 64 premiers caractères — la fenêtre utile de whisper).
+        // RF-24 : amorce = champ explicite sinon les termes cibles du dictionnaire
+        // (jusqu'à 512 caractères — la fenêtre utile de Whisper).
         let initial_prompt = self.cfg.initial_prompt.clone().or_else(|| {
-            let terms = profile.dictionary.join(", ");
-            (!terms.is_empty()).then(|| terms.chars().take(64).collect::<String>())
+            if profile.dictionary.is_empty() {
+                None
+            } else {
+                let targets: Vec<&str> = profile
+                    .dictionary
+                    .iter()
+                    .filter_map(|e| e.split('|').next().map(|s| s.trim()))
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if targets.is_empty() {
+                    None
+                } else {
+                    let terms = targets.join(", ");
+                    Some(terms.chars().take(512).collect::<String>())
+                }
+            }
         });
         let opts = TranscribeOptions {
             language,

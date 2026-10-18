@@ -515,7 +515,7 @@ fn download_model_thread(
     if legacy.is_file() {
         let _ = std::fs::remove_file(&legacy);
     }
-    let mut start_from = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    let start_from = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
     shared.logger.log(Event::DeviceEvent {
         kind: "téléchargement-démarré".into(),
     });
@@ -547,7 +547,6 @@ fn download_model_thread(
         shared.logger.log(Event::DeviceEvent {
             kind: "téléchargement-reprise-refusée".into(),
         });
-        start_from = 0;
         (0u64, content_len)
     } else {
         (0u64, content_len)

@@ -1,4 +1,4 @@
-﻿/* Voxli — styles partagés par les deux fenêtres. Palette sobre, sans
+/* Voxli — styles partagés par les deux fenêtres. Palette sobre, sans
    ressource distante (CSP docs/05 §3) ; police système uniquement. */
 
 :root {
@@ -365,5 +365,144 @@ body.mode-avance .simple-only {
 #mode-bar input {
   accent-color: var(--Voxli);
   margin-right: 8px;
+}
+
+/* ================================================== Onboarding 1-clic */
+.notice.onboarding {
+  background: linear-gradient(135deg, rgba(62, 69, 138, 0.09), rgba(29, 122, 79, 0.08));
+  border: 1px solid var(--Voxli-soft);
+  color: var(--ink);
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+}
+
+.onboarding-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.onboarding-header strong {
+  font-size: 15px;
+  color: var(--Voxli);
+}
+
+.onboarding-desc {
+  margin: 8px 0 14px;
+  color: var(--muted);
+}
+
+.btn-primary {
+  background: var(--Voxli);
+  color: #fff;
+  font-weight: 600;
+  padding: 9px 18px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.15);
+}
+
+/* ================================================== Dictionnaire & Vocabulaire */
+.vocab-profile-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 12px;
+}
+
+.vocab-profile-selector select {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.vocab-add-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.vocab-add-bar input {
+  font: inherit;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  flex: 1;
+  min-width: 170px;
+}
+
+.vocab-add-bar button {
+  padding: 7px 16px;
+  font-weight: 600;
+}
+
+.vocab-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+  min-height: 48px;
+  padding: 12px;
+  background: rgba(128, 128, 128, 0.05);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  align-items: center;
+}
+
+.vocab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.vocab-chip .variants {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.vocab-chip .btn-del {
+  background: none;
+  border: none;
+  color: var(--bad);
+  cursor: pointer;
+  padding: 0 2px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: bold;
+}
+
+.vocab-chip .btn-del:hover {
+  filter: brightness(0.8);
+}
+
+.vocab-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 13px;
+}
+
+.vocab-footer {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 

@@ -1,4 +1,4 @@
-﻿//! Post-traitement — niveaux 0 et 1 (RF-26, RF-23, RF-24).
+//! Post-traitement — niveaux 0 et 1 (RF-26, RF-23, RF-24).
 //!
 //! - Niveau 0 (`PassThroughProcessor`) : identité — le texte du moteur est
 //!   inséré tel quel. C'est le **défaut produit** en mode verbatim (RF-27).
@@ -52,14 +52,26 @@ impl PostProcessor for FrenchProcessor {
 
 // --------------------------------------------------------- règles FR -------
 
-/// Hésitations courantes de dictée (RF-26) — comparaison normalisée
-/// (casse/accents ignorés), uniquement en mot entier.
+/// Hésitations orales courantes de dictée (RF-26) — comparaison normalisée
+/// (casse/accents ignorés), en mot entier.
 const HESITATIONS: &[&str] = &[
-    "euh", "euhh", "euhhh", "heu", "heuu", "hum", "hmm", "ben", "bah",
+    "euh", "euhh", "euhhh", "euhhhh", "heu", "heuu", "heuuu", "hum", "hmm", "hmmm", "mmh",
+    "mmm", "ben", "bah", "euhm", "uh", "um",
 ];
 
-/// Applique les règles de niveau 1. Garde RF-27 : la séquence de chiffres
-/// du texte ne change jamais.
+/// Mots dont la répétition consécutive est légitime en français et ne doit
+/// jamais être supprimée (pronoms réfléchis, adverbes intensifs, affirmations).
+const REPETITION_EXCLUSIONS: &[&str] = &[
+    // Pronoms réfléchis ("nous nous levons", "vous vous souvenez")
+    "nous", "vous",
+    // Adverbes intensifs et qualificatifs répétés volontairement
+    "tres", "trop", "bien", "vite", "beaucoup", "presque", "plus", "moins", "tout", "jamais",
+    // Affirmations / négations orales répétées ("oui oui", "non non")
+    "oui", "non", "si",
+];
+
+/// Applique les règles de niveau 1 (Magic Formatting v1).
+/// Garde RF-27 : la séquence de chiffres du texte ne change jamais.
 pub fn apply_french_rules(text: &str) -> String {
     // 1. Espaces multiples → simple, bordures nettoyées.
     let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -67,36 +79,229 @@ pub fn apply_french_rules(text: &str) -> String {
         return String::new();
     }
 
-    // 2. Hésitations : suppression en mot entier (position indifférente).
+    // 2. Découpage en tokens avec suppression des hésitations orales
+    //    et rattachement naturel des signes de ponctuation isolés.
+    let raw_tokens: Vec<&str> = collapsed.split(' ').collect();
     let mut tokens: Vec<String> = Vec::new();
-    for token in collapsed.split(' ') {
-        let tok_norm = normalize_lossy(token);
-        let bare = tok_norm.trim_matches(|c: char| !c.is_alphanumeric());
-        if HESITATIONS.iter().any(|h| *h == bare) {
+    let mut dropped_hesitation = false;
+
+    for &raw in &raw_tokens {
+        let norm = normalize_lossy(raw);
+        let bare = norm.trim_matches(|c: char| !c.is_alphanumeric());
+
+        // Hésitation identifiée
+        if HESITATIONS.contains(&bare) {
+            dropped_hesitation = true;
+            // Si l'hésitation portait une ponctuation forte terminale (. ! ? ;),
+            // on la reporte sur le token précédent s'il existe.
+            let strong_punct: String = raw
+                .chars()
+                .filter(|c| matches!(c, '.' | '!' | '?' | ';' | ':'))
+                .collect();
+            if !strong_punct.is_empty() {
+                if let Some(prev) = tokens.last_mut() {
+                    if !prev.ends_with(|c: char| !c.is_alphanumeric()) {
+                        prev.push_str(&strong_punct);
+                    }
+                }
+            }
             continue;
         }
-        tokens.push(clean_token_edges(token));
+
+        // Signe de ponctuation isolé (ex. "mot , mot" ou "phrase . phrase")
+        if raw == "," || raw == "." || raw == ";" || raw == ":" || raw == "!" || raw == "?" {
+            if let Some(prev) = tokens.last_mut() {
+                if !prev.ends_with(|c: char| !c.is_alphanumeric()) {
+                    prev.push_str(raw);
+                }
+            }
+            continue;
+        }
+
+        // Si une hésitation avec virgule précédait une conjonction de subordination
+        // (ex. "je pense, [euh,] qu'il faut"), nettoyer la virgule superflue.
+        if dropped_hesitation {
+            dropped_hesitation = false;
+            let bare_raw = norm.trim_matches(|c: char| !c.is_alphanumeric());
+            if bare_raw == "que"
+                || bare_raw.starts_with("qu'")
+                || bare_raw.starts_with("qu’")
+                || matches!(bare_raw, "qui" | "dont" | "ou" | "et")
+            {
+                if let Some(prev) = tokens.last_mut() {
+                    if prev.ends_with(',') {
+                        prev.pop();
+                    }
+                }
+            }
+        }
+
+        tokens.push(raw.to_string());
     }
-    let joined = tokens.join(" ");
-    if joined.is_empty() {
+
+    if tokens.is_empty() {
         return String::new();
     }
 
-    // 3. Cassé de début de phrase : première lettre du texte et de toute
+    // 3. Suppression des répétitions orales involontaires (bégaiements) :
+    //    Passes sur les blocs de 3 mots, puis 2 mots, puis 1 mot.
+    let tokens = collapse_phrase_repetitions(&tokens, 3);
+    let tokens = collapse_phrase_repetitions(&tokens, 2);
+    let tokens = collapse_single_word_repetitions(&tokens);
+
+    let joined = tokens.join(" ");
+    let cleaned = clean_punctuation_edges(&joined);
+    if cleaned.is_empty() {
+        return String::new();
+    }
+
+    // 4. Casse de début de phrase : première lettre du texte et de toute
     //    phrase suivant . ! ? (les tirets listes restent en l'état).
-    let mut chars: Vec<char> = joined.chars().collect();
+    let mut chars: Vec<char> = cleaned.chars().collect();
     capitalize_sentence_starts(&mut chars);
 
-    // 4. Typographie française : espace insécable avant : ; ! ? % € —
+    // 5. Typographie française : espace insécable avant : ; ! ? % € —
     //    NE touche jamais aux chiffres proprement dits.
     let out: String = chars.into_iter().collect();
     apply_french_spacing(&out)
 }
 
-/// Nettoie les accolades/pieds de tokens (espaces résiduels, virgules
-/// multipliées) sans toucher au contenu.
-fn clean_token_edges(token: &str) -> String {
-    token.trim_matches(',').to_string()
+/// Supprime les répétitions de phrases de `n` mots consécutifs (ex. "dans le dans le" -> "dans le").
+fn collapse_phrase_repetitions(tokens: &[String], n: usize) -> Vec<String> {
+    if tokens.len() < 2 * n {
+        return tokens.to_vec();
+    }
+    let mut out: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        if i + 2 * n <= tokens.len() {
+            let matches = (0..n).all(|k| {
+                let w_a = normalize_lossy(&tokens[i + k]);
+                let bare_a = w_a.trim_matches(|c: char| !c.is_alphanumeric());
+                let w_b = normalize_lossy(&tokens[i + n + k]);
+                let bare_b = w_b.trim_matches(|c: char| !c.is_alphanumeric());
+                !bare_a.is_empty() && bare_a == bare_b && !REPETITION_EXCLUSIONS.contains(&bare_a)
+            });
+            if matches {
+                for k in 0..n {
+                    out.push(tokens[i + k].clone());
+                }
+                // Si le second bloc portait une ponctuation finale et pas le premier, la récupérer
+                let last_punct: String = tokens[i + 2 * n - 1]
+                    .chars()
+                    .filter(|c| matches!(c, '.' | '!' | '?' | ',' | ';' | ':'))
+                    .collect();
+                if !last_punct.is_empty() {
+                    if let Some(last_elem) = out.last_mut() {
+                        if !last_elem.ends_with(|c: char| !c.is_alphanumeric()) {
+                            last_elem.push_str(&last_punct);
+                        }
+                    }
+                }
+                i += 2 * n;
+                continue;
+            }
+        }
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    out
+}
+
+/// Supprime les bégaiements d'un seul mot (ex. "je je" -> "je", "dans dans" -> "dans").
+fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
+    if tokens.len() < 2 {
+        return tokens.to_vec();
+    }
+    let mut out: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        if i + 1 < tokens.len() {
+            let w1_norm = normalize_lossy(&tokens[i]);
+            let w1_bare = w1_norm.trim_matches(|c: char| !c.is_alphanumeric());
+
+            let w2_norm = normalize_lossy(&tokens[i + 1]);
+            let w2_bare = w2_norm.trim_matches(|c: char| !c.is_alphanumeric());
+
+            if !w1_bare.is_empty() && w1_bare == w2_bare && !REPETITION_EXCLUSIONS.contains(&w1_bare) {
+                // Répétition consécutive détectée : absorber toutes les répétitions identiques consécutives
+                let is_capitalized = tokens[i]
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
+
+                let mut j = i + 1;
+                let mut last_punct = String::new();
+                while j < tokens.len() {
+                    let w_next_norm = normalize_lossy(&tokens[j]);
+                    let w_next_bare = w_next_norm.trim_matches(|c: char| !c.is_alphanumeric());
+                    if w_next_bare == w1_bare {
+                        let punct: String = tokens[j]
+                            .chars()
+                            .filter(|c| matches!(c, '.' | '!' | '?' | ',' | ';' | ':'))
+                            .collect();
+                        if !punct.is_empty() {
+                            last_punct = punct;
+                        }
+                        j += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                let mut merged = tokens[i]
+                    .trim_end_matches(|c: char| !c.is_alphanumeric())
+                    .to_string();
+                if is_capitalized {
+                    let mut chars = merged.chars();
+                    if let Some(first) = chars.next() {
+                        merged = first.to_uppercase().collect::<String>() + chars.as_str();
+                    }
+                }
+                if !last_punct.is_empty() {
+                    merged.push_str(&last_punct);
+                } else {
+                    let first_punct: String = tokens[i]
+                        .chars()
+                        .filter(|c| matches!(c, '.' | '!' | '?' | ',' | ';' | ':'))
+                        .collect();
+                    merged.push_str(&first_punct);
+                }
+
+                out.push(merged);
+                i = j;
+                continue;
+            }
+        }
+        out.push(tokens[i].clone());
+        i += 1;
+    }
+    out
+}
+
+/// Nettoie les ponctuations orphelines aux extrémités et les doublons de virgules.
+fn clean_punctuation_edges(text: &str) -> String {
+    // Retrait des virgules ou points en tout début de texte
+    let trimmed = text.trim_start_matches(|c: char| c == ',' || c == ' ');
+    // Nettoyage des virgules doubles ",," ou ", ,"
+    let mut out = String::with_capacity(trimmed.len());
+    let mut prev_comma = false;
+    for c in trimmed.chars() {
+        if c == ',' {
+            if prev_comma {
+                continue;
+            }
+            prev_comma = true;
+            out.push(c);
+        } else {
+            if c != ' ' {
+                prev_comma = false;
+            }
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Insécable (\u{00A0}) avant les ponctuations doubles et unités monétaires/
@@ -424,5 +629,73 @@ mod tests {
         let out2 = p.process("euh cefir dossier", &verbatim).unwrap();
         // Verbatim : pas de règles de ponctuation, mais dictionnaire oui.
         assert_eq!(out2, "euh CEFIR dossier");
+    }
+
+    #[test]
+    fn t_rules_hesitations_elimination() {
+        assert_eq!(apply_french_rules("euh bonjour"), "Bonjour");
+        assert_eq!(
+            apply_french_rules("je pense, euh, qu'il a raison"),
+            "Je pense qu'il a raison"
+        );
+        assert_eq!(
+            apply_french_rules("heu hum c'est prêt"),
+            "C'est prêt"
+        );
+        assert_eq!(
+            apply_french_rules("c'est terminé ben voilà"),
+            "C'est terminé voilà"
+        );
+    }
+
+    #[test]
+    fn t_rules_stutters_and_repetitions_collapse() {
+        assert_eq!(
+            apply_french_rules("je je pense que c'est c'est bien"),
+            "Je pense que c'est bien"
+        );
+        assert_eq!(
+            apply_french_rules("dans dans le dossier"),
+            "Dans le dossier"
+        );
+        assert_eq!(
+            apply_french_rules("dans le dans le projet"),
+            "Dans le projet"
+        );
+        assert_eq!(
+            apply_french_rules("il y a il y a une solution"),
+            "Il y a une solution"
+        );
+        assert_eq!(
+            apply_french_rules("je je je veux continuer"),
+            "Je veux continuer"
+        );
+    }
+
+    #[test]
+    fn t_rules_legitimate_repetitions_preserved() {
+        // Pronoms réfléchis
+        assert_eq!(
+            apply_french_rules("nous nous sommes vus hier"),
+            "Nous nous sommes vus hier"
+        );
+        assert_eq!(
+            apply_french_rules("vous vous trompez"),
+            "Vous vous trompez"
+        );
+        // Adverbes intensifs
+        assert_eq!(
+            apply_french_rules("c'est très très bien"),
+            "C'est très très bien"
+        );
+        assert_eq!(
+            apply_french_rules("c'est trop trop fort"),
+            "C'est trop trop fort"
+        );
+        // Affirmation orale volontaire
+        assert_eq!(
+            apply_french_rules("oui oui c'est bon"),
+            "Oui oui c'est bon"
+        );
     }
 }

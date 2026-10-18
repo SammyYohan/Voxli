@@ -166,6 +166,8 @@ function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
     : "Profils multiples : fonctionnalité Pro. Sans licence, seul le profil " +
     "par défaut s'applique — vos liaisons restent enregistrées ici.";
   lock.hidden = pro;
+
+  renderVocabChips();
 }
 
 /** Poussée au noyau (RF-01 : live, réglages + pipeline). */
@@ -368,6 +370,98 @@ async function refreshModels(): Promise<void> {
   document
     .getElementById("sec-modeles")
     ?.classList.toggle("advanced", models.some((m) => m.installed));
+
+  // Bannière d'onboarding 1-clic : visible tant qu'aucun modèle n'est installé
+  const onboarding = document.getElementById("onboarding-card");
+  if (onboarding) {
+    onboarding.hidden = models.some((m) => m.installed);
+  }
+}
+
+let currentVocabProfile: "default" | "code" | "email" = "default";
+
+function renderVocabChips(): void {
+  if (!config) return;
+  const dict = config.profiles[currentVocabProfile].dictionary;
+  const container = $id("vocab-chips");
+  container.replaceChildren();
+
+  if (dict.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "vocab-empty";
+    empty.textContent =
+      "Aucun mot personnalisé dans ce profil. Ajoutez des noms propres, acronymes ou termes métier.";
+    container.appendChild(empty);
+    return;
+  }
+
+  dict.forEach((entry, idx) => {
+    const parts = entry.split("|");
+    const target = parts[0]?.trim() ?? entry;
+    const variants = parts.slice(1).map((v) => v.trim()).filter((v) => v.length > 0);
+
+    const chip = document.createElement("div");
+    chip.className = "vocab-chip";
+
+    const strong = document.createElement("strong");
+    strong.textContent = target;
+    chip.appendChild(strong);
+
+    if (variants.length > 0) {
+      const varsSpan = document.createElement("span");
+      varsSpan.className = "variants";
+      varsSpan.textContent = ` (${variants.join(", ")})`;
+      chip.appendChild(varsSpan);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-del";
+    delBtn.type = "button";
+    delBtn.innerHTML = "&times;";
+    delBtn.title = "Supprimer ce terme";
+    delBtn.addEventListener("click", () => {
+      void removeVocabWord(idx);
+    });
+    chip.appendChild(delBtn);
+
+    container.appendChild(chip);
+  });
+}
+
+async function addVocabWord(): Promise<void> {
+  if (!config) return;
+  const wordInput = $id("vocab-new-word") as HTMLInputElement;
+  const variantsInput = $id("vocab-new-variants") as HTMLInputElement;
+  const word = wordInput.value.trim();
+  if (!word) return;
+
+  const variants = variantsInput.value
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+
+  const entry = variants.length > 0 ? `${word}|${variants.join("|")}` : word;
+  const dict = config.profiles[currentVocabProfile].dictionary;
+
+  if (!dict.includes(entry)) {
+    dict.push(entry);
+    await importDict(currentVocabProfile, dict.join("\n"));
+  }
+
+  wordInput.value = "";
+  variantsInput.value = "";
+  wordInput.focus();
+  renderVocabChips();
+}
+
+async function removeVocabWord(index: number): Promise<void> {
+  if (!config) return;
+  const dict = config.profiles[currentVocabProfile].dictionary;
+  if (index >= 0 && index < dict.length) {
+    dict.splice(index, 1);
+    await importDict(currentVocabProfile, dict.join("\n"));
+    renderVocabChips();
+  }
 }
 
 async function refreshDevices(): Promise<void> {
@@ -505,6 +599,77 @@ function wireEvents(): void {
   $id("dict-email-export").addEventListener("click", async () => {
     const csv = (await invoke("dictionaries_export", { profile: "email" })) as string;
     downloadTextFile("voxli-dictionnaire-email.csv", csv);
+  });
+
+  // Vocabulaire & Dictionnaire actif
+  const vocabProfSel = $id("vocab-profile-select") as HTMLSelectElement;
+  vocabProfSel.addEventListener("change", () => {
+    currentVocabProfile = vocabProfSel.value as "default" | "code" | "email";
+    renderVocabChips();
+  });
+
+  $id("vocab-btn-add").addEventListener("click", () => {
+    void addVocabWord();
+  });
+
+  const wordInput = $id("vocab-new-word") as HTMLInputElement;
+  const variantsInput = $id("vocab-new-variants") as HTMLInputElement;
+
+  wordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void addVocabWord();
+    }
+  });
+
+  variantsInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void addVocabWord();
+    }
+  });
+
+  $id("vocab-btn-export").addEventListener("click", async () => {
+    const csv = (await invoke("dictionaries_export", { profile: currentVocabProfile })) as string;
+    downloadTextFile(`voxli-dictionnaire-${currentVocabProfile}.csv`, csv);
+  });
+
+  const fileInput = $id("vocab-file-input") as HTMLInputElement;
+  $id("vocab-btn-import-file").addEventListener("click", () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const text = String(reader.result ?? "");
+      await importDict(currentVocabProfile, text);
+      if (config) {
+        config.profiles[currentVocabProfile].dictionary = text
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0 && !l.startsWith("#"));
+      }
+      renderVocabChips();
+      fileInput.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  // Onboarding 1-clic : téléchargement immédiat du modèle Whisper base
+  $id("btn-onboarding-download").addEventListener("click", async () => {
+    try {
+      await invoke("models_download", { id: "ggml-base-q5_1.bin" });
+      const bar = $id("model-progress");
+      (document.getElementById("model-progress-fill") as HTMLElement).style.width = "0%";
+      bar.hidden = false;
+      ($id("model-status") as HTMLElement).textContent = "téléchargement…";
+      showNotice("Téléchargement du modèle Whisper démarré (57 Mo)...");
+    } catch (err) {
+      showNotice(String(err));
+    }
   });
 }
 
