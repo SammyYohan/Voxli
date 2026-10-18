@@ -102,6 +102,16 @@ impl Uia {
         }
     }
 
+    /// Lit la valeur courante du contrôle via `ValuePattern` — préalable
+    /// obligatoire à `set_value` : « SetValue » **remplace la valeur
+    /// entière** ; écrire dans un champ non vide détruirait son contenu
+    /// (RF-28 durci : la dictée ne détruit jamais le texte existant).
+    pub fn current_value(&self, element: &IUIAutomationElement) -> Result<String, String> {
+        let pattern = self.value_pattern(element)?;
+        let v = unsafe { pattern.CurrentValue().map_err(|e| e.to_string())? };
+        Ok(v.to_string())
+    }
+
     /// Écrit une valeur via `ValuePattern` puis **relit** pour vérifier
     /// (RF-28 : « SetValue puis vérification de lecture »).
     pub fn set_value(&self, element: &IUIAutomationElement, text: &str) -> Result<(), String> {

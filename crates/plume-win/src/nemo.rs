@@ -143,9 +143,8 @@ extern "C" {
 
     // ----- accès résultats (mémoire propriété du résultat) -----
     pub fn nemo_speech_asr_result_is_final(result: *const nemo_speech_asr_result) -> bool;
-    pub fn nemo_speech_asr_result_alternative_count(
-        result: *const nemo_speech_asr_result,
-    ) -> usize;
+    pub fn nemo_speech_asr_result_alternative_count(result: *const nemo_speech_asr_result)
+        -> usize;
     /// Pointeur valable jusqu'à `nemo_speech_asr_result_destroy`.
     pub fn nemo_speech_asr_result_transcript(
         result: *const nemo_speech_asr_result,
@@ -175,7 +174,10 @@ pub fn runtime_version() -> Result<String, String> {
         if p.is_null() {
             return Err("nemo_speech_asr_version a renvoyé NULL".to_string());
         }
-        CStr::from_ptr(p).to_str().map(|s| s.to_string()).map_err(|e| e.to_string())
+        CStr::from_ptr(p)
+            .to_str()
+            .map(|s| s.to_string())
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -198,11 +200,17 @@ pub fn last_error() -> String {
 pub fn describe(st: i32) -> String {
     match st {
         status::OK => "ok".to_string(),
-        status::INVALID_ARGUMENT => { format!("argument invalide : {}", last_error()) }
+        status::INVALID_ARGUMENT => {
+            format!("argument invalide : {}", last_error())
+        }
         status::OUT_OF_MEMORY => "mémoire insuffisante (SDK)".to_string(),
-        status::RUNTIME => { format!("échec runtime : {}", last_error()) }
+        status::RUNTIME => {
+            format!("échec runtime : {}", last_error())
+        }
         status::CANCELLED => "reconnaissance annulée".to_string(),
-        other => { format!("statut inconnu {other} : {}", last_error()) }
+        other => {
+            format!("statut inconnu {other} : {}", last_error())
+        }
     }
 }
 

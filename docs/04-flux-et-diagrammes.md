@@ -136,7 +136,7 @@ flowchart TD
     B -- non --> Z[Fenêtre de secours]
     B -- oui --> C{Champ sensible ?<br/>IsPassword / app exclue / UAC}
     C -- oui --> Y[Insertion refusée + message neutre]
-    C -- non --> D{ValuePattern<br/>disponible et éditable ?}
+    C -- non --> D{ValuePattern<br/>disponible, éditable<br/>ET champ vide ?}
     D -- oui --> E[SetValue puis vérification de lecture]
     D -- non --> F{Politique du profil<br/>applicatif}
     F -- presse-papiers --> G[Sauvegarde du presse-papiers<br/>+ marquage anti-historique]
@@ -154,6 +154,14 @@ flowchart TD
 
 **Règle de conception** : chaque niveau indique au suivant *pourquoi* il a échoué, et ce motif est
 journalisé localement (sans contenu) afin de mesurer le taux de repli par application (hypothèse H3).
+
+**Amendement 1 (dictée non destructive, 2026)** : `SetValue` **remplace la valeur entière** du
+contrôle (API UIA) — un appel dans un champ non vide détruirait tout le texte déjà posé (bug
+constatée en usage réel). Le niveau ValuePattern n'est donc engagé que si la valeur courante, **relue
+au moment de l'insertion** (pas du mémorandum RF-32), est vide ; sinon repli immédiat au
+presse-papiers, dont Ctrl+V insère au curseur sans rien effacer. Un champ devenu non vide entre la
+capture et l'insertion est couvert par cette relecture (codes de repli : `valeur-illisible`,
+`valeur-non-vide`).
 
 ---
 

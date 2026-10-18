@@ -41,6 +41,18 @@ impl WindowsInserter {
                     return Err("uia-indisponible");
                 };
                 let element = uia.focused_element().map_err(|_| "focus-illisible")?;
+                // `SetValue` **remplace la valeur entière** du contrôle
+                // (API Windows) : n'écrire QUE dans un champ vide, sinon le
+                // texte dicté détruirait le texte déjà posé (bug constaté).
+                // Champ non vide ou illisible → repli immédiat au niveau
+                // suivant (presse-papiers : Ctrl+V insère au curseur, sans
+                // effacement). Codes consignés sans contenu (RF-34).
+                let current = uia
+                    .current_value(&element)
+                    .map_err(|_| "valeur-illisible")?;
+                if !current.is_empty() {
+                    return Err("valeur-non-vide");
+                }
                 uia.set_value(&element, text)
                     .map_err(|_| "setvalue-ou-relecture-echec")
             }

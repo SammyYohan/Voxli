@@ -37,7 +37,10 @@ fn main() {
         );
     }
 
-    println!("cargo:rustc-link-search=native={}", prefix.join("lib").display());
+    println!(
+        "cargo:rustc-link-search=native={}",
+        prefix.join("lib").display()
+    );
     println!("cargo:rustc-link-lib=dylib=nemo_speech_asr_c");
 
     // DLL d'exécution à côté de la cible : ggml/llama + ABI C + runtime MSVC.
@@ -54,7 +57,11 @@ fn main() {
     if let Ok(entries) = std::fs::read_dir(&bin) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("dll")) != Some(true) {
+            if p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("dll"))
+                != Some(true)
+            {
                 continue;
             }
             if let Some(name) = p.file_name() {
