@@ -102,7 +102,11 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   bornée à 85 %, DPI géré) et l'attribut « toujours au premier plan » — que Windows peut
   abandonner au changement d'affichage ou à l'ouverture d'une fenêtre plein écran fenêtrée.
   **Limite assumée** : le plein écran *exclusif* (jeux DirectX) recouvre tout `HWND_TOPMOST` ;
-  Windows n'offre aucune garantie de plan au-dessus d'un échange exclusif GPU.
+  Windows n'offre aucune garantie de plan au-dessus d'un échange exclusif GPU. Compense :
+  un **ré-épinglage** périodique (~0,5 s) dégrade puis replante la pilule dans la bande
+  topmost — car un re-sert simple est un no-op quand l'attribut est déjà porté (bande Z ;
+  même mécanique que PowerToys AlwaysOnTop) — battant ainsi les fenêtres plein écran
+  auto-topmost (lecteur vidéo, F11) ; seul le plein écran exclusif couvre encore.
 - **Conséquence testable** : le test T-17 (reprise pendant transcription) et T-21 (panique moteur)
   s'exécutent avec le webview tué volontairement ; la dictée doit continuer de fonctionner.
 - **Amendement (P2 streaming, 2026)** : la règle « aucun passage de texte dicté par l'IPC » reçoit

@@ -235,16 +235,33 @@ fn place_top_center(app: &tauri::AppHandle<Wry>, win: &tauri::WebviewWindow<Wry>
     let x = m.position().x + (m.size().width as i32 - target_w).max(0) / 2;
     let y = m.position().y + PILL_TOP_MARGIN as i32;
     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-    // L'attribut peut se perdre au changement d'affichage ou à l'ouverture
-    // d'une fenêtre plein écran « fenêtrée » : on le re-sert. Plein écran
-    // exclusif (jeux) : Windows garde le dessus — limite système assumée
-    // (docs/03).
+    // L'attribut peut se perdre au changement d'affichage : re-sert
+    // simple ici ; la remontée fine dans la bande est le métier de
+    // `repin_topmost` (boucle de maintenance). Plein écran exclusif
+    // (jeux) : Windows garde le dessus — limite système assumée (docs/03).
+    let _ = win.set_always_on_top(true);
+}
+
+/// Renvoie la pastille tout en haut de la bande « topmost » : non-topmost
+/// puis topmost — sans ce couple, `SetWindowPos(HWND_TOPMOST)` est un
+/// no-op quand la fenêtre est déjà topmost (elle ne remonte pas dans sa
+/// bande), et une fenêtre plein écran auto-topmost la recouvre à jamais.
+/// Deux appels consécutifs en un tick : le compositeur les fusionne,
+/// aucun clignotement perceptible.
+fn repin_topmost(win: &tauri::WebviewWindow<Wry>) {
+    let _ = win.set_always_on_top(false);
     let _ = win.set_always_on_top(true);
 }
 
 /// Boucle de maintenance : survol lu à ~120 ms (réponse vive de la
-/// légende), position et premier plan rejoués toutes les ~2,4 s. Coût
-/// minime : une lecture de curseur, un rect de fenêtre.
+/// légende), position rejouées toutes les ~2,4 s, et **ré-épinglage**
+/// « non-topmost puis topmost » toutes les ~0,5 s — Windows classe les
+/// fenêtres par bandes et un répérage topmost simple est un no-op si la
+/// pastille est déjà dedans ; une fenêtre plein écran qui se déclare
+/// topmost (lecteur vidéo, navigateur F11, jeu fenêtré) prend le dessus
+/// de la bande. Le réfrograde+repein la renvoie au-dessus de tout ce qui
+/// n'est pas un plein écran exclusif (limite système, docs/03). Coût
+/// minime : une lecture de curseur, deux appels SetWindowPos.
 fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
     let mut tick: u32 = 0;
     let mut inside = false;
@@ -253,6 +270,9 @@ fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
         tick = tick.wrapping_add(1);
         if tick % 20 == 0 {
             place_top_center(&app, &win);
+        }
+        if tick % 4 == 0 {
+            repin_topmost(&win);
         }
         if hover_point(&app, &win, inside) != inside {
             inside = !inside;

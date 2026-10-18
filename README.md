@@ -287,8 +287,10 @@ montre le raccourci de dictée configuré, relu à chaque survol — le
 survol est un rayon de 15 px autour du point (hystérésis de sortie à
 20 px : pas de clignotement au bord). Adaptation
 d'écran : position recalculée au moniteur principal ~2,4 s (largeur bornée
-à 85 %, échelle DPI convertie) et « toujours au premier plan » réassuré ;
-plein écran exclusif (jeux DirectX) recouvre n'importe quel `HWND_TOPMOST`
+à 85 %, échelle DPI convertie) et « toujours au premier plan » réassuré
+par ré-épinglage topmost ~2×/s (dégrader puis replanter : un simple
+re-sert est un no-op quand la fenêtre est déjà dans la bande) ; plein
+écran exclusif (jeux DirectX) recouvre n'importe quel `HWND_TOPMOST`
 — limite système.
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
