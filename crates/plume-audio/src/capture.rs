@@ -36,9 +36,15 @@ struct Shared {
     ring_len: usize,
     /// Segment en cours (pré-réservé à `start` : aucune allocation ensuite).
     active: Option<Vec<f32>>,
-    /// Crête courant en bits f32 (accès sous `Mutex` — pas d'atomique dans le
-    /// chemin temps réel).
-    peak: u32,
+    /// Vumètre vivant : amplitude récente, décroissance exp. par
+    /// échantillon (`meter_decay`) — attaque instantanée, vidange douce.
+    /// (Compat amené : jusqu'au 18/10/2026 c'était un crête à VIE — la
+    /// jauge restait montée pendant toute la prise, aucun mouvement.)
+    /// Accès sous `Mutex` (pas d'atomique dans le chemin temps réel).
+    meter: f32,
+    /// Facteur de vidange PAR ÉCHANTILLON : exp(-1 / (relâchement × rate)).
+    /// Pré-calculé à la construction (une seule exp, rien dans le callback).
+    meter_decay: f32,
     frames: AtomicU64,
     discontinuities: AtomicU64,
     lost: AtomicBool,
@@ -63,12 +69,21 @@ impl Shared {
     ) -> Self {
         // `_segment_cap` : la capacité de segment est pré-réservée à `start`
         // (le callback ne peut pas allouer, on la fixe au moment du besoin).
+        // Vidange du vumètre : visons ~180 ms de relâchement (la jauge
+        // tombe de ~90 % en 0,4 s) — facteur par échantillon pré-calculé.
+        let sec = 0.180_f32;
+        let meter_decay = if rate > 0 {
+            (-1.0 / (sec * rate as f32)).exp()
+        } else {
+            1.0
+        };
         Self {
             ring: vec![0.0; ring_cap],
             ring_pos: 0,
             ring_len: 0,
             active: None,
-            peak: 0,
+            meter: 0.0,
+            meter_decay,
             frames: AtomicU64::new(0),
             discontinuities: AtomicU64::new(0),
             lost: AtomicBool::new(false),
@@ -82,10 +97,17 @@ impl Shared {
     /// Chemin du callback : aucune allocation.
     fn push(&mut self, data: &[f32]) {
         for &s in data {
-            let bits = s.to_bits();
-            self.peak = self.peak.max(bits);
+            // Vumètre vivant : attaque instantanée (une parole forte monte
+            // tout de suite), vidange exponentielle (le silence la rend
+            // douce au zéro). Deux multiplications-comparaisons par
+            // échantillon, aucune allocation.
+            self.meter *= self.meter_decay;
+            let a = s.abs();
+            if a > self.meter {
+                self.meter = a;
+            }
             let mono = s; // mixdown effectué au stop (canal unique du flux)
-                          // Anneau
+            // Anneau
             self.ring[self.ring_pos] = mono;
             self.ring_pos = (self.ring_pos + 1) % self.ring.len();
             self.ring_len = (self.ring_len + 1).min(self.ring.len());
@@ -346,9 +368,14 @@ impl Capture for CpalCapture {
     }
 
     fn level(&self) -> Level {
-        let bits = self.shared.lock().map(|s| s.peak).unwrap_or(0);
-        let peak = f32::from_bits(bits).abs();
-        peak.min(1.0)
+        // Vumètre vivant : amplitude récente (décroissance exp. continue
+        // dans le callback time réel) — la jauge de la pastille se remplit
+        // avec la voix et se vide au silence.
+        self.shared
+            .lock()
+            .map(|s| s.meter)
+            .unwrap_or(0.0)
+            .min(1.0)
     }
 
     fn device_lost(&self) -> bool {
@@ -408,4 +435,33 @@ pub fn list_input_devices() -> Vec<InputDevice> {
         }
     }
     out
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Régression du vumètre vivant (18/10/2026) : l'ancienne sémantique
+    /// retenait une crête à vie (`to_bits().max()`) — la jauge montait et
+    /// ne redescendait jamais pendant la prise. Ici : attaque rapide sur
+    /// la parole, vidange au silence (dans le plan testé à 10 kHz).
+    #[test]
+    fn vumetre_attaque_et_se_vide_au_silence() {
+        // ring_cap modeste : rien que le vumètre est testé ici.
+        let mut shared = Shared::new(64, 0, 1, 10_000, None);
+        // 0,3 s de parole « forte » (0,5 d'amplitude constante).
+        let loud = vec![0.5_f32; 3_000];
+        shared.push(&loud);
+        assert!(shared.meter > 0.45, "attaque attendue, meter={}", shared.meter);
+        // 0,6 s de silence : le niveau doit tomber quasi au zéro
+        // (exp(-0,6/0,18) ≈ 3,6 %) — un crête à vie resterait à 0,5.
+        let silence = vec![0.0_f32; 6_000];
+        shared.push(&silence);
+        assert!(
+            shared.meter < 0.05,
+            "vidange attendue au silence, meter={}",
+            shared.meter
+        );
+    }
 }
