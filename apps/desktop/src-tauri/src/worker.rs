@@ -160,28 +160,27 @@ impl SharedCapture {
 impl Capture for SharedCapture {
     fn start(&mut self, pre_roll_ms: u32) -> Result<(), CaptureError> {
         // Session périmée éventuelle (prise muette : le VAD a refusé la
-        // transcription) : fermeture bornée avant d'ouvrir la suivante —
-        // son texte éventuel est abandonné (prise muette = rien à insérer).
-        let _ = drain_and_close(&self.1);
+        // transcription) : fermeture **bornée** — le travail FFI vit dans
+        // le pilote ; au-delà de la borne, on passe (voie batch restera
+        // l'autorité). Son texte éventuel est abandonné (prise muette =
+        // rien à insérer).
+        let _ = close_stream_bornee(&self.1, std::time::Duration::from_millis(600));
         let started = lock_or_recover(&self.0).start(pre_roll_ms);
         if started.is_ok() {
-            // Session d'affichage ouverte AVANT que le robinet coule (RF-07 :
-            // le thread temps réel n'attend jamais — try_lock, une tranche
-            // peut être sacrifiée). Les tranches déjà tombées dans `feed`
-            // sont poussées au prochain tick d'affichage.
+            // Session d'affichage ouverte via le pilote, sans attente
+            // (l'ouverture peut être lente, voire suspendue — l'émission
+            // des partiels suivra ; la voie batch n'en dépend jamais).
+            // Les tranches déjà tombées dans `feed` sont poussées au
+            // premier Pump du pilote.
             let factory = lock_or_recover(&self.1.engine).clone();
             if let Some(eng) = factory {
                 let language = lock_or_recover(&self.1.language).clone();
                 let verbatim = self.1.verbatim.load(Ordering::Relaxed);
-                match eng.open(language.as_deref(), verbatim) {
-                    Ok(s) => *lock_or_recover(&self.1.session) = Some(s),
-                    Err(err) => {
-                        self.1.logger.log(Event::Error {
-                            module: "asr".into(),
-                            code: asr_code(&err),
-                        });
-                    }
-                }
+                let _ = self.1.tx.send(StreamCmd::Open {
+                    engine: eng,
+                    language,
+                    verbatim,
+                });
             }
         }
         started
@@ -191,7 +190,7 @@ impl Capture for SharedCapture {
         let buffer = lock_or_recover(&self.0).stop();
         // La prise audio est close : le transcriptor finalisera la session
         // (le texte batch reste l'autorité) ; en cas de prise muette (VAD
-        // refuse), le prochain start ferme aussi via drain_and_close.
+        // refuse), le prochain start ferme aussi via close_stream_bornee.
         self.1.end.store(true, Ordering::Relaxed);
         buffer
     }
@@ -217,11 +216,38 @@ struct PartialPayload {
     at_ms: u64,
 }
 
-/// Câblage streaming d'une prise. Le robinet de capture (thread temps réel)
-/// ne touche qu'au tampon de tranches `feed` (try_lock : une tranche
-/// d'affichage peut être sacrifiée pendant un drain — le texte définitif,
-/// voie batch, n'en dépend jamais). Tout le reste (session, fermeture,
-/// drain, IPC) vit sur le thread worker.
+/// Commandes du pilote de session streaming. Le contrat SDK (« un flux
+/// est piloté par UN SEUL thread ») est respecté **par construction** :
+/// ce thread est le seul à toucher aux FFI du moteur. Incident du
+/// 18/10/2026 : un appel du SDK suspendu figeait le thread worker entier
+/// — plus de tick, plus de relâchement, plus de garde de durée (RF-11) ;
+/// la prise restait en « recording » et l'application semblait morte.
+/// Depuis : **le thread worker n'attend jamais un appel natif** — le
+/// pilote absorbe les coups, la voie batch (ADR-02) reste l'autorité.
+enum StreamCmd {
+    /// Ouvre une session (fabrique + langue + verbatim **clonés** dans le
+    /// message : rien ne référence le thread appelant).
+    Open {
+        engine: Arc<dyn StreamingEngine>,
+        language: Option<String>,
+        verbatim: bool,
+    },
+    /// Pousse le résidu courant du robinet vers la session puis draine
+    /// les mises à jour (émission des partiels faite ici — ce thread peut
+    /// se suspendre sans dommage).
+    Pump,
+    /// Fin de prise : résiduel, finish, aspiration bornée, fermeture ;
+    /// le résultat est écrit dans le slot (consommé par le transcriptor
+    /// sous borne).
+    Close,
+}
+
+/// Câblage streaming d'une prise. Le robinet de capture (thread temps
+/// réel) ne touche qu'au tampon de tranches `feed` (try_lock : une tranche
+/// peut être sacrifiée — le texte définitif, voie batch, n'en dépend
+/// jamais). Le reste (session, push, drain, fermeture) vit **entièrement
+/// dans le thread pilote** (`stream-driver`) ; le worker ne lui parle
+/// que par des commandes non bloquantes.
 struct StreamSlot {
     /// Fabrique de session (moteur streaming capable) ; recopiée à chaque
     /// rebuild moteur ; vide quand le moteur n'en a pas.
@@ -229,9 +255,15 @@ struct StreamSlot {
     /// Langue + verbatim de la config en service (recopiés au rebuild).
     language: std::sync::Mutex<Option<String>>,
     verbatim: AtomicBool,
-    /// Session ouverte par `SharedCapture::start`, fermée à la
-    /// transcription (texte batch = autorité).
-    session: std::sync::Mutex<Option<Box<dyn StreamingSession>>>,
+    /// File du pilote : toute l'accès session passe par là (send jamais
+    /// bloquant — canalisé non borné, le pilote consomme à son rythme).
+    tx: std::sync::mpsc::Sender<StreamCmd>,
+    /// Présence d'une session au pilote (donnée de diagnostic sans FFI).
+    has_session: AtomicBool,
+    /// Acquittal de la dernière fermeture (borne côté worker).
+    close_done: AtomicBool,
+    /// Résultat finalisé de la dernière prise, écrit par le pilote.
+    outcome: std::sync::Mutex<Option<StreamOutcome>>,
     /// Posé par `SharedCapture::stop` : la prise est finie côté capture.
     end: AtomicBool,
     /// Tranches mono du robinet, préallouées (clear sans désallocation).
@@ -248,12 +280,15 @@ struct StreamSlot {
 }
 
 impl StreamSlot {
-    fn new(logger: Arc<Logger>) -> Self {
+    fn new(logger: Arc<Logger>, tx: std::sync::mpsc::Sender<StreamCmd>) -> Self {
         Self {
             engine: std::sync::Mutex::new(None),
             language: std::sync::Mutex::new(None),
             verbatim: AtomicBool::new(false),
-            session: std::sync::Mutex::new(None),
+            tx,
+            has_session: AtomicBool::new(false),
+            close_done: AtomicBool::new(true),
+            outcome: std::sync::Mutex::new(None),
             end: AtomicBool::new(false),
             feed: std::sync::Mutex::new(Vec::with_capacity(24_000)),
             rate: AtomicU32::new(0),
@@ -284,132 +319,191 @@ struct StreamOutcome {
     confidence: f32,
 }
 
-/// Ferme proprement une session (aspiration résiduelle du robinet, flush
-/// finish, aspiration bornée des derniers segments) et renvoie son texte
-/// finalisé quand la session en a produit. Borne de sécurité : ~1 s + 300
-/// drains ; le nominal est quasi instantané (l'audio a déjà été poussé
-/// pendant la prise). Le texte servi ici est celui de la voie d'affichage
-/// (RF-34 : rien n'est journalisé) ; sans session ou sans production, la
-/// voie batch reste l'autorité.
-fn drain_and_close(slot: &StreamSlot) -> Option<StreamOutcome> {
-    // 1) résiduel du robinet — la session obtient tout ce qui reste.
-    push_feed_residue(slot);
-    // 2) finish + drain borné, puis fermeture.
-    let outcome;
-    {
-        let mut guard = lock_or_recover(&slot.session);
-        if let Some(s) = guard.as_mut() {
-            outcome = match s.finish() {
-                Ok(_) => s
-                    .take_result()
-                    .map(|(text, confidence)| StreamOutcome { text, confidence }),
-                Err(err) => {
-                    // Diagnostic process (jamais de contenu, RF-34).
-                    slot.logger.log(Event::Error {
-                        module: "asr".into(),
-                        code: asr_code(&err),
-                    });
-                    None
-                }
-            };
-        } else {
-            outcome = None;
-        }
-        *guard = None;
+/// Fermeture de la session **via le pilote**, avec une borne de temps
+/// côté worker : la commande part dans la file, puis le worker attend
+/// l'acquittement pendant au plus `budget`. Au-delà (SDK enrayé), `None`
+/// : la voie batch reprend son rang d'autorité (ADR-02) et la prise
+/// continue — c'est la garantie anti-figeance (incident 18/10/2026).
+fn close_stream_bornee(slot: &StreamSlot, budget: std::time::Duration) -> Option<StreamOutcome> {
+    slot.close_done.store(false, Ordering::Relaxed);
+    if slot.tx.send(StreamCmd::Close).is_err() {
+        return None; // pilote mort (file fermée) : rien à attendre
     }
-    slot.end.store(false, Ordering::Relaxed);
-    outcome
+    let deadline = std::time::Instant::now() + budget;
+    loop {
+        if slot.close_done.load(Ordering::Relaxed) {
+            return lock_or_recover(&slot.outcome).take();
+        }
+        if std::time::Instant::now() >= deadline {
+            slot.logger.log(Event::DeviceEvent {
+                kind: "stream-driver-close-temps-depasse".into(),
+            });
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(6));
+    }
 }
 
-/// Pousse les tranches accumulées du robinet vers la session (verrou
-/// bref ; le robinet utilise try_lock et sacrifie une tranche au besoin).
-fn push_feed_residue(slot: &StreamSlot) {
-    let rate = slot.rate.load(Ordering::Relaxed);
-    if rate == 0 {
-        return;
-    }
-    let mut guard = lock_or_recover(&slot.session);
-    if guard.is_none() {
-        return;
-    }
-    let session = guard.as_mut().expect("session vérifiée ci-dessus");
-    let mut feed = lock_or_recover(&slot.feed);
-    if feed.is_empty() {
-        return;
-    }
-    let fed_now = feed.len();
-    if let Err(err) = session.push(&feed[..], rate) {
-        drop(feed);
-        slot.logger.log(Event::Error {
-            module: "asr".into(),
-            code: asr_code(&err),
-        });
-        *guard = None;
-        return;
-    }
-    feed.clear();
-    slot.fed.fetch_add(fed_now as u64, Ordering::Relaxed);
-}
-
-/// Cycle d'affichage du streaming (appelé au tick worker, ~20 Hz au plus) :
-/// résiduel → push → drain → émission d'un unique `dictation://partial`
-/// portant le texte affichage courant (transitoire, RF-34).
-fn refresh_stream(slot: &StreamSlot, app: &AppHandle<Wry>) {
-    if slot.end.load(Ordering::Relaxed) {
-        return; // fermeture pilotée par le transcriptor / le proxy
-    }
-    let updates_len;
-    let snapshot;
-    {
-        let mut guard = lock_or_recover(&slot.session);
-        let Some(s) = guard.as_mut() else {
-            return;
-        };
-        let rate = slot.rate.load(Ordering::Relaxed);
-        {
-            let mut feed = lock_or_recover(&slot.feed);
-            if rate > 0 && !feed.is_empty() {
-                let fed_now = feed.len();
-                if let Err(err) = s.push(&feed[..], rate) {
-                    drop(feed);
-                    slot.logger.log(Event::Error {
-                        module: "asr".into(),
-                        code: asr_code(&err),
+/// Corps du thread pilote : la **seule** courroie FFI du streaming.
+/// Suspendu par un SDK enrayé, ce thread perd son temps ; le worker,
+/// libéré de tout appel natif, continue (tick, RF-11, relâchement) et
+/// la prise se termine par la voie batch. La session meurt ici (Drop →
+/// close FFI) — en cas de suspension du Drop, les commandes suivantes
+/// patientent : l'affichage streaming s'arrête, l'insertion non.
+fn stream_driver_body(
+    slot: Arc<StreamSlot>,
+    app: AppHandle<Wry>,
+    rx: std::sync::mpsc::Receiver<StreamCmd>,
+) {
+    let mut session: Option<Box<dyn StreamingSession>> = None;
+    for cmd in rx.iter() {
+        match cmd {
+            StreamCmd::Open {
+                engine,
+                language,
+                verbatim,
+            } => {
+                if session.is_none() {
+                    match engine.open(language.as_deref(), verbatim) {
+                        Ok(s) => {
+                            session = Some(s);
+                            slot.has_session.store(true, Ordering::Relaxed);
+                        }
+                        Err(err) => {
+                            slot.logger.log(Event::Error {
+                                module: "asr".into(),
+                                code: asr_code(&err),
+                            });
+                        }
+                    }
+                } else {
+                    // Session déjà là (fermeture antérieure encore en
+                    // route) : l'ouverture est ignorée, consignée en
+                    // compteurs (RF-34).
+                    slot.logger.log(Event::DeviceEvent {
+                        kind: "stream-driver-open-ignore".into(),
                     });
-                    *guard = None;
-                    return;
                 }
-                feed.clear();
-                slot.fed.fetch_add(fed_now as u64, Ordering::Relaxed);
             }
-        }
-        match s.drain() {
-            Ok(updates) => {
-                updates_len = updates.len();
-                snapshot = s.snapshot();
-                slot.updates_seen
-                    .fetch_add(updates_len as u64, Ordering::Relaxed);
+            StreamCmd::Pump => {
+                if slot.end.load(Ordering::Relaxed) || session.is_none() {
+                    continue; // résiduel conservé pour la fermeture/ouverture à venir
+                }
+                let rate = slot.rate.load(Ordering::Relaxed);
+                let chunk = {
+                    let mut feed = lock_or_recover(&slot.feed);
+                    std::mem::take(&mut *feed)
+                };
+                let mut mort = false;
+                if rate > 0 && !chunk.is_empty() {
+                    let s = session.as_mut().expect("session vérifiée ci-dessus");
+                    match s.push(&chunk, rate) {
+                        Ok(()) => {
+                            slot.fed.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                        }
+                        Err(err) => {
+                            slot.logger.log(Event::Error {
+                                module: "asr".into(),
+                                code: asr_code(&err),
+                            });
+                            mort = true;
+                        }
+                    }
+                }
+                if mort {
+                    session = None; // Drop → close FFI (ce thread seulement)
+                    slot.has_session.store(false, Ordering::Relaxed);
+                } else {
+                    let s = session.as_mut().expect("session vérifiée ci-dessus");
+                    match s.drain() {
+                        Ok(updates) => {
+                            if !updates.is_empty() {
+                                slot.updates_seen
+                                    .fetch_add(updates.len() as u64, Ordering::Relaxed);
+                                // Partiels : pur affichage, jamais
+                                // journalisés ni conservés (RF-34).
+                                let _ = app.emit(
+                                    "dictation://partial",
+                                    PartialPayload {
+                                        text: s.snapshot(),
+                                        at_ms: now_ms(),
+                                    },
+                                );
+                            }
+                        }
+                        Err(err) => {
+                            slot.logger.log(Event::Error {
+                                module: "asr".into(),
+                                code: asr_code(&err),
+                            });
+                            mort = true;
+                        }
+                    }
+                    if mort {
+                        session = None;
+                        slot.has_session.store(false, Ordering::Relaxed);
+                    }
+                }
             }
-            Err(err) => {
-                slot.logger.log(Event::Error {
-                    module: "asr".into(),
-                    code: asr_code(&err),
-                });
-                *guard = None;
-                return;
+            StreamCmd::Close => {
+                // 1) résiduel du robinet — la session reçoit tout le reste.
+                let rate = slot.rate.load(Ordering::Relaxed);
+                let chunk = {
+                    let mut feed = lock_or_recover(&slot.feed);
+                    std::mem::take(&mut *feed)
+                };
+                let mut mort = false;
+                if rate > 0 && !chunk.is_empty() {
+                    if let Some(s) = session.as_mut() {
+                        match s.push(&chunk, rate) {
+                            Ok(()) => {
+                                slot.fed.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                            }
+                            Err(err) => {
+                                slot.logger.log(Event::Error {
+                                    module: "asr".into(),
+                                    code: asr_code(&err),
+                                });
+                                mort = true;
+                            }
+                        }
+                    }
+                }
+                if mort {
+                    session = None;
+                    slot.has_session.store(false, Ordering::Relaxed);
+                }
+                // 2) finish + aspiration bornée (dans la façade).
+                let mut outcome = None;
+                if let Some(s) = session.as_mut() {
+                    outcome = match s.finish() {
+                        Ok(_) => s
+                            .take_result()
+                            .map(|(text, confidence)| StreamOutcome { text, confidence }),
+                        Err(err) => {
+                            slot.logger.log(Event::Error {
+                                module: "asr".into(),
+                                code: asr_code(&err),
+                            });
+                            None
+                        }
+                    };
+                }
+                *lock_or_recover(&slot.outcome) = outcome;
+                if !mort {
+                    // Drop → close FFI (ce thread seulement). En cas de
+                    // suspension ici, la fermeture n'est jamais acquittée :
+                    // le worker a déjà franchi sa borne et la voie batch
+                    // a repris son rang d'autorité.
+                    session = None;
+                }
+                slot.has_session.store(false, Ordering::Relaxed);
+                slot.end.store(false, Ordering::Relaxed);
+                // Acquittement en dernier : la borne worker s'ouvre.
+                slot.close_done.store(true, Ordering::Relaxed);
             }
         }
     }
-    if updates_len == 0 {
-        return;
-    }
-    let _ = app.emit(
-        "dictation://partial",
-        PartialPayload {
-            text: snapshot,
-            at_ms: now_ms(),
-        },
-    );
 }
 
 /// Voirie batch : à la transcription, la session streaming est finalisée
@@ -434,7 +528,10 @@ impl Transcriptor for StreamTranscriptor {
         opts: &plume_core::TranscribeOptions,
     ) -> Result<plume_core::Transcript, plume_core::AsrError> {
         let began = std::time::Instant::now();
-        let outcome = drain_and_close(&self.slot);
+        // Fermeture via le pilote, **bornée** (2,5 s) : si le SDK est
+        // enrayé, la borne s'ouvre et la voie batch reprend son rang
+        // d'autorité (ADR-02). Côté worker, aucune attente indéfinie.
+        let outcome = close_stream_bornee(&self.slot, std::time::Duration::from_millis(2500));
         if let Some(outcome) = outcome {
             // Voie rapide : l'audio a déjà décodé pendant la prise ; le
             // gain est majeur (sinon ~0,95× la durée parlée d'attente en
@@ -488,7 +585,27 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     // AVANT la capture — le robinet y accroche ses tranches dès la
     // construction ; le texte définitif reste la voie batch (aucune
     // sémantique changée), les partiels sont de l'affichage transitoire.
-    let stream = Arc::new(StreamSlot::new(Arc::clone(&logger)));
+    // Le **pilote** (`stream-driver`) est le seul thread à toucher aux
+    // FFI de session : un SDK enrayé figure CE thread, jamais le worker
+    // (incident du 18/10/2026 : un appel suspendu gelait tick, RF-11 et
+    // relâchement — la prise restait « recording » sans fin).
+    let (stream_tx, stream_rx) = std::sync::mpsc::channel::<StreamCmd>();
+    let stream = Arc::new(StreamSlot::new(Arc::clone(&logger), stream_tx));
+    if let Err(spawn_err) = std::thread::Builder::new()
+        .name("stream-driver".into())
+        .spawn({
+            let slot = Arc::clone(&stream);
+            let app = app.clone();
+            move || stream_driver_body(slot, app, stream_rx)
+        })
+    {
+        // Aucun repli silencieux (docs/03) : le défaut est consigné ;
+        // la voie batch reste l'autorité, le streaming d'affichage est
+        // simplement absent (sess=0 au diagnostic).
+        logger.log(Event::DeviceEvent {
+            kind: format!("stream-driver-spawn-echec:{}", spawn_err),
+        });
+    }
     let capture_tap: Option<CaptureTap> = Some({
         let slot = Arc::clone(&stream);
         Arc::new(move |mono: &[f32], rate: u32| {
@@ -761,9 +878,12 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
             Err(RecvTimeoutError::Timeout) => {
                 tick = tick.wrapping_add(1);
                 orch.handle(InputEvent::Tick);
-                // Streaming (docs/05, addition) : robinet → session →
-                // partiels d'affichage (transitoires, jamais conservés).
-                refresh_stream(&stream, &app);
+                // Streaming (docs/05, addition) : ping non bloquant du
+                // pilote — c'est LUI qui pousse le robinet vers la session
+                // et émet les partiels d'affichage (transitoires, jamais
+                // conservés). Aucun FFI sur ce thread : le worker ne
+                // dépend plus de la santé du SDK (incident 18/10/2026).
+                let _ = stream.tx.send(StreamCmd::Pump);
                 // Diagnostic chiffré (~1 Hz pendant la prise — nombres
                 // seulement, jamais de contenu, RF-34) : santé du robinet
                 // et de la session d'affichage. Un `sess=0` avec une prise
@@ -772,7 +892,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 if tick % 20 == 0 && matches!(orch.state(), DictationState::Recording { .. }) {
                     let fed = stream.fed.swap(0, Ordering::Relaxed);
                     let updates = stream.updates_seen.swap(0, Ordering::Relaxed);
-                    let session_open = lock_or_recover(&stream.session).is_some();
+                    let session_open = stream.has_session.load(Ordering::Relaxed);
                     logger.log(Event::DeviceEvent {
                         kind: format!(
                             "stream-diag:fed={fed},updates={updates},sess={}",
