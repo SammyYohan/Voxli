@@ -454,6 +454,63 @@ mod tests {
         }
     }
 
+    /// Voix de test SAPI (%APPDATA%\Plume\test\voix.wav, générée par
+    /// scripts/gen-voice.ps1) ou rien si absente — abstention gracieuse.
+    fn voix_local() -> Option<(Vec<f32>, u32)> {
+        let appdata = std::env::var("APPDATA").ok()?;
+        let path = std::path::PathBuf::from(appdata).join("Plume").join("test").join("voix.wav");
+        let (mut samples, rate, channels) = read_wav(&path)?;
+        if channels > 1 {
+            let mut mono = Vec::with_capacity(samples.len() / channels as usize);
+            for frame in samples.chunks_exact(channels as usize) {
+                mono.push(frame.iter().sum::<f32>() / channels as f32);
+            }
+            samples = mono;
+        }
+        Some((samples, rate))
+    }
+
+    /// Lecteur WAV PCM 16 bits minimal : balaye les chunks RIFF (fmt, data).
+    fn read_wav(path: &std::path::Path) -> Option<(Vec<f32>, u32, u16)> {
+        let bytes = std::fs::read(path).ok()?;
+        if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+            return None;
+        }
+        let mut i = 12usize;
+        let mut rate = 0u32;
+        let mut channels = 0u16;
+        let mut data: Option<&[u8]> = None;
+        while i + 8 <= bytes.len() {
+            let id = [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]];
+            let len = u32::from_le_bytes([
+                bytes[i + 4],
+                bytes[i + 5],
+                bytes[i + 6],
+                bytes[i + 7],
+            ]) as usize;
+            let start = (i + 8).min(bytes.len());
+            let end = (start + len).min(bytes.len());
+            match &id {
+                b"fmt " => {
+                    let body = &bytes[start..end];
+                    if body.len() >= 14 {
+                        channels = u16::from_le_bytes([body[2], body[3]]);
+                        rate = u32::from_le_bytes([body[4], body[5], body[6], body[7]]);
+                    }
+                }
+                b"data" => data = Some(&bytes[start..end]),
+                _ => {}
+            }
+            i = start.checked_add(len)?.checked_add(len % 2)?;
+        }
+        let data = data?;
+        let n = data.len() / 2;
+        let samples: Vec<f32> = (0..n)
+            .map(|k| i16::from_le_bytes([data[2 * k], data[2 * k + 1]]) as f32 / 32768.0)
+            .collect();
+        Some((samples, rate, channels))
+    }
+
     /// Inférence offline réelle : le GGUF téléchargé est chargé et une
     /// seconde de silence est décodée. Le texte attendu est vide (silence)
     /// ; aucun panique, aucun statut d'erreur.
@@ -499,5 +556,77 @@ mod tests {
         // Le silence ne finalise rien : la voie rapide doit s'abstenir
         // (repli batch), jamais fabriquer de texte.
         assert!(s.take_result().is_none(), "silence : aucun final attendu");
+    }
+
+    /// Décodage offline d'une vraie phrase (voix SAPI) : la chaîne complète
+    /// sans microphone. Impression du texte pour le jury humain (ce n'est
+    /// PAS le journal de l'app — RF-34 y règle, ici l'outil regarde).
+    #[test]
+    fn offline_phrase() {
+        let Some((samples, rate)) = voix_local() else {
+            eprintln!("voix.wav absente : exécuter scripts/gen-voice.ps1 — test abstenu.");
+            return;
+        };
+        let Some(path) = gguf_local() else {
+            eprintln!("GGUF absente : test abstenu.");
+            return;
+        };
+        let engine = NemoEngine::load(&path).expect("chargement du GGUF réel");
+        let audio = AudioBuffer::new(samples, rate);
+        let opts = TranscribeOptions::default();
+        let t = engine
+            .transcribe(&audio, &opts)
+            .expect("transcription offline de la voix de test");
+        eprintln!(
+            "OFFLINE ({:.1}s d'audio, {:.2}s de calcul) : \"{}\"",
+            audio.samples.len() as f64 / rate as f64,
+            t.duration.as_secs_f64(),
+            t.text
+        );
+        assert_eq!(t.engine, EngineId::Nemo);
+    }
+
+    /// Débit streaming réel : la phrase est poussée tranche par tranche
+    /// (50 ms, à la manière du worker) et drain entre chaque — ce test
+    /// mesure QUAND la session produit, pendant la prise. Impression du
+    /// texte partiel pour le jury humain.
+    #[test]
+    fn stream_debit_phrase() {
+        let Some((samples, rate)) = voix_local() else {
+            eprintln!("voix.wav absente : exécuter scripts/gen-voice.ps1 — test abstenu.");
+            return;
+        };
+        let Some(path) = gguf_local() else {
+            eprintln!("GGUF absente : test abstenu.");
+            return;
+        };
+        let engine = NemoEngine::load(&path).expect("chargement du GGUF réel");
+        // La langue de l'application (config `general.language = "fr"`) est
+        // répliquée ici : la session ouverte avec contrainte doit produire
+        // au même rythme.
+        let mut s = engine.open(Some("fr"), false).expect("ouverture du flux");
+        let chunk = (rate as usize) / 20; // 50 ms
+        for (tick, piece) in samples.chunks(chunk).enumerate() {
+            s.push(piece, rate).expect("push streaming");
+            let updates = s.drain().expect("drain streaming");
+            if !updates.is_empty() {
+                // Aucun contenu dans le journal de l'app, mais un essai
+                // rustc → stderr est un instrument pour l'humain : on montre
+                // l'instant d'apparition et le texte partiel.
+                let elapse = tick as f32 / 20.0;
+                let shown = s.snapshot();
+                eprintln!("tick {} ({:.2}s): {} updates → \"{}\"", tick, elapse, updates.len(), shown);
+            }
+        }
+        let began = std::time::Instant::now();
+        let fin = s.finish().expect("finish streaming");
+        eprintln!(
+            "FINISH {:.2}s → {} caractères (take_result: {})",
+            began.elapsed().as_secs_f64(),
+            fin.chars().count(),
+            s.take_result().as_ref().map(|(text, _)| text.chars().count())
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "abstient".into())
+        );
     }
 }

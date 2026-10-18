@@ -90,8 +90,11 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   de l'insertion.
 - **Justification** : un webview peut être suspendu par Windows (fenêtre masquée, économie
   d'énergie), rechargé après une panne, ou simplement lent ; aucun de ces états ne doit pouvoir
-  empêcher une dictée. Corollaire : la pastille d'état visible pendant la dictée est **native**
-  (fenêtre Win32 transparente ou icône de zone de notification), pas un composant web.
+  empêcher une dictée. Corollaire (v2) : la pastille est une **fenêtre native dédiée** (Win32
+  topmost, non activable, clic traversant) dont le rendu est un webview séparé — toute panne de
+  ce webview ne peut pas affecter le cycle (T-17/T-21 inchangés). Elle est **permanente** :
+  au repos un point discret en haut au centre (écoute armée — le raccourci est prêt, la capture
+  n'est PAS active), pendant la prise le visuel complet (état + vumètre + texte en direct).
 - **Conséquence testable** : le test T-17 (reprise pendant transcription) et T-21 (panique moteur)
   s'exécutent avec le webview tué volontairement ; la dictée doit continuer de fonctionner.
 - **Amendement (P2 streaming, 2026)** : la règle « aucun passage de texte dicté par l'IPC » reçoit

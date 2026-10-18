@@ -459,15 +459,12 @@ pub fn models_download(
                 // Raison consignée au journal (RF-34 : métadonnées de
                 // réseau, jamais de contenu dicté) — l'échec silencieux
                 // du premier jet rendait le diagnostic impossible.
-                handle
-                    .state::<UiShared>()
-                    .logger
-                    .log(Event::DeviceEvent {
-                        kind: format!(
-                            "téléchargement-échec:{}",
-                            reason.chars().take(96).collect::<String>()
-                        ),
-                    });
+                handle.state::<UiShared>().logger.log(Event::DeviceEvent {
+                    kind: format!(
+                        "téléchargement-échec:{}",
+                        reason.chars().take(96).collect::<String>()
+                    ),
+                });
                 // Le succès est émis par le thread ; un échec (annulation,
                 // réseau, extraction) doit lui aussi clore la progression
                 // côté interface — jamais de barre bloquée.

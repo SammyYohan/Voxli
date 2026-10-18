@@ -32,7 +32,7 @@ use plume_asr::ParakeetOnnxEngine;
 #[cfg(feature = "real-asr")]
 use plume_asr::WhisperCppEngine;
 use plume_asr::{StreamingEngine, StreamingSession};
-use plume_audio::{CpalCapture, CaptureTap, EnergyVad, FakeCapture, VadConfig};
+use plume_audio::{CaptureTap, CpalCapture, EnergyVad, FakeCapture, VadConfig};
 use plume_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
 use plume_core::{
     orchestrator::{asr_code, capture_code},
@@ -40,15 +40,14 @@ use plume_core::{
     Level, Orchestrator, OrchestratorCfg, Profile, ProfileBinding, SteadyClock, Transcriptor,
     TriggerMode,
 };
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use plume_diagnostics::{Event, Logger};
 use plume_storage::{HistoryStore, MemoryStore};
 use plume_text::PassThroughProcessor;
 #[cfg(target_os = "windows")]
 use plume_text::{WindowsFocusReader, WindowsInserter};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::commands::{lock_or_recover, UiShared};
-use crate::pill::PillCtl;
 use crate::strings;
 
 // Mise à jour du bandeau doc : la pastille (« pill ») et le vumètre sont
@@ -142,7 +141,10 @@ fn now_ms() -> u64 {
 /// déconnexion sont lus **hors orchestrateur** à intervalles réguliers. Le
 /// proxy passe par un verrou bref (une lecture de niveau ≈ quelques
 /// centaines d'octets, aucune allocation).
-struct SharedCapture(Arc<std::sync::Mutex<Box<dyn Capture + Send>>>, Arc<StreamSlot>);
+struct SharedCapture(
+    Arc<std::sync::Mutex<Box<dyn Capture + Send>>>,
+    Arc<StreamSlot>,
+);
 
 impl SharedCapture {
     fn new(inner: Box<dyn Capture + Send>, stream: Arc<StreamSlot>) -> Self {
@@ -163,10 +165,10 @@ impl Capture for SharedCapture {
         let _ = drain_and_close(&self.1);
         let started = lock_or_recover(&self.0).start(pre_roll_ms);
         if started.is_ok() {
-        // Session d'affichage ouverte AVANT que le robinet coule (RF-07 :
-        // le thread temps réel n'attend jamais — try_lock, une tranche
-        // peut être sacrifiée). Les tranches déjà tombées dans `feed`
-        // sont poussées au prochain tick d'affichage.
+            // Session d'affichage ouverte AVANT que le robinet coule (RF-07 :
+            // le thread temps réel n'attend jamais — try_lock, une tranche
+            // peut être sacrifiée). Les tranches déjà tombées dans `feed`
+            // sont poussées au prochain tick d'affichage.
             let factory = lock_or_recover(&self.1.engine).clone();
             if let Some(eng) = factory {
                 let language = lock_or_recover(&self.1.language).clone();
@@ -236,6 +238,11 @@ struct StreamSlot {
     feed: std::sync::Mutex<Vec<f32>>,
     /// Débit du robinet (fixé à la première tranche du périphérique).
     rate: AtomicU32,
+    /// Diagnostics chiffrés (nombres seulement, jamais de contenu — RF-34) :
+    /// échantillons avalés du robinet et mises à jour produites par la
+    /// session, consommés par le tick de diagnostic (~1 Hz pendant la prise).
+    fed: std::sync::atomic::AtomicU64,
+    updates_seen: std::sync::atomic::AtomicU64,
     /// Journal (échecs documentés, jamais silencieux).
     logger: Arc<Logger>,
 }
@@ -250,12 +257,19 @@ impl StreamSlot {
             end: AtomicBool::new(false),
             feed: std::sync::Mutex::new(Vec::with_capacity(24_000)),
             rate: AtomicU32::new(0),
+            fed: std::sync::atomic::AtomicU64::new(0),
+            updates_seen: std::sync::atomic::AtomicU64::new(0),
             logger,
         }
     }
 
     /// Fermeture capotée (config/verbatim recopiés au rebuild moteur).
-    fn update_mount(&self, engine: Option<Arc<dyn StreamingEngine>>, language: Option<String>, verbatim: bool) {
+    fn update_mount(
+        &self,
+        engine: Option<Arc<dyn StreamingEngine>>,
+        language: Option<String>,
+        verbatim: bool,
+    ) {
         *lock_or_recover(&self.engine) = engine;
         *lock_or_recover(&self.language) = language;
         self.verbatim.store(verbatim, Ordering::Relaxed);
@@ -286,10 +300,9 @@ fn drain_and_close(slot: &StreamSlot) -> Option<StreamOutcome> {
         let mut guard = lock_or_recover(&slot.session);
         if let Some(s) = guard.as_mut() {
             outcome = match s.finish() {
-                Ok(_) => s.take_result().map(|(text, confidence)| StreamOutcome {
-                    text,
-                    confidence,
-                }),
+                Ok(_) => s
+                    .take_result()
+                    .map(|(text, confidence)| StreamOutcome { text, confidence }),
                 Err(err) => {
                     // Diagnostic process (jamais de contenu, RF-34).
                     slot.logger.log(Event::Error {
@@ -324,6 +337,7 @@ fn push_feed_residue(slot: &StreamSlot) {
     if feed.is_empty() {
         return;
     }
+    let fed_now = feed.len();
     if let Err(err) = session.push(&feed[..], rate) {
         drop(feed);
         slot.logger.log(Event::Error {
@@ -334,6 +348,7 @@ fn push_feed_residue(slot: &StreamSlot) {
         return;
     }
     feed.clear();
+    slot.fed.fetch_add(fed_now as u64, Ordering::Relaxed);
 }
 
 /// Cycle d'affichage du streaming (appelé au tick worker, ~20 Hz au plus) :
@@ -354,6 +369,7 @@ fn refresh_stream(slot: &StreamSlot, app: &AppHandle<Wry>) {
         {
             let mut feed = lock_or_recover(&slot.feed);
             if rate > 0 && !feed.is_empty() {
+                let fed_now = feed.len();
                 if let Err(err) = s.push(&feed[..], rate) {
                     drop(feed);
                     slot.logger.log(Event::Error {
@@ -364,12 +380,15 @@ fn refresh_stream(slot: &StreamSlot, app: &AppHandle<Wry>) {
                     return;
                 }
                 feed.clear();
+                slot.fed.fetch_add(fed_now as u64, Ordering::Relaxed);
             }
         }
         match s.drain() {
             Ok(updates) => {
                 updates_len = updates.len();
                 snapshot = s.snapshot();
+                slot.updates_seen
+                    .fetch_add(updates_len as u64, Ordering::Relaxed);
             }
             Err(err) => {
                 slot.logger.log(Event::Error {
@@ -513,7 +532,9 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
             code: asr_code(&err),
         });
     }
-    let engine_label = Arc::new(std::sync::Mutex::new(engine.batch.id().as_str().to_string()));
+    let engine_label = Arc::new(std::sync::Mutex::new(
+        engine.batch.id().as_str().to_string(),
+    ));
     // Métadonnée moteur pour l'UI (état_get).
     *lock_or_recover(&app.state::<UiShared>().engine) = engine.batch.id().as_str().to_string();
     // Slot streaming : fabrique (si moteur capable) + langue/verbatim.
@@ -533,8 +554,6 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     // --- Historique (RF-33) : le store vit dans `UiShared` (partagé avec
     // les commandes IPC de lecture RF-33) ; le worker n'y touche qu'au
     // moment opportun via `maybe_record_history`.
-    let pill = PillCtl::new(app.clone());
-
     // --- Focus + insertion (plume-text / plume-win).
     #[cfg(target_os = "windows")]
     let focus_reader = WindowsFocusReader::new(excluded);
@@ -560,7 +579,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     let mut orch = Orchestrator::new(
         orch_cfg,
         deps,
-        make_sink(&app, &logger, &engine_label, &pill),
+        make_sink(&app, &logger, &engine_label),
         &clock,
     );
 
@@ -674,7 +693,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 orch = Orchestrator::new(
                     orch_cfg,
                     deps,
-                    make_sink(&app, &logger, &engine_label, &pill),
+                    make_sink(&app, &logger, &engine_label),
                     &clock,
                 );
                 if let Some(t) = last {
@@ -731,7 +750,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     orch = Orchestrator::new(
                         orch_cfg,
                         deps,
-                        make_sink(&app, &logger, &engine_label, &pill),
+                        make_sink(&app, &logger, &engine_label),
                         &clock,
                     );
                     if let Some(t) = last {
@@ -745,6 +764,22 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 // Streaming (docs/05, addition) : robinet → session →
                 // partiels d'affichage (transitoires, jamais conservés).
                 refresh_stream(&stream, &app);
+                // Diagnostic chiffré (~1 Hz pendant la prise — nombres
+                // seulement, jamais de contenu, RF-34) : santé du robinet
+                // et de la session d'affichage. Un `sess=0` avec une prise
+                // en cours = ouverture de session ratée ; `fed=0` = robinet
+                // sec ; `updates=0` ↔ le SDK n'a rien décodé à ce stade.
+                if tick % 20 == 0 && matches!(orch.state(), DictationState::Recording { .. }) {
+                    let fed = stream.fed.swap(0, Ordering::Relaxed);
+                    let updates = stream.updates_seen.swap(0, Ordering::Relaxed);
+                    let session_open = lock_or_recover(&stream.session).is_some();
+                    logger.log(Event::DeviceEvent {
+                        kind: format!(
+                            "stream-diag:fed={fed},updates={updates},sess={}",
+                            u8::from(session_open)
+                        ),
+                    });
+                }
                 // RF-08 : micro déconnecté → l'orchestrateur a eu l'erreur de
                 // fin de prise ; hors de toute prise, la capture est
                 // reconstruite (orchestrateur ré-assemblé, tampon RF-22
@@ -776,8 +811,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     drop(orch);
                     {
                         let mut slot = lock_or_recover(&capture_meter);
-                        *slot =
-                            build_capture(&now_cfg.audio.device, &logger, capture_tap.clone());
+                        *slot = build_capture(&now_cfg.audio.device, &logger, capture_tap.clone());
                     }
                     let deps = Deps {
                         capture: &mut capture,
@@ -790,7 +824,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     orch = Orchestrator::new(
                         orch_cfg,
                         deps,
-                        make_sink(&app, &logger, &engine_label, &pill),
+                        make_sink(&app, &logger, &engine_label),
                         &clock,
                     );
                     if let Some(t) = last {
@@ -1150,13 +1184,7 @@ fn engine_stale(label: &Arc<std::sync::Mutex<String>>, cfg: &Config) -> bool {
 
 // ------------------------------------------------- diffusion des événements ---
 
-fn forward_event(
-    app: &AppHandle<Wry>,
-    logger: &Logger,
-    engine_label: &str,
-    pill: &PillCtl,
-    ev: CoreEvent,
-) {
+fn forward_event(app: &AppHandle<Wry>, logger: &Logger, engine_label: &str, ev: CoreEvent) {
     match ev {
         CoreEvent::StateChanged(s) => {
             let shared = app.state::<UiShared>();
@@ -1166,9 +1194,10 @@ fn forward_event(
                 to: s.name().into(),
             });
             *lock_or_recover(&shared.state) = s.name().to_string();
-            // RF-09 : la pastille suit la machine à états (masquée à l'état
-            // « idle »), sans jamais porter de contenu (ADR-02, RF-34).
-            pill.set_state(s.name());
+            // RF-09 v2 : la pastille est un indicateur permanent (point
+            // d'écoute armée en haut au centre) — le webview s'abonne
+            // lui-même à `state://changed` et porte tout le visuel ; le noyau
+            // n'y manipule plus ni visibilité ni contenu (ADR-02, RF-34).
             let _ = app.emit(
                 "state://changed",
                 StatePayload {
@@ -1235,10 +1264,14 @@ fn forward_event(
                 },
             );
         }
-        CoreEvent::Inserted { level } => {
+        CoreEvent::Inserted { level, attempts } => {
             logger.log(Event::InsertResult {
                 level: level.as_str().into(),
-                fallback_reason: None,
+                fallback_reason: if attempts.is_empty() {
+                    None
+                } else {
+                    Some(attempts.join(","))
+                },
             });
             let _ = app.emit(
                 "notice://notice",
@@ -1576,14 +1609,12 @@ fn make_sink(
     app: &AppHandle<Wry>,
     logger: &Arc<Logger>,
     engine_label: &Arc<std::sync::Mutex<String>>,
-    pill: &PillCtl,
 ) -> Box<dyn FnMut(CoreEvent)> {
     let app = app.clone();
     let logger = Arc::clone(logger);
     let label = Arc::clone(engine_label);
-    let pill = pill.clone();
     Box::new(move |ev: CoreEvent| {
         let eng = lock_or_recover(&label).clone();
-        forward_event(&app, &logger, &eng, &pill, ev);
+        forward_event(&app, &logger, &eng, ev);
     })
 }

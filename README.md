@@ -275,7 +275,13 @@ SDK). Pendant la prise, la pastille affiche le texte en direct ; au
 relâchement, la transcription vient des segments finalisés du flux
 (voie rapide, aucun re-décodage — les deux routes sont au journal) et la
 voie batch (tampon complet, pré-roll inclus) reste l'autorité de secours
-(amendements ADR-02 dans docs/03).
+(amendements ADR-02 dans docs/03). **Pastille v2 (RF-09)** : indicateur
+permanent en haut au centre — au repos un point discret (raccourci armé,
+capture non active), pendant la prise pill complète (point rouge battu,
+vumètre, texte en direct, curseur clignotant) ; clic traversant, jamais
+de focus. Correctif bogue notoire : la fenêtre `pill` était absente de la
+surface de permissions Tauri (« capabilities ») — son webview ne recevait
+ni événement ni commande ; elle est désormais listée (`core:default`).
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
 reproductible — le pipeline complet reste exerçable en CI sans modèle ni

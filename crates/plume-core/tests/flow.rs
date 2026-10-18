@@ -265,7 +265,8 @@ fn t_nominal_insertion() {
     assert!(matches!(
         find(&events, |e| matches!(e, CoreEvent::Inserted { .. })),
         Some(CoreEvent::Inserted {
-            level: InsertLevel::ValuePattern
+            level: InsertLevel::ValuePattern,
+            ..
         })
     ));
     assert_eq!(

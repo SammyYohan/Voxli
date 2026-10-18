@@ -51,6 +51,10 @@ pub enum CoreEvent {
     RejectedBusy,
     Inserted {
         level: InsertLevel,
+        /// Essais abandonnés avant le niveau final, formatés `niveau:code`
+        /// (jamais de contenu — RF-34) : la mesure honnête des replis
+        /// (ex. ValuePattern → presse-papiers).
+        attempts: Vec<String>,
     },
     /// Échec total d'insertion : fenêtre de secours (RF-28 niveau 4, RF-31).
     RescueRequested {
@@ -676,7 +680,12 @@ impl<'a> Orchestrator<'a> {
                 let level = report.level_used;
                 self.set_state(DictationState::Idle);
                 if let Some(level) = level {
-                    self.emit(CoreEvent::Inserted { level });
+                    let attempts = report
+                        .attempts
+                        .iter()
+                        .map(|(l, c)| format!("{}:{}", l.as_str(), c))
+                        .collect();
+                    self.emit(CoreEvent::Inserted { level, attempts });
                 }
                 self.emit(CoreEvent::SessionFinished {
                     success: true,

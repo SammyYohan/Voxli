@@ -15,7 +15,6 @@
 #![windows_subsystem = "windows"]
 
 mod commands;
-mod pill;
 mod strings;
 mod worker;
 
@@ -161,24 +160,42 @@ fn main() {
 
 // ------------------------------------------------- pastille RF-09 ---
 
-/// Fenêtre pastille : native, sans décor, non focusable, toujours au premier
-/// plan, absente du sélecteur d'applications (RF-09). Créée masquée — elle
-/// apparaît quand la machine à états quitte « idle » (`pill::PillCtl`).
-/// Aucun contenu dicté : visuel d'état + niveau instantané (RF-34).
+/// Fenêtre pastille (RF-09 v2) : indicateur **permanent** en haut au centre
+/// du moniteur principal. Au repos, un seul point discret (écoute armée :
+/// le raccourci est prêt) ; pendant une prise, la pill complète (état +
+/// vumètre + texte en direct du streaming, amendement ADR-02). Transparente
+/// et non interactive : le clic traverse vers la fenêtre dessous. Créée
+/// visible — elle ne se masque jamais ; le webview reflète la machine à
+/// états via `state://changed`.
 fn setup_pill_window(app: &tauri::App<Wry>) -> tauri::Result<()> {
     if app.get_webview_window("pill").is_some() {
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(app, "pill", tauri::WebviewUrl::App("pill.html".into()))
-        .title(strings::PILL_WINDOW_TITLE)
-        .inner_size(190.0, 56.0)
-        .decorations(false)
-        .resizable(false)
-        .skip_taskbar(true)
-        .always_on_top(true)
-        .focusable(false)
-        .visible(false)
-        .build()?;
+    let win =
+        tauri::WebviewWindowBuilder::new(app, "pill", tauri::WebviewUrl::App("pill.html".into()))
+            .title(strings::PILL_WINDOW_TITLE)
+            .inner_size(640.0, 34.0)
+            .decorations(false)
+            .resizable(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .focusable(false)
+            .transparent(true)
+            .shadow(false)
+            .build()?;
+    // Position en haut au centre du moniteur principal : calcul en pixels
+    // physiques (640 logiques × échelle), rendu en logiques. Une seule
+    // fois — le webview reflète ensuite seul les changements d'état.
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let scale = m.scale_factor();
+        let win_phys_w = (640.0 * scale).round() as i32;
+        let x = m.position().x + ((m.size().width as i32 - win_phys_w) / 2).max(0);
+        let y = m.position().y + 8;
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    // Cliquer à travers l'indicateur : il ne doit jamais créer d'ombre
+    // interactive par-dessus l'application en cours (RF-09).
+    let _ = win.set_ignore_cursor_events(true);
     Ok(())
 }
 
