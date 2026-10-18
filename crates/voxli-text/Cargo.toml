@@ -1,0 +1,11 @@
+[package]
+name = "voxli-text"
+description = "Insertion du texte : plan pure (cascade ADR-06), exécution UIA/presse-papiers/SendInput, lecteur de focus."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+voxli-core = { path = "../voxli-core" }
+voxli-win = { path = "../voxli-win" }
+thiserror = { workspace = true }

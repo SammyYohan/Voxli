@@ -1,0 +1,49 @@
+[package]
+name = "voxli-desktop"
+description = "Application de bureau Voxli : assemblage du noyau, tray natif, raccourci global, commandes IPC."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "voxli-desktop"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico"] }
+tauri-plugin-global-shortcut = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Téléchargement de modèles + empreinte SHA-256 (RF-20) : UNE action
+# explicite de l'utilisateur, la seule voie réseau du produit (RF-36).
+ureq = "2"
+sha2 = "0.10"
+
+voxli-core = { path = "../../../crates/voxli-core" }
+voxli-config = { path = "../../../crates/voxli-config" }
+voxli-audio = { path = "../../../crates/voxli-audio" }
+voxli-asr = { path = "../../../crates/voxli-asr" }
+voxli-text = { path = "../../../crates/voxli-text" }
+voxli-hotkeys = { path = "../../../crates/voxli-hotkeys" }
+voxli-storage = { path = "../../../crates/voxli-storage" }
+voxli-secure = { path = "../../../crates/voxli-secure" }
+voxli-diagnostics = { path = "../../../crates/voxli-diagnostics" }
+voxli-license = { path = "../../../crates/voxli-license" }
+voxli-win = { path = "../../../crates/voxli-win" }
+
+# Moteur ASR réel — opt-in (voir README) :
+[features]
+default = []
+real-asr = ["voxli-asr/whisper"]
+parakeet-asr = ["voxli-asr/parakeet"]
+# Nemotron 3.5 streaming (SDK NeMo-Speech.cpp, ADR-06) — opt-in : la
+# compilation exige le SDK installé (build.rs de voxli-win lie et copie
+# les DLL à côté de l'exécutable), le build nominal reste vert sans lui.
+nemo-stream = ["voxli-asr/nemo-stream"]
+# Historique sur disque chiffré DPAPI (RF-33) — opt-in explicite.
+history-disk = ["voxli-storage/secure-disk"]
+# Embarquer l'interface construite (`../dist`) dans le binaire : OBLIGATOIRE
+# pour lancer l'application sans serveur Vite (`pnpm dev`) — sans elle, les
+# fenêtres affichent une page vide (mode dev → devUrl port 5173).
+custom-protocol = ["tauri/custom-protocol"]

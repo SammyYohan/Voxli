@@ -1,0 +1,226 @@
+/** Pastille RF-09 v2 — indicateur permanent en haut au centre de l'écran.
+ * Au repos : un seul point discret (écoute armée — le raccourci est prêt).
+ * Pendant une prise : pill complète (état + vumètre + texte en direct du
+ * streaming, amendement ADR-02 ; partiels transitoires, jamais conservés,
+ * RF-34). Au survol (détecté côté noyau — la fenêtre est traversée par le
+ * clic) : la légende du raccourci glisse sous la pilule. La fenêtre est
+ * transparente et son contenu n'est jamais interactif. */
+:root {
+  color-scheme: dark;
+}
+html,
+body.pill {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  color: #e5e7eb;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Scène — la pilule (les 34 px du haut). Le fond arrondi n'existe QUE
+ * pendant les états actifs (le reste du temps la fenêtre est invisible,
+ * seul le point d'écoute armée flotte). */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 17px;
+  background: rgba(13, 17, 21, 0.94);
+  border: 1px solid #374151;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+body[data-state="recording"] .stage::before,
+body[data-state="finalizing"] .stage::before,
+body[data-state="transcribing"] .stage::before,
+body[data-state="post-processing"] .stage::before,
+body[data-state="inserting"] .stage::before,
+body[data-state="recovery"] .stage::before {
+  opacity: 1;
+}
+.stage > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Le point — halo sombre pour rester lisible sur un fond clair. */
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #6b7280;
+  box-shadow: 0 0 0 3px rgba(13, 17, 21, 0.6);
+}
+
+/* Repos (idle) : seul le point, centré, respiration discrète — l'app est
+ * prête, le raccourci armé. */
+body[data-state="idle"] .stage {
+  justify-content: center;
+}
+body[data-state="idle"] .dot {
+  width: 9px;
+  height: 9px;
+  background: #9ca3af;
+  animation: affleurer 2.8s ease-in-out infinite;
+}
+@keyframes affleurer {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(13, 17, 21, 0.6);
+    opacity: 0.8;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(13, 17, 21, 0.22);
+    opacity: 1;
+  }
+}
+body[data-state="idle"] .label,
+body[data-state="idle"] .partial,
+body[data-state="idle"] .meter {
+  display: none;
+}
+/* Survol : le halo du point répond légèrement (détection côté noyau). */
+body.hover .dot {
+  box-shadow: 0 0 0 5px rgba(13, 17, 21, 0.45);
+}
+
+/* Prise en cours : le point bat (le texte en direct est le contenu). */
+body[data-state="recording"] .dot {
+  background: #ef4444;
+  animation: battre 0.9s ease-in-out infinite;
+  margin-left: 14px;
+}
+@keyframes battre {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+}
+
+body[data-state="finalizing"] .dot,
+body[data-state="transcribing"] .dot,
+body[data-state="post-processing"] .dot,
+body[data-state="recovery"] .dot {
+  background: #f59e0b;
+  margin-left: 14px;
+}
+body[data-state="inserting"] .dot {
+  background: #22c55e;
+  margin-left: 14px;
+}
+
+.label {
+  white-space: nowrap;
+  flex: none;
+}
+/* Pendant la prise, le libellé s'efface dès que le texte en direct
+ * apparaît : la parole est le message. */
+body[data-state="recording"].has-partial .label {
+  display: none;
+}
+
+/* Zone contextuelle : le texte s'écrit en direct, une seule ligne,
+ * ellipsis, curseur clignotant tant que la prise dure. */
+.partial {
+  display: none;
+  color: #f9fafb;
+  font-size: 14px;
+  line-height: 32px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.partial.live {
+  display: block;
+}
+.partial.live::after {
+  content: "▍";
+  color: #f59e0b;
+  margin-left: 2px;
+  animation: ciller 1.06s steps(2, start) infinite;
+}
+@keyframes ciller {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Jauge de voix : épinglée à la FIN de la zone (le texte frise à
+   gauche, la jauge ne bouge jamais). Le remplissage et la vidange sont
+   animés côté TS (balistiques VU via requestAnimationFrame) — aucune
+   transition CSS ici, qui donnerait un aspect figé. L'intensité (opacité,
+   halo) suit le niveau par la variable `--lvl` posée par le TS. */
+.meter {
+  flex: none;
+  margin-left: auto;
+  width: 64px;
+  height: 6px;
+  background: #1f2937;
+  border-radius: 3px;
+  margin-right: 14px;
+  overflow: hidden;
+}
+.meter.slim {
+  height: 6px;
+}
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  opacity: calc(0.45 + var(--lvl, 0) * 0.55);
+  box-shadow: 0 0 calc(var(--lvl, 0) * 12px) rgba(245, 158, 11, 0.6);
+}
+
+/* Légende du raccourci (RF-09 v2) : sous la pilule, au survol. Animation
+ * d'entrée — fondu et léger glissement vers le bas. */
+.legend {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(13, 17, 21, 0.96);
+  border: 1px solid #374151;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  color: #9ca3af;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-50%) translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+body.hover .legend {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.legend-keys {
+  color: #f9fafb;
+  background: #1f2937;
+  border: 1px solid #4b5563;
+  border-radius: 6px;
+  padding: 2px 8px;
+}

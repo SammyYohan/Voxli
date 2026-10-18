@@ -1,0 +1,18 @@
+[package]
+name = "voxli-storage"
+description = "Historique local maîtrisé (RF-33) : interface minimale, backend mémoire, SQLite chiffré en option."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+voxli-core = { path = "../voxli-core" }
+voxli-secure = { path = "../voxli-secure", optional = true }
+thiserror = { workspace = true }
+rusqlite = { version = "0.32", optional = true, features = ["bundled"] }
+
+[features]
+sqlite = ["dep:rusqlite"]
+# Historique disque chiffré au compte Windows (RF-33, P2) — champ par champ
+# via DPAPI ; requiert SQLite et l'API Windows.
+secure-disk = ["sqlite", "dep:voxli-secure", "voxli-secure/dpapi"]

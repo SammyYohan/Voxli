@@ -1,0 +1,95 @@
+# CI Voxli — conforme docs/06 §1 et §2 :
+# - tests purs à chaque PR (sans Windows natif requis pour les modules durs) ;
+# - runner Windows pour la capture (voxli-win, voxli-audio/capture) ;
+# - arbre applicatif compilé (voxli-desktop) ; l'inférence réelle (whisper) et
+#   les bancs M1/M2 restent hors CI (machine dédiée).
+#
+# Aucune connexion réseau du produit n'est testée ici : le runner vérifie
+# uniquement la compilation et les tests unitaires déterministes.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  tests-purs:
+    name: Tests purs (+ ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]   # modules Windows (voxli-win) testés ici
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Tests des modules (fonctionnalités par défaut)
+        run: cargo test -p voxli-core -p voxli-config -p voxli-license -p voxli-storage -p voxli-diagnostics -p voxli-audio -p voxli-hotkeys -p voxli-asr -p voxli-secure -p voxli-text -p voxli-win
+
+      - name: Tests SQLite (fonctionnalité opt-in)
+        run: cargo test -p voxli-storage --features sqlite
+
+      - name: Tests DPAPI (fonctionnalité opt-in)
+        run: cargo test -p voxli-secure --features dpapi
+
+  # Crates pures sur Linux : garde de portabilité du noyau métier sans
+  # dépendre d'un runner Windows. Périmètre volontairement conservateur
+  # (crates ne dépendant d'aucune API Windows au compile-time) : les
+  # suites hotkeys/text/secure/audio restent au job Windows, faute
+  # d'audit comparable de leur portabilité à ce jour.
+  # [À VÉRIFIER] au premier push : si une crate déclarée ici n'y compile
+  # pas, la retirer et le noter dans docs/11 §5 (jamais de « vert »
+  # invoqué sans exécution).
+  tests-purs-linux:
+    name: Tests purs (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Tests des crates pures
+        run: cargo test -p voxli-core -p voxli-config -p voxli-license -p voxli-storage -p voxli-diagnostics
+
+  application:
+    name: Compilation arbre applicatif (voxli-desktop)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Icônes de bundle (requis par tauri-build)
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/make-icons.ps1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Interface (typecheck + build Vite)
+        run: |
+          pnpm --dir apps/desktop install
+          pnpm --dir apps/desktop check
+          pnpm --dir apps/desktop build
+
+      - name: cargo check (arbre Tauri complet)
+        run: cargo check -p voxli-desktop

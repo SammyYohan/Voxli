@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voxli — Réglages</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <script>
+      /** Thème appliqué avant la première peinture (préférence locale,
+       * jamais une configuration produit). */
+      (function () {
+        var pref = localStorage.getItem("voxli.ui.theme") || localStorage.getItem("plume.ui.theme") || "system";
+        var dark =
+          pref === "dark"
+            ? true
+            : pref === "light"
+              ? false
+              : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="/logo.svg" alt="Voxli logo" width="38" height="38" style="border-radius: 8px;" />
+        <h1 style="margin: 0;">Voxli</h1>
+      </div>
+      <p class="muted" data-i18n="app.tagline">
+        Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
+        machine — sauf si vous le demandez explicitement.
+      </p>
+      <div id="notice" class="notice" hidden></div>
+    </header>
+
+    <!-- ================================================ Simple / Avancé -->
+    <div id="mode-bar">
+      <label>
+        <input id="mode-avance" type="checkbox" />
+        <span data-i18n="mode.advanced">Mode avancé — tous les réglages</span>
+      </label>
+      <label class="mode-theme">
+        <span data-i18n="mode.theme">Thème</span>
+        <select id="ui-theme">
+          <option value="system" data-i18n="theme.system">celui du système</option>
+          <option value="light" data-i18n="theme.light">clair</option>
+          <option value="dark" data-i18n="theme.dark">sombre</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- ================================================ Onboarding 1-clic -->
+    <div id="onboarding-card" class="notice onboarding" hidden>
+      <div class="onboarding-header">
+        <strong data-i18n="onboarding.title">🚀 Bienvenue sur Voxli !</strong>
+        <span data-i18n="onboarding.intro">Prêt pour une dictée vocale instantanée, fluide et 100&nbsp;% locale ?</span>
+      </div>
+      <p class="onboarding-desc" data-i18n-html="onboarding.desc">
+        Pour démarrer immédiatement, installez le modèle Whisper compact en un clic (57&nbsp;Mo, téléchargé une seule fois, tout tourne hors-ligne) :
+      </p>
+      <div class="onboarding-actions">
+        <button id="btn-onboarding-download" type="button" class="btn-primary" data-i18n="onboarding.download">⚡ Télécharger et activer Whisper (1 clic)</button>
+      </div>
+    </div>
+
+    <!-- ================================================== état + vumètre -->
+    <section>
+      <h2 data-i18n="state.section">État</h2>
+      <p class="status">
+        <span id="badge" class="badge">…</span>
+        <span class="engine"><span data-i18n="state.engineWord">moteur&nbsp;:</span> <b id="engine">…</b></span>
+      </p>
+      <div
+        class="meter"
+        title="Niveau du micro — jamais envoyé, jamais enregistré"
+        data-i18n-title="audio.meterTitle"
+      >
+        <div id="meter" class="meter-fill"></div>
+      </div>
+    </section>
+
+    <!-- ================================================== général -->
+    <section>
+      <h2 data-i18n="general.section">Général</h2>
+      <div class="row">
+        <label for="gen-ui-language" data-i18n="general.uiLanguageLabel">Langue de l'interface</label>
+        <select id="gen-ui-language">
+          <option value="fr" data-i18n="general.uiLanguageFr">français</option>
+          <option value="en" data-i18n="general.uiLanguageEn">English</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="gen-language" data-i18n="general.languageLabel">Langue de dictée (auto = la machine la détecte)</label>
+        <select id="gen-language">
+          <option value="" data-i18n="general.languageAuto">Détection automatique (recommandée)</option>
+          <option value="sq">albanais (sq)</option>
+          <option value="de">allemand (de)</option>
+          <option value="am">amharique (am)</option>
+          <option value="en">anglais (en)</option>
+          <option value="ar">arabe (ar)</option>
+          <option value="hy">arménien (hy)</option>
+          <option value="as">assamais (as)</option>
+          <option value="az">azéri (az)</option>
+          <option value="ba">bachkir (ba)</option>
+          <option value="eu">basque (eu)</option>
+          <option value="be">biélorusse (be)</option>
+          <option value="bn">bengali (bn)</option>
+          <option value="my">birman (my)</option>
+          <option value="bs">bosnien (bs)</option>
+          <option value="br">breton (br)</option>
+          <option value="bg">bulgare (bg)</option>
+          <option value="yue">cantonais (yue)</option>
+          <option value="ca">catalan (ca)</option>
+          <option value="zh">chinois mandarin (zh)</option>
+          <option value="ko">coréen (ko)</option>
+          <option value="ht">créole haïtien (ht)</option>
+          <option value="hr">croate (hr)</option>
+          <option value="si">cingalais (si)</option>
+          <option value="da">danois (da)</option>
+          <option value="es">espagnol (es)</option>
+          <option value="et">estonien (et)</option>
+          <option value="fo">féroïen (fo)</option>
+          <option value="fi">finlandais (fi)</option>
+          <option value="fr">français (fr)</option>
+          <option value="gl">galicien (gl)</option>
+          <option value="cy">gallois (cy)</option>
+          <option value="ka">géorgien (ka)</option>
+          <option value="el">grec (el)</option>
+          <option value="gu">gujarati (gu)</option>
+          <option value="ha">haoussa (ha)</option>
+          <option value="haw">hawaïen (haw)</option>
+          <option value="he">hébreu (he)</option>
+          <option value="hi">hindi (hi)</option>
+          <option value="hu">hongrois (hu)</option>
+          <option value="id">indonésien (id)</option>
+          <option value="is">islandais (is)</option>
+          <option value="it">italien (it)</option>
+          <option value="ja">japonais (ja)</option>
+          <option value="jw">javanais (jw)</option>
+          <option value="kn">kannada (kn)</option>
+          <option value="kk">kazakh (kk)</option>
+          <option value="km">khmer (km)</option>
+          <option value="lo">lao (lo)</option>
+          <option value="la">latin (la)</option>
+          <option value="lv">letton (lv)</option>
+          <option value="ln">lingala (ln)</option>
+          <option value="lt">lituanien (lt)</option>
+          <option value="lb">luxembourgeois (lb)</option>
+          <option value="mk">macédonien (mk)</option>
+          <option value="ms">malais (ms)</option>
+          <option value="ml">malayalam (ml)</option>
+          <option value="mg">malgache (mg)</option>
+          <option value="mt">maltais (mt)</option>
+          <option value="mi">maori (mi)</option>
+          <option value="mr">marathi (mr)</option>
+          <option value="mn">mongol (mn)</option>
+          <option value="nn">nynorsk norvégien (nn)</option>
+          <option value="no">norvégien (no)</option>
+          <option value="ne">népalais (ne)</option>
+          <option value="nl">néerlandais (nl)</option>
+          <option value="oc">occitan (oc)</option>
+          <option value="ur">ourdou (ur)</option>
+          <option value="uz">ouzbek (uz)</option>
+          <option value="ps">pachto (ps)</option>
+          <option value="pa">pendjabi (pa)</option>
+          <option value="fa">persan (fa)</option>
+          <option value="pl">polonais (pl)</option>
+          <option value="pt">portugais (pt)</option>
+          <option value="ro">roumain (ro)</option>
+          <option value="ru">russe (ru)</option>
+          <option value="sa">sanskrit (sa)</option>
+          <option value="sr">serbe (sr)</option>
+          <option value="sd">sindhi (sd)</option>
+          <option value="sk">slovaque (sk)</option>
+          <option value="sl">slovène (sl)</option>
+          <option value="sn">shona (sn)</option>
+          <option value="so">somali (so)</option>
+          <option value="su">soundanais (su)</option>
+          <option value="sv">suédois (sv)</option>
+          <option value="sw">swahili (sw)</option>
+          <option value="tg">tadjik (tg)</option>
+          <option value="tl">tagalog (tl)</option>
+          <option value="ta">tamoul (ta)</option>
+          <option value="tt">tatar (tt)</option>
+          <option value="cs">tchèque (cs)</option>
+          <option value="te">telugu (te)</option>
+          <option value="th">thaï (th)</option>
+          <option value="bo">tibétain (bo)</option>
+          <option value="tr">turc (tr)</option>
+          <option value="tk">turkmène (tk)</option>
+          <option value="uk">ukrainien (uk)</option>
+          <option value="vi">vietnamien (vi)</option>
+          <option value="yi">yiddish (yi)</option>
+          <option value="yo">yoruba (yo)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="gen-post" data-i18n="general.postLabel">Mise en forme du texte</label>
+        <select id="gen-post">
+          <option value="none" data-i18n="general.postNone">aucune — texte brut</option>
+          <option value="rules" data-i18n="general.postRules">règles françaises (défaut)</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- ================================================== raccourcis -->
+    <section>
+      <h2 data-i18n="hk.section">Raccourcis &amp; déclenchement</h2>
+      <div class="row">
+        <label for="hk-push" data-i18n="hk.pushLabel">Dictée</label>
+        <input id="hk-push" type="text" spellcheck="false" />
+      </div>
+      <div class="row advanced">
+        <label for="hk-mode" data-i18n="hk.modeLabel">Mode de déclenchement</label>
+        <select id="hk-mode">
+          <option value="hold" data-i18n="hk.hold">appui maintenu</option>
+          <option value="toggle" data-i18n="hk.toggle">bascule (un appui = marche/arrêt)</option>
+          <option value="double-push-lock" data-i18n="hk.doublePushLock">double appui = verrouillé</option>
+        </select>
+      </div>
+      <div class="row advanced">
+        <label for="hk-paste" data-i18n="hk.pasteLabel">Coller le dernier texte</label>
+        <input id="hk-paste" type="text" spellcheck="false" />
+      </div>
+      <div class="row advanced">
+        <label for="hk-show" data-i18n="hk.showLabel">Montrer le dernier texte</label>
+        <input id="hk-show" type="text" spellcheck="false" />
+      </div>
+      <p class="muted" data-i18n="hk.note">
+        Appliqués immédiatement à l'enregistrement (RF-01) — si un raccourci est
+        déjà pris par une autre application, un message le signale.
+      </p>
+    </section>
+
+    <!-- ================================================== dictionnaire & vocabulaire -->
+    <section id="sec-vocab">
+      <h2 data-i18n="vocab.section">Dictionnaire &amp; Vocabulaire personnalisé</h2>
+      <p class="muted" data-i18n="vocab.intro">
+        Enseignez à Voxli vos acronymes, noms propres, entreprises ou jargon métier.
+        Ces termes sont injectés dans Whisper pour une précision chirurgicale (Magic Formatting).
+      </p>
+
+      <div class="vocab-profile-selector">
+        <label for="vocab-profile-select" data-i18n="vocab.profileLabel">Profil de vocabulaire&nbsp;:</label>
+        <select id="vocab-profile-select">
+          <option value="default" data-i18n="vocab.profileDefault">Général (actif partout)</option>
+          <option value="code" data-i18n="vocab.profileCode">Profil « Code &amp; Dev »</option>
+          <option value="email" data-i18n="vocab.profileEmail">Profil « Courriels &amp; Messages »</option>
+        </select>
+      </div>
+
+      <div class="vocab-add-bar">
+        <input id="vocab-new-word" type="text" placeholder="Terme exact (ex&nbsp;: Voxli, CEFIR, SaaS)" spellcheck="false" data-i18n-placeholder="vocab.wordPlaceholder" />
+        <input id="vocab-new-variants" type="text" placeholder="Variantes orales (optionnel, ex&nbsp;: voxi, boxli)" spellcheck="false" data-i18n-placeholder="vocab.variantsPlaceholder" />
+        <button id="vocab-btn-add" type="button" data-i18n="vocab.add">+ Ajouter</button>
+      </div>
+
+      <div id="vocab-chips" class="vocab-chips">
+        <!-- Rendu dynamique des jetons -->
+      </div>
+
+      <div class="vocab-footer">
+        <button id="vocab-btn-export" type="button" class="secondary" data-i18n="vocab.exportCsv">Exporter en CSV</button>
+        <button id="vocab-btn-import-file" type="button" class="secondary" data-i18n="vocab.importCsv">Importer un fichier CSV</button>
+        <input id="vocab-file-input" type="file" accept=".csv,.txt" style="display: none;" />
+      </div>
+    </section>
+
+    <!-- ================================================== audio -->
+    <section>
+      <h2 data-i18n="audio.section">Réglages audio</h2>
+      <div class="row">
+        <label for="audio-device" data-i18n="audio.deviceLabel">Microphone</label>
+        <select id="audio-device">
+          <option value="default" data-i18n="audio.deviceDefault">Micro par défaut du système</option>
+        </select>
+        <button id="btn-devices" type="button" data-i18n="audio.refresh">Rafraîchir la liste</button>
+      </div>
+      <div class="row advanced">
+        <label for="pre-roll" data-i18n="audio.preRollLabel">Anticipation avant l'appui (pré-roll, ms)</label>
+        <input id="pre-roll" type="number" min="100" max="1000" step="25" />
+      </div>
+      <div class="row advanced">
+        <label for="max-rec" data-i18n="audio.maxRecLabel">Durée maximale d'une prise (s)</label>
+        <input id="max-rec" type="number" min="30" max="1800" step="5" />
+      </div>
+      <div class="row advanced">
+        <label for="vad-aggr" data-i18n="audio.vadLabel">Détection de voix</label>
+        <select id="vad-aggr">
+          <option value="low" data-i18n="audio.vadLow">permissive — capte la parole lointaine</option>
+          <option value="balanced" data-i18n="audio.vadBalanced">équilibrée (défaut)</option>
+          <option value="high" data-i18n="audio.vadHigh">stricte — ignore le bruit</option>
+        </select>
+      </div>
+      <button id="btn-save-general" type="button" data-i18n="general.save">Enregistrer les réglages</button>
+      <span id="save-result" class="muted"></span>
+    </section>
+
+    <!-- ================================================== modèles -->
+    <section id="sec-modeles">
+      <h2 data-i18n="models.section">Voix (moteur de reconnaissance)</h2>
+      <p class="muted" data-i18n-html="models.intro">
+        Le téléchargement est <b>votre action explicite</b>, ici, et la
+        <b>seule</b> connexion réseau de Voxli depuis cet écran. Chaque fichier
+        est vérifié après réception ; la preuve reste dans un journal local.
+      </p>
+      <table id="models" class="list">
+        <thead>
+          <tr>
+            <th data-i18n="models.colModel">Modèle</th>
+            <th data-i18n="models.colState">État</th>
+            <th data-i18n="models.colCheck">Contrôle</th>
+            <th data-i18n="models.colActions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="models-body"></tbody>
+      </table>
+      <div id="model-progress" class="meter slim" hidden>
+        <div id="model-progress-fill" class="meter-fill"></div>
+      </div>
+      <span id="model-status" class="muted"></span>
+    </section>
+
+    <!-- ================================================== profils -->
+    <section class="advanced">
+      <h2 data-i18n="profiles.section">Profils &amp; dictionnaires</h2>
+      <div id="profiles-lock" class="notice" hidden></div>
+      <div class="row">
+        <label for="prof-code-apps" data-i18n="profiles.codeAppsLabel">Profil « code » — applications associées (séparées par des virgules)</label>
+        <input id="prof-code-apps" type="text" spellcheck="false" />
+      </div>
+      <div class="row">
+        <label for="prof-email-apps" data-i18n="profiles.emailAppsLabel">Profil « courriel » — applications associées</label>
+        <input id="prof-email-apps" type="text" spellcheck="false" />
+      </div>
+      <details>
+        <summary data-i18n="profiles.dictCodeSummary">Dictionnaire « code » (une entrée par ligne&nbsp;: cible|variante1|variante2)</summary>
+        <textarea id="dict-code" rows="6" spellcheck="false"></textarea>
+        <button id="dict-code-export" type="button" data-i18n="profiles.exportFile">Exporter en fichier</button>
+        <button id="dict-code-import" type="button" data-i18n="profiles.reimportFile">Réimporter depuis le fichier choisi</button>
+      </details>
+      <details>
+        <summary data-i18n="profiles.dictEmailSummary">Dictionnaire « courriel »</summary>
+        <textarea id="dict-email" rows="6" spellcheck="false"></textarea>
+        <button id="dict-email-import" type="button" data-i18n="profiles.importCsvCfg">Importer ce CSV dans la configuration</button>
+        <button id="dict-email-export" type="button" data-i18n="profiles.exportFile">Exporter en fichier</button>
+      </details>
+      <p class="muted" data-i18n-html="profiles.note">
+        Le dictionnaire remplace vos variantes (métallurgie → « métallurjie »
+        redevient <i>métallurgie</i>) même en mode « texte brut » : c'est
+        votre correction, pas une réécriture du produit.
+      </p>
+    </section>
+
+    <!-- ================================================== historique -->
+    <section>
+      <h2 data-i18n="history.section">Historique</h2>
+      <div class="row">
+        <label for="hist-enabled" data-i18n="history.keepLabel">Conserver les transcriptions</label>
+        <select id="hist-enabled">
+          <option value="no" data-i18n="history.no">non — rien n'est conservé (défaut navigateur)</option>
+          <option value="yes" data-i18n="history.yes">oui — je le veux, supprimables à tout instant</option>
+        </select>
+      </div>
+      <div class="row advanced">
+        <label for="hist-storage" data-i18n="history.whereLabel">Où conserver</label>
+        <select id="hist-storage">
+          <option value="memory" data-i18n="history.memory">mémoire vive seule (disparaît à l'extinction)</option>
+          <option value="disk" data-i18n="history.disk">disque chiffré (clé Windows, DPAPI)</option>
+        </select>
+      </div>
+      <div class="row advanced">
+        <label for="hist-retention" data-i18n="history.retentionLabel">Rétention (jours)</label>
+        <input id="hist-retention" type="number" min="1" max="365" step="1" />
+      </div>
+      <button id="btn-history-purge" type="button" data-i18n="history.purge">Tout supprimer maintenant</button>
+      <span id="history-result" class="muted"></span>
+      <table id="history" class="list">
+        <thead>
+          <tr>
+            <th data-i18n="history.colDate">Date</th>
+            <th data-i18n="history.colEngine">Moteur</th>
+            <th data-i18n="history.colText">Texte</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </section>
+
+    <!-- ================================================== licence -->
+    <section class="advanced">
+      <h2 data-i18n="license.section">Licence</h2>
+      <p id="license-line">…</p>
+      <ul id="license-features" class="muted"></ul>
+      <details>
+        <summary data-i18n="license.importSummary">Importer un code de licence</summary>
+        <p class="muted" data-i18n="license.importNote">La vérification est locale et hors ligne (signature Ed25519). Aucun envoi.</p>
+        <textarea id="license-blob" rows="5" spellcheck="false" placeholder="voxli-license-v1&#10;…"></textarea>
+        <button id="btn-license-import" type="button" data-i18n="license.importAction">Vérifier et importer</button>
+        <span id="license-result" class="muted"></span>
+      </details>
+    </section>
+
+    <!-- ================================================== vie privée -->
+    <p class="simple-only muted" data-i18n="privacy.simpleNote">
+      Totalement local : rien ne quitte cette machine sans votre accord
+      explicite. Les détails (consentements, lecture du contexte) sont dans le
+      mode avancé.
+    </p>
+    <section class="advanced">
+      <h2 data-i18n="privacy.section">Vie privée</h2>
+      <div class="row">
+        <label for="pv-strict" data-i18n="privacy.strictLabel">Mode local strict</label>
+        <select id="pv-strict">
+          <option value="on" data-i18n="privacy.strictOn">actif — rien ne quitte cette machine</option>
+          <option value="off" data-i18n="privacy.strictOff">désactivé — je débloque sur consentement</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-consent-asr" data-i18n="privacy.consentAsrLabel">Consentement : transcription distante (BYOK, P4)</label>
+        <select id="pv-consent-asr">
+          <option value="off" data-i18n="privacy.never">jamais (défaut)</option>
+          <option value="on" data-i18n="privacy.grantedApiKey">accord — uniquement si j'ai saisi une clé d'API</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-consent-post" data-i18n="privacy.consentPostLabel">Consentement : post-traitement distant</label>
+        <select id="pv-consent-post">
+          <option value="off" data-i18n="privacy.never">jamais (défaut)</option>
+          <option value="on" data-i18n="privacy.granted">accord</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="pv-context" data-i18n="privacy.contextLabel">Lecture du contexte (RF-37)</label>
+        <select id="pv-context">
+          <option value="none" data-i18n="privacy.contextNone">aucune lecture (défaut)</option>
+          <option value="app_and_title" data-i18n="privacy.contextAppTitle">application + titre (pas le contenu)</option>
+          <option value="app_title_and_selection" data-i18n="privacy.contextSelection">application + titre + sélection</option>
+        </select>
+        <button id="btn-context-preview" type="button" data-i18n="privacy.contextPreview">Voir le contexte actuel</button>
+        <span id="context-result" class="muted"></span>
+      </div>
+      <p class="muted" data-i18n="privacy.note">
+        Aucun service distant n'est activé tant que ces deux interrupteurs
+        restent sur « jamais » — même si un moteur distant est compilé.
+      </p>
+    </section>
+
+    <!-- ================================================== diagnostic -->
+    <section class="advanced">
+      <h2 data-i18n="diag.section">Diagnostic &amp; données</h2>
+      <button id="btn-export" data-i18n="diag.exportReport">Exporter le rapport de diagnostic</button>
+      <span id="export-result" class="muted"></span>
+      <a id="export-download" hidden data-i18n="diag.downloadLink">Télécharger le fichier</a>
+      <button id="btn-data-export" data-i18n="diag.exportData">Exporter mes données (configuration + dictionnaires)</button>
+      <span id="data-result" class="muted"></span>
+      <p class="muted" data-i18n="diag.note">
+        Le rapport ne contient, par conception, ni caractère dicté, ni audio,
+        ni contenu de presse-papiers. Relisez-le avant tout envoi.
+      </p>
+    </section>
+
+    <footer class="muted" data-i18n-html="footer.text">
+      Voxli — 100 % local. Réglages avancés accessibles dans
+      <code>%APPDATA%\Voxli\config.json</code>.
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
