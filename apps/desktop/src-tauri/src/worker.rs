@@ -9,8 +9,8 @@
 //!
 //! Événements émis vers l'UI :
 //! - `state://changed` `{ state, atMs }` — aucun contenu (table docs/05 §3) ;
-//! - `meter://level` `{ level, atMs }` — vumètre, 1 échantillon sur 4 ticks
-//!   (~200 ms) : addition documentée à la table (RF-09) ;
+//! - `meter://level` `{ level, atMs }` — vumètre, 1 échantillon sur 2 ticks
+//!   (~100 ms) : addition documentée à la table (RF-09) ;
 //! - `session://finished` `{ success, durationMs, level, atMs }` ;
 //! - `notice://notice` `{ kind, message }` — **addition documentée** à la
 //!   table : messages FR neutres définis dans `strings.rs`, jamais de contenu ;
@@ -953,9 +953,10 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 }
                 #[cfg(not(target_os = "windows"))]
                 let _ = device_lost_now;
-                // RF-09 : vumètre — échantillonné 1 fois sur 4 (~200 ms),
-                // lecture intérieure au verrou du proxy (très bref).
-                if tick % 4 == 0 {
+                // RF-09 : vumètre — échantillonné 1 fois sur 2 (~100 ms,
+                // lecture intérieure au verrou du proxy, très bref) : la
+                // jauge de la pastille se remplit et se vide avec la voix.
+                if tick % 2 == 0 {
                     let level = lock_or_recover(&capture_meter).level();
                     let _ = app.emit(
                         "meter://level",

@@ -57,14 +57,42 @@ void (async function init() {
     applyState(payload.state);
   });
 
-  void state<{ level: number }>("meter://level", (ev) => {
+  /* Jauge de voix (RF-09 v2) : balistiques de vumètre — remplissage vif,
+   * vidange douce (chasse plus lente), rendu via requestAnimationFrame
+   * pour une animation continue entre les échantillons (~10 Hz). La boucle
+   * s'arrête seule quand la voix se tait : aucun coût hors prise. */
+  let target = 0;
+  let shown = 0;
+  let raf = 0;
+
+  /** Pose la largeur et l'intensité (variable CSS --lvl pour opacité/halo). */
+  function applyLevel(v: number): void {
     const fill = document.getElementById("pill-meter");
     if (fill === null) return;
-    const leveled =
+    const leveled = Math.max(0, Math.min(1, v));
+    fill.style.width = `${(leveled * 100).toFixed(1)}%`;
+    fill.style.setProperty("--lvl", leveled.toFixed(3));
+  }
+
+  function step(): void {
+    // Attaque rapide (la voix monte), chute douce (la jauge se vide).
+    const chase = target > shown ? 0.5 : 0.14;
+    shown += (target - shown) * chase;
+    if (target < 0.004 && shown < 0.004) {
+      shown = 0;
+      raf = 0;
+    } else {
+      raf = requestAnimationFrame(step);
+    }
+    applyLevel(shown);
+  }
+
+  void state<{ level: number }>("meter://level", (ev) => {
+    target =
       document.body.dataset.state === "recording"
         ? Math.max(0, Math.min(1, ev.payload.level))
         : 0.0;
-    fill.style.width = `${(leveled * 100).toFixed(1)}%`;
+    if (raf === 0) raf = requestAnimationFrame(step);
   });
 
   // Hypothèse transitoire du streaming (amendement ADR-02) : la ligne

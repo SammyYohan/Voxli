@@ -165,27 +165,30 @@ body[data-state="recording"].has-partial .label {
   }
 }
 
-/* Vumètre : réduit quand le texte occupe la ligne. */
+/* Jauge de voix : épinglée à la FIN de la zone (le texte frise à
+   gauche, la jauge ne bouge jamais). Le remplissage et la vidange sont
+   animés côté TS (balistiques VU via requestAnimationFrame) — aucune
+   transition CSS ici, qui donnerait un aspect figé. L'intensité (opacité,
+   halo) suit le niveau par la variable `--lvl` posée par le TS. */
 .meter {
   flex: none;
+  margin-left: auto;
   width: 64px;
-  height: 5px;
+  height: 6px;
   background: #1f2937;
   border-radius: 3px;
   margin-right: 14px;
   overflow: hidden;
 }
 .meter.slim {
-  height: 5px;
+  height: 6px;
 }
 .meter-fill {
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, #f59e0b, #ef4444);
-  transition: width 0.12s ease-out;
-}
-body.has-partial .meter {
-  width: 40px;
+  opacity: calc(0.45 + var(--lvl, 0) * 0.55);
+  box-shadow: 0 0 calc(var(--lvl, 0) * 12px) rgba(245, 158, 11, 0.6);
 }
 
 /* Légende du raccourci (RF-09 v2) : sous la pilule, au survol. Animation
