@@ -13,7 +13,10 @@
 //!   (~200 ms) : addition documentée à la table (RF-09) ;
 //! - `session://finished` `{ success, durationMs, level, atMs }` ;
 //! - `notice://notice` `{ kind, message }` — **addition documentée** à la
-//!   table : messages FR neutres définis dans `strings.rs`, jamais de contenu.
+//!   table : messages FR neutres définis dans `strings.rs`, jamais de contenu ;
+//! - `dictation://partial` `{ text, atMs }` — **addition documentée** (amendement
+//!   ADR-02) : hypothèses transitoires du streaming Nemotron pendant une
+//!   prise, pur affichage — jamais journalisées ni conservées (RF-34).
 
 use serde::Serialize;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -22,11 +25,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
 use plume_asr::FakeEngine;
+#[cfg(feature = "nemo-stream")]
+use plume_asr::NemoEngine;
 #[cfg(feature = "parakeet-asr")]
 use plume_asr::ParakeetOnnxEngine;
 #[cfg(feature = "real-asr")]
 use plume_asr::WhisperCppEngine;
-use plume_audio::{CpalCapture, EnergyVad, FakeCapture, VadConfig};
+use plume_asr::{StreamingEngine, StreamingSession};
+use plume_audio::{CpalCapture, CaptureTap, EnergyVad, FakeCapture, VadConfig};
 use plume_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
 use plume_core::{
     orchestrator::{asr_code, capture_code},
@@ -34,6 +40,7 @@ use plume_core::{
     Level, Orchestrator, OrchestratorCfg, Profile, ProfileBinding, SteadyClock, Transcriptor,
     TriggerMode,
 };
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use plume_diagnostics::{Event, Logger};
 use plume_storage::{HistoryStore, MemoryStore};
 use plume_text::PassThroughProcessor;
@@ -135,11 +142,11 @@ fn now_ms() -> u64 {
 /// déconnexion sont lus **hors orchestrateur** à intervalles réguliers. Le
 /// proxy passe par un verrou bref (une lecture de niveau ≈ quelques
 /// centaines d'octets, aucune allocation).
-struct SharedCapture(Arc<std::sync::Mutex<Box<dyn Capture + Send>>>);
+struct SharedCapture(Arc<std::sync::Mutex<Box<dyn Capture + Send>>>, Arc<StreamSlot>);
 
 impl SharedCapture {
-    fn new(inner: Box<dyn Capture + Send>) -> Self {
-        Self(Arc::new(std::sync::Mutex::new(inner)))
+    fn new(inner: Box<dyn Capture + Send>, stream: Arc<StreamSlot>) -> Self {
+        Self(Arc::new(std::sync::Mutex::new(inner)), stream)
     }
 
     /// Deuxième clé du même compartiment : vumètre + capteur de déconnexion.
@@ -150,11 +157,40 @@ impl SharedCapture {
 
 impl Capture for SharedCapture {
     fn start(&mut self, pre_roll_ms: u32) -> Result<(), CaptureError> {
-        lock_or_recover(&self.0).start(pre_roll_ms)
+        // Session périmée éventuelle (prise muette : le VAD a refusé la
+        // transcription) : fermeture bornée avant d'ouvrir la suivante.
+        drain_and_close(&self.1);
+        let started = lock_or_recover(&self.0).start(pre_roll_ms);
+        if started.is_ok() {
+        // Session d'affichage ouverte AVANT que le robinet coule (RF-07 :
+        // le thread temps réel n'attend jamais — try_lock, une tranche
+        // peut être sacrifiée). Les tranches déjà tombées dans `feed`
+        // sont poussées au prochain tick d'affichage.
+            let factory = lock_or_recover(&self.1.engine).clone();
+            if let Some(eng) = factory {
+                let language = lock_or_recover(&self.1.language).clone();
+                let verbatim = self.1.verbatim.load(Ordering::Relaxed);
+                match eng.open(language.as_deref(), verbatim) {
+                    Ok(s) => *lock_or_recover(&self.1.session) = Some(s),
+                    Err(err) => {
+                        self.1.logger.log(Event::Error {
+                            module: "asr".into(),
+                            code: asr_code(&err),
+                        });
+                    }
+                }
+            }
+        }
+        started
     }
 
     fn stop(&mut self) -> Result<AudioBuffer, CaptureError> {
-        lock_or_recover(&self.0).stop()
+        let buffer = lock_or_recover(&self.0).stop();
+        // La prise audio est close : le transcriptor finalisera la session
+        // (le texte batch reste l'autorité) ; en cas de prise muette (VAD
+        // refuse), le prochain start ferme aussi via drain_and_close.
+        self.1.end.store(true, Ordering::Relaxed);
+        buffer
     }
 
     fn level(&self) -> Level {
@@ -163,6 +199,204 @@ impl Capture for SharedCapture {
 
     fn device_lost(&self) -> bool {
         lock_or_recover(&self.0).device_lost()
+    }
+}
+
+// ------------------------------------------------------ streaming (P2) ---
+
+/// Affichage partiel (addition documentée, docs/05 §3) : hypothèses
+/// transitoires du streaming pendant une prise — pur affichage, jamais
+/// journalisées ni conservées (RF-34, amendement ADR-02).
+#[derive(Clone, Serialize)]
+struct PartialPayload {
+    text: String,
+    #[serde(rename = "atMs")]
+    at_ms: u64,
+}
+
+/// Câblage streaming d'une prise. Le robinet de capture (thread temps réel)
+/// ne touche qu'au tampon de tranches `feed` (try_lock : une tranche
+/// d'affichage peut être sacrifiée pendant un drain — le texte définitif,
+/// voie batch, n'en dépend jamais). Tout le reste (session, fermeture,
+/// drain, IPC) vit sur le thread worker.
+struct StreamSlot {
+    /// Fabrique de session (moteur streaming capable) ; recopiée à chaque
+    /// rebuild moteur ; vide quand le moteur n'en a pas.
+    engine: std::sync::Mutex<Option<Arc<dyn StreamingEngine>>>,
+    /// Langue + verbatim de la config en service (recopiés au rebuild).
+    language: std::sync::Mutex<Option<String>>,
+    verbatim: AtomicBool,
+    /// Session ouverte par `SharedCapture::start`, fermée à la
+    /// transcription (texte batch = autorité).
+    session: std::sync::Mutex<Option<Box<dyn StreamingSession>>>,
+    /// Posé par `SharedCapture::stop` : la prise est finie côté capture.
+    end: AtomicBool,
+    /// Tranches mono du robinet, préallouées (clear sans désallocation).
+    feed: std::sync::Mutex<Vec<f32>>,
+    /// Débit du robinet (fixé à la première tranche du périphérique).
+    rate: AtomicU32,
+    /// Journal (échecs documentés, jamais silencieux).
+    logger: Arc<Logger>,
+}
+
+impl StreamSlot {
+    fn new(logger: Arc<Logger>) -> Self {
+        Self {
+            engine: std::sync::Mutex::new(None),
+            language: std::sync::Mutex::new(None),
+            verbatim: AtomicBool::new(false),
+            session: std::sync::Mutex::new(None),
+            end: AtomicBool::new(false),
+            feed: std::sync::Mutex::new(Vec::with_capacity(24_000)),
+            rate: AtomicU32::new(0),
+            logger,
+        }
+    }
+
+    /// Fermeture capotée (config/verbatim recopiés au rebuild moteur).
+    fn update_mount(&self, engine: Option<Arc<dyn StreamingEngine>>, language: Option<String>, verbatim: bool) {
+        *lock_or_recover(&self.engine) = engine;
+        *lock_or_recover(&self.language) = language;
+        self.verbatim.store(verbatim, Ordering::Relaxed);
+    }
+}
+
+/// Ferme proprement une session (aspiration résiduelle du robinet, flush
+/// finish, aspiration bornée des derniers segments). Borne de sécurité :
+/// ~1 s + 300 drains ; le nominal est quasi instantané (l'audio a déjà été
+/// poussé pendant la prise). Le texte commité sert à l'affichage uniquement
+/// — le texte définitif reste celui de la voie batch (aucune sémantique
+/// changée, docs/05).
+fn drain_and_close(slot: &StreamSlot) {
+    // 1) résiduel du robinet — la session obtient tout ce qui reste.
+    push_feed_residue(slot);
+    // 2) finish + drain borné, puis fermeture.
+    {
+        let mut guard = lock_or_recover(&slot.session);
+        if let Some(s) = guard.as_mut() {
+            if let Err(err) = s.finish() {
+                // Diagnostic process (jamais de contenu, RF-34).
+                slot.logger.log(Event::Error {
+                    module: "asr".into(),
+                    code: asr_code(&err),
+                });
+            }
+        }
+        *guard = None;
+    }
+    slot.end.store(false, Ordering::Relaxed);
+}
+
+/// Pousse les tranches accumulées du robinet vers la session (verrou
+/// bref ; le robinet utilise try_lock et sacrifie une tranche au besoin).
+fn push_feed_residue(slot: &StreamSlot) {
+    let rate = slot.rate.load(Ordering::Relaxed);
+    if rate == 0 {
+        return;
+    }
+    let mut guard = lock_or_recover(&slot.session);
+    if guard.is_none() {
+        return;
+    }
+    let session = guard.as_mut().expect("session vérifiée ci-dessus");
+    let mut feed = lock_or_recover(&slot.feed);
+    if feed.is_empty() {
+        return;
+    }
+    if let Err(err) = session.push(&feed[..], rate) {
+        drop(feed);
+        slot.logger.log(Event::Error {
+            module: "asr".into(),
+            code: asr_code(&err),
+        });
+        *guard = None;
+        return;
+    }
+    feed.clear();
+}
+
+/// Cycle d'affichage du streaming (appelé au tick worker, ~20 Hz au plus) :
+/// résiduel → push → drain → émission d'un unique `dictation://partial`
+/// portant le texte affichage courant (transitoire, RF-34).
+fn refresh_stream(slot: &StreamSlot, app: &AppHandle<Wry>) {
+    if slot.end.load(Ordering::Relaxed) {
+        return; // fermeture pilotée par le transcriptor / le proxy
+    }
+    let updates_len;
+    let snapshot;
+    {
+        let mut guard = lock_or_recover(&slot.session);
+        let Some(s) = guard.as_mut() else {
+            return;
+        };
+        let rate = slot.rate.load(Ordering::Relaxed);
+        {
+            let mut feed = lock_or_recover(&slot.feed);
+            if rate > 0 && !feed.is_empty() {
+                if let Err(err) = s.push(&feed[..], rate) {
+                    drop(feed);
+                    slot.logger.log(Event::Error {
+                        module: "asr".into(),
+                        code: asr_code(&err),
+                    });
+                    *guard = None;
+                    return;
+                }
+                feed.clear();
+            }
+        }
+        match s.drain() {
+            Ok(updates) => {
+                updates_len = updates.len();
+                snapshot = s.snapshot();
+            }
+            Err(err) => {
+                slot.logger.log(Event::Error {
+                    module: "asr".into(),
+                    code: asr_code(&err),
+                });
+                *guard = None;
+                return;
+            }
+        }
+    }
+    if updates_len == 0 {
+        return;
+    }
+    let _ = app.emit(
+        "dictation://partial",
+        PartialPayload {
+            text: snapshot,
+            at_ms: now_ms(),
+        },
+    );
+}
+
+/// Voirie batch inchangée : à la transcription (et à la fermeture de prise),
+/// la session streaming est finalisée AVANT la voie batch — le texte
+/// inséré reste et restera le produit du moteur batch sur le tampon entier
+/// (pré-roll inclus).
+struct StreamTranscriptor {
+    inner: Arc<dyn Transcriptor>,
+    slot: Arc<StreamSlot>,
+}
+
+impl Transcriptor for StreamTranscriptor {
+    fn warmup(&self) -> Result<(), plume_core::AsrError> {
+        self.inner.warmup()
+    }
+
+    fn transcribe(
+        &self,
+        audio: &AudioBuffer,
+        opts: &plume_core::TranscribeOptions,
+    ) -> Result<plume_core::Transcript, plume_core::AsrError> {
+        drain_and_close(&self.slot);
+        self.inner.transcribe(audio, opts)
+    }
+
+    fn id(&self) -> plume_core::EngineId {
+        self.inner.id()
     }
 }
 
@@ -184,17 +418,37 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     // enveloppée dans un proxy : l'orchestrateur garde `&mut dyn Capture`,
     // pendant que le niveau sonore (RF-09) et la détection de déconnexion
     // (RF-10) sont lus hors orchestrateur par un partagé `Arc`.
+    // --- Streaming (docs/05, addition documentée) : le slot est créé
+    // AVANT la capture — le robinet y accroche ses tranches dès la
+    // construction ; le texte définitif reste la voie batch (aucune
+    // sémantique changée), les partiels sont de l'affichage transitoire.
+    let stream = Arc::new(StreamSlot::new(Arc::clone(&logger)));
+    let capture_tap: Option<CaptureTap> = Some({
+        let slot = Arc::clone(&stream);
+        Arc::new(move |mono: &[f32], rate: u32| {
+            if rate == 0 || mono.is_empty() {
+                return;
+            }
+            slot.rate.store(rate, Ordering::Relaxed);
+            if let Ok(mut feed) = slot.feed.try_lock() {
+                feed.extend_from_slice(mono);
+            }
+            // try_lock occupé (drain en cours) : la tranche d'affichage est
+            // sacrifiée — le texte définitif (batch) n'en dépend jamais.
+        })
+    });
     let init: Box<dyn Capture + Send> = {
         #[cfg(target_os = "windows")]
         {
-            build_capture(&cfg.audio.device, &logger)
+            build_capture(&cfg.audio.device, &logger, capture_tap.clone())
         }
         #[cfg(not(target_os = "windows"))]
         {
+            let _ = &capture_tap;
             Box::new(FakeCapture::with_duration(Duration::from_millis(1600)))
         }
     };
-    let mut capture = SharedCapture::new(init);
+    let mut capture = SharedCapture::new(init, Arc::clone(&stream));
     let capture_meter = capture.inner_arc();
     let mut last_device: String = cfg.audio.device.clone();
     #[cfg(not(target_os = "windows"))]
@@ -206,15 +460,21 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     // --- Moteur ASR (ADR-03) : réel si compilé + modèle présent ; sinon
     // moteur factice explicite au journal (jamais de fallback silencieux).
     let mut engine = build_engine(&cfg, &logger);
-    if let Err(err) = engine.warmup() {
+    if let Err(err) = engine.batch.warmup() {
         logger.log(Event::Error {
             module: "asr".into(),
             code: asr_code(&err),
         });
     }
-    let engine_label = Arc::new(std::sync::Mutex::new(engine.id().as_str().to_string()));
+    let engine_label = Arc::new(std::sync::Mutex::new(engine.batch.id().as_str().to_string()));
     // Métadonnée moteur pour l'UI (état_get).
-    *lock_or_recover(&app.state::<UiShared>().engine) = engine.id().as_str().to_string();
+    *lock_or_recover(&app.state::<UiShared>().engine) = engine.batch.id().as_str().to_string();
+    // Slot streaming : fabrique (si moteur capable) + langue/verbatim.
+    stream.update_mount(
+        engine.streaming.clone(),
+        Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
+        cfg.profiles.default.style == plume_config::Style::Verbatim,
+    );
 
     // --- Post-traitement (RF-26) : niveau 1 quand `rules` est choisi ;
     // identité sinon (le profil verbatim la garantit de toute façon).
@@ -238,10 +498,14 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     let mut inserter: Box<dyn Inserter> = build_inserter(&cfg);
 
     let clock = SteadyClock::default();
+    let mut streamed = StreamTranscriptor {
+        inner: Arc::clone(&engine.batch),
+        slot: Arc::clone(&stream),
+    };
     let deps = Deps {
         capture: &mut capture,
         vad: &vad,
-        transcriptor: &*engine,
+        transcriptor: &streamed,
         post: &*post,
         inserter: &mut *inserter,
         focus: &focus_reader,
@@ -315,17 +579,30 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 drop(orch);
                 // Moteur : rechargé seulement si le choix ou le modèle a
                 // changé (un chargement réel coûte cher, RF-20).
+                // Slot streaming : langue/verbatim recopiés même sans
+                // changement de moteur (la fabrique reste valable).
+                stream.update_mount(
+                    engine.streaming.clone(),
+                    Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
+                    cfg.profiles.default.style == plume_config::Style::Verbatim,
+                );
                 if engine_stale(&engine_label, &cfg) {
                     engine = build_engine(&cfg, &logger);
-                    if let Err(err) = engine.warmup() {
+                    if let Err(err) = engine.batch.warmup() {
                         logger.log(Event::Error {
                             module: "asr".into(),
                             code: asr_code(&err),
                         });
                     }
-                    *lock_or_recover(&engine_label) = engine.id().as_str().to_string();
+                    *lock_or_recover(&engine_label) = engine.batch.id().as_str().to_string();
                     *lock_or_recover(&app.state::<UiShared>().engine) =
-                        engine.id().as_str().to_string();
+                        engine.batch.id().as_str().to_string();
+                    stream.update_mount(
+                        engine.streaming.clone(),
+                        Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
+                        cfg.profiles.default.style == plume_config::Style::Verbatim,
+                    );
+                    streamed.inner = Arc::clone(&engine.batch);
                 }
                 post = match cfg.general.post_processing {
                     plume_config::PostProcessing::Rules => Box::new(plume_text::FrenchProcessor),
@@ -334,14 +611,15 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 #[cfg(target_os = "windows")]
                 if reopen_device {
                     let mut slot = lock_or_recover(&capture_meter);
-                    *slot = build_capture(&cfg.audio.device, &logger);
+                    *slot = build_capture(&cfg.audio.device, &logger, capture_tap.clone());
                 }
                 inserter = build_inserter(&cfg);
 
+                streamed.inner = Arc::clone(&engine.batch);
                 let deps = Deps {
                     capture: &mut capture,
                     vad: &vad,
-                    transcriptor: &*engine,
+                    transcriptor: &streamed,
                     post: &*post,
                     inserter: &mut *inserter,
                     focus: &focus_reader,
@@ -374,15 +652,21 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     let orch_cfg = to_orchestrator_cfg(&cfg, pro_profiles);
                     drop(orch);
                     engine = build_engine(&cfg, &logger);
-                    if let Err(err) = engine.warmup() {
+                    if let Err(err) = engine.batch.warmup() {
                         logger.log(Event::Error {
                             module: "asr".into(),
                             code: asr_code(&err),
                         });
                     }
-                    *lock_or_recover(&engine_label) = engine.id().as_str().to_string();
+                    *lock_or_recover(&engine_label) = engine.batch.id().as_str().to_string();
                     *lock_or_recover(&app.state::<UiShared>().engine) =
-                        engine.id().as_str().to_string();
+                        engine.batch.id().as_str().to_string();
+                    stream.update_mount(
+                        engine.streaming.clone(),
+                        Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
+                        cfg.profiles.default.style == plume_config::Style::Verbatim,
+                    );
+                    streamed.inner = Arc::clone(&engine.batch);
                     post = match cfg.general.post_processing {
                         plume_config::PostProcessing::Rules => {
                             Box::new(plume_text::FrenchProcessor)
@@ -392,7 +676,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     let deps = Deps {
                         capture: &mut capture,
                         vad: &vad,
-                        transcriptor: &*engine,
+                        transcriptor: &streamed,
                         post: &*post,
                         inserter: &mut *inserter,
                         focus: &focus_reader,
@@ -411,6 +695,9 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
             Err(RecvTimeoutError::Timeout) => {
                 tick = tick.wrapping_add(1);
                 orch.handle(InputEvent::Tick);
+                // Streaming (docs/05, addition) : robinet → session →
+                // partiels d'affichage (transitoires, jamais conservés).
+                refresh_stream(&stream, &app);
                 // RF-08 : micro déconnecté → l'orchestrateur a eu l'erreur de
                 // fin de prise ; hors de toute prise, la capture est
                 // reconstruite (orchestrateur ré-assemblé, tampon RF-22
@@ -442,12 +729,13 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     drop(orch);
                     {
                         let mut slot = lock_or_recover(&capture_meter);
-                        *slot = build_capture(&now_cfg.audio.device, &logger);
+                        *slot =
+                            build_capture(&now_cfg.audio.device, &logger, capture_tap.clone());
                     }
                     let deps = Deps {
                         capture: &mut capture,
                         vad: &vad,
-                        transcriptor: &*engine,
+                        transcriptor: &streamed,
                         post: &*post,
                         inserter: &mut *inserter,
                         focus: &focus_reader,
@@ -569,7 +857,89 @@ fn model_path(cfg: &Config) -> std::path::PathBuf {
     dir.join(name)
 }
 
-fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
+/// Moteur monté : la voie batch — autorité du texte inséré — et, quand le
+/// moteur le permet, la fabrique de sessions streaming (affichage des
+/// partiels en direct, docs/05).
+struct EngineBundle {
+    batch: Arc<dyn Transcriptor>,
+    streaming: Option<Arc<dyn StreamingEngine>>,
+}
+
+/// ID du GGUF Nemotron 3.5 streaming (catalogue modèles, docs/04).
+#[cfg(feature = "nemo-stream")]
+const NEMO_MODEL_ID: &str = "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf";
+
+/// Dossier du GGUF Nemotron installé (gestionnaire de modèles).
+#[cfg(feature = "nemo-stream")]
+fn nemo_model_path(_cfg: &Config) -> std::path::PathBuf {
+    Config::default_dir().join("models").join(NEMO_MODEL_ID)
+}
+
+#[cfg(feature = "nemo-stream")]
+fn nemo_available(cfg: &Config) -> bool {
+    nemo_model_path(cfg).is_file()
+}
+
+#[cfg(not(feature = "nemo-stream"))]
+fn nemo_available(_cfg: &Config) -> bool {
+    false
+}
+
+/// Journalisation d'un échec de montage moteur : le code du noyau ET, pour
+/// `Runtime` (détail SDK in-process), le texte de diagnostic process —
+/// jamais de contenu dicté (RF-34). (Souvent utilisé : un seul appelant,
+/// sous `nemo-stream` ; le noyau sans SDK n'a pas de détail à porter.)
+#[cfg(feature = "nemo-stream")]
+fn log_engine_failure(logger: &Logger, err: &plume_core::AsrError) {
+    if let plume_core::AsrError::Runtime(detail) = err {
+        let compact: String = detail.chars().take(160).collect();
+        logger.log(Event::DeviceEvent {
+            kind: format!("moteur-échec:{compact}"),
+        });
+    }
+    logger.log(Event::Error {
+        module: "asr".into(),
+        code: asr_code(err),
+    });
+}
+
+fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
+    // Nemotron 3.5 (feature `nemo-stream`) : priorité `auto` quand le GGUF
+    // est installé (il apporte le streaming d'affichage) ; choix explicite
+    // exige le modèle (absent → code 7 au journal, repli factice audible,
+    // jamais silencieux).
+    #[cfg(feature = "nemo-stream")]
+    if matches!(cfg.general.engine, EngineChoice::Nemo | EngineChoice::Auto) {
+        if nemo_model_path(cfg).is_file() {
+            match NemoEngine::load(&nemo_model_path(cfg)) {
+                Ok(e) => {
+                    logger.log(Event::EngineLoaded {
+                        engine: "nemo".into(),
+                        model_id: NEMO_MODEL_ID.into(),
+                    });
+                    let e = Arc::new(e);
+                    return EngineBundle {
+                        batch: e.clone(),
+                        streaming: Some(e),
+                    };
+                }
+                Err(err) => log_engine_failure(logger, &err),
+            }
+        } else if matches!(cfg.general.engine, EngineChoice::Nemo) {
+            logger.log(Event::Error {
+                module: "asr".into(),
+                code: 7,
+            });
+        }
+    }
+    #[cfg(not(feature = "nemo-stream"))]
+    if matches!(cfg.general.engine, EngineChoice::Nemo) {
+        // Choix explicite mais binaire compilé sans le SDK : refus documenté.
+        logger.log(Event::Error {
+            module: "asr".into(),
+            code: 9,
+        });
+    }
     // Parakeet (ADR-03 point 2, feature `parakeet-asr`) : choix explicite,
     // ou repli `auto` quand whisper n'a pas de modèle installé.
     #[cfg(feature = "parakeet-asr")]
@@ -585,7 +955,10 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
                             engine: "parakeet".into(),
                             model_id: "parakeet-tdt-0.6b-v3".into(),
                         });
-                        return Box::new(engine);
+                        return EngineBundle {
+                            batch: Arc::new(engine),
+                            streaming: None,
+                        };
                     }
                     Err(err) => {
                         logger.log(Event::Error {
@@ -611,8 +984,13 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
     }
     // whisper.cpp (feature `real-asr`) pour `whisper` et `auto` si le modèle
     // est installé (gestionnaire de modèles ou scripts/fetch-model.ps1).
+    // `Nemo` explicite sans modèle saute cette branche : pas de bascule
+    // silencieuse vers un autre moteur que celui choisi.
     #[cfg(feature = "real-asr")]
-    if !matches!(cfg.general.engine, EngineChoice::Parakeet) {
+    if !matches!(
+        cfg.general.engine,
+        EngineChoice::Parakeet | EngineChoice::Nemo
+    ) {
         let path = model_path(cfg);
         if path.is_file() {
             match WhisperCppEngine::load(&path) {
@@ -625,7 +1003,10 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
                         engine: "whisper.cpp".into(),
                         model_id,
                     });
-                    return Box::new(engine);
+                    return EngineBundle {
+                        batch: Arc::new(engine),
+                        streaming: None,
+                    };
                 }
                 // Modèle absent ou illisible : repli visible, jamais silencieux.
                 Err(err) => {
@@ -641,7 +1022,10 @@ fn build_engine(cfg: &Config, logger: &Logger) -> Box<dyn Transcriptor> {
         engine: "fake".into(),
         model_id: "faux".into(),
     });
-    Box::new(FakeEngine::default())
+    EngineBundle {
+        batch: Arc::new(FakeEngine::default()),
+        streaming: None,
+    }
 }
 
 /// Dossier du modèle Parakeet installé (gestionnaire de modèles).
@@ -692,8 +1076,19 @@ fn engine_stale(label: &Arc<std::sync::Mutex<String>>, cfg: &Config) -> bool {
                 "fake"
             }
         }
+        EngineChoice::Nemo => {
+            if nemo_available(cfg) {
+                "nemo"
+            } else {
+                "fake"
+            }
+        }
         EngineChoice::Auto => {
-            if whisper_available(cfg) {
+            // Priorité auto : Nemotron (streaming d'affichage), puis whisper,
+            // puis Parakeet (mêmes règles que build_engine, docs/05 §4).
+            if nemo_available(cfg) {
+                "nemo"
+            } else if whisper_available(cfg) {
                 "whisper.cpp"
             } else if parakeet_available(cfg) {
                 "parakeet"
@@ -935,9 +1330,16 @@ pub fn open_rescue_window(app: &AppHandle<Wry>) -> tauri::Result<()> {
 
 /// RF-08 : construction de la capture avec le périphérique configuré.
 /// Chaîne explicite : configuré → défaut → factice (journal documente).
+/// Le robinet streaming (tranches natives pendant une prise, docs/05)
+/// accompagne la capture réelle ; le repli factice en est dépourvu
+/// (journal `capture-fallback-fake` — l'affichage en direct s'éteint).
 #[cfg(target_os = "windows")]
-fn build_capture(device: &str, logger: &Logger) -> Box<dyn Capture + Send> {
-    match CpalCapture::new_with_device(device) {
+fn build_capture(
+    device: &str,
+    logger: &Logger,
+    tap: Option<CaptureTap>,
+) -> Box<dyn Capture + Send> {
+    match CpalCapture::new_with_tap(device, tap.clone()) {
         Ok(c) => {
             logger.log(Event::DeviceEvent {
                 kind: format!("capture-opened:{}", c.device_name()),
@@ -950,7 +1352,7 @@ fn build_capture(device: &str, logger: &Logger) -> Box<dyn Capture + Send> {
                 code: capture_code(&first),
             });
             // Repli sur le micro par défaut courant avant d'abandonner.
-            match CpalCapture::new() {
+            match CpalCapture::new_with_tap("default", tap) {
                 Ok(c) => {
                     logger.log(Event::DeviceEvent {
                         kind: "capture-fallback-default".into(),

@@ -20,6 +20,11 @@ pub mod sendinput;
 #[cfg(target_os = "windows")]
 pub mod uia;
 
+/// Liaison SDK NeMo-Speech.cpp (feature `nemo`) : reconnaissance vocal
+/// streaming in-process. L'archive installée fournit l'ABI C.
+#[cfg(feature = "nemo")]
+pub mod nemo;
+
 #[cfg(target_os = "windows")]
 pub use clipboard::{ClipboardError, ClipboardGuard};
 #[cfg(target_os = "windows")]

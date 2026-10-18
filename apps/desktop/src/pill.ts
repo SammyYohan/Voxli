@@ -1,5 +1,8 @@
-/** Pastille RF-09 — la fenêtre ne porte JAMAIS de texte dicté
- * (ADR-02, RF-34) : nom d'état + niveau instantané. */
+/** Pastille RF-09 — la fenêtre porte le nom d'état + niveau instantané.
+ * Amendement ADR-02 (P2 streaming) : des hypothèses transitoires peuvent
+ * s'afficher pendant l'enregistrement (`dictation://partial`) ; elles ne
+ * sont jamais journalisées ni conservées (RF-34) et s'effacent dès la fin
+ * de la prise. Aucun autre contenu dicté n'est montré ici. */
 
 const fr_state: Record<string, string> = {
   idle: "prête",
@@ -45,12 +48,37 @@ void (async function init() {
     fill.style.width = `${(leveled * 100).toFixed(1)}%`;
   });
 
+  // Hypothèse transitoire du streaming (amendement ADR-02) : remplace la
+  // ligne d'attente courante. Uniquement de l'affichage.
+  void state<{ text: string; atMs: number }>("dictation://partial", (ev) => {
+    const el = document.getElementById("partial");
+    if (el === null) return;
+    el.textContent = ev.payload.text;
+    el.classList.add("live");
+    document.body.classList.add("has-partial");
+  });
+
+  /** Efface la ligne transitoire (fin de prise, RF-34 : rien ne reste). */
+  function clearPartial(): void {
+    const el = document.getElementById("partial");
+    if (el !== null) {
+      el.textContent = "";
+      el.classList.remove("live");
+    }
+    document.body.classList.remove("has-partial");
+  }
+
   function applyState(state: string): void {
     current = state;
     if (state === "idle") {
       // La fenêtre est masquée depuis le côté noyau (pill::PillCtl) — ici
       // on ne fait que tenir le visuel à jour.
       return;
+    }
+    if (state !== "recording") {
+      // Les partiels n'ont de sens que pendant la prise : ils sont
+      // effacés dès que le moteur prend la main.
+      clearPartial();
     }
     const label = document.getElementById("label");
     const dot = document.getElementById("dot");

@@ -19,7 +19,7 @@ pub use vad::{EnergyVad, VadConfig};
 #[cfg(target_os = "windows")]
 pub mod capture;
 #[cfg(target_os = "windows")]
-pub use capture::{list_input_devices, CpalCapture, InputDevice};
+pub use capture::{list_input_devices, CaptureTap, CpalCapture, InputDevice};
 
 /// Capture synthétique pour les tests et la CI (aucun micro requis).
 pub mod fake;

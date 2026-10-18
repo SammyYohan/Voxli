@@ -12,10 +12,21 @@
 pub mod fake;
 pub use fake::FakeEngine;
 
+/// Streaming in-process (session d'énoncé) : trait + session factice pour
+/// les tests. Sans dépendance native : compile toujours.
+pub mod streaming;
+pub use streaming::{FakeSession, FakeStreamer, StreamingEngine, StreamingSession, StreamUpdate};
+
 #[cfg(feature = "whisper")]
 pub mod whisper;
 #[cfg(feature = "whisper")]
 pub use whisper::WhisperCppEngine;
+
+/// Nemotron 3.5 ASR streaming (SDK C in-process) — feature `nemo-stream`.
+#[cfg(feature = "nemo-stream")]
+pub mod nemo;
+#[cfg(feature = "nemo-stream")]
+pub use nemo::NemoEngine;
 
 #[cfg(feature = "parakeet")]
 pub mod parakeet;

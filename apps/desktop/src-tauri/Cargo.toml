@@ -37,6 +37,10 @@ plume-win = { path = "../../../crates/plume-win" }
 default = []
 real-asr = ["plume-asr/whisper"]
 parakeet-asr = ["plume-asr/parakeet"]
+# Nemotron 3.5 streaming (SDK NeMo-Speech.cpp, ADR-06) — opt-in : la
+# compilation exige le SDK installé (build.rs de plume-win lie et copie
+# les DLL à côté de l'exécutable), le build nominal reste vert sans lui.
+nemo-stream = ["plume-asr/nemo-stream"]
 # Historique sur disque chiffré DPAPI (RF-33) — opt-in explicite.
 history-disk = ["plume-storage/secure-disk"]
 # Embarquer l'interface construite (`../dist`) dans le binaire : OBLIGATOIRE

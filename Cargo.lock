@@ -2902,6 +2902,7 @@ name = "plume-asr"
 version = "0.1.0"
 dependencies = [
  "plume-core",
+ "plume-win",
  "serde_json",
  "sherpa-onnx",
  "thiserror 2.0.21",

@@ -21,8 +21,13 @@ sherpa-onnx = { version = "1.13", optional = true }
 # Moteur distant BYOK (P4, RF-36) : transport HTTPS multipart minimal.
 ureq = { version = "2", optional = true, features = ["tls"] }
 
+# Nemotron 3.5 ASR streaming (SDK NeMo-Speech.cpp, ADR-06) : liaison
+# optionnelle, l'installation locale du SDK est requise (README §6).
+plume-win = { path = "../plume-win", optional = true }
+
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
 parakeet = ["dep:sherpa-onnx"]
 remote = ["dep:ureq"]
+nemo-stream = ["dep:plume-win", "plume-win/nemo"]

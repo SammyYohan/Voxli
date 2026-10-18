@@ -165,12 +165,17 @@ jamais l'audio.
 | Noyau → UI | `meter://level` | niveau normalisé (échantillonné 1/4 tick, ~200 ms) | Passif : jamais enregistré, jamais transmis |
 | Noyau → UI | `session://finished` | durée, moteur, niveau d'insertion, succès | Aucun contenu |
 | Noyau → UI | `notice://notice` | `kind` + message FR neutre (`strings.rs`) | `nothing`, `busy`, `inserted`, `refused`, `max-warning`, `locked`, `queued`, `retarget`, `hotkey` — **addition documentée à cette table** ; aucun événement ne contient de texte dicté (T-34) |
+| Noyau → UI | `dictation://partial` | hypothèse transitoire du streaming (`text`, horodatage) | **Addition documentée à cette table** (amendement ADR-02, P2 streaming) : affichage en direct pendant la prise uniquement, jamais journalisé ni conservé (RF-34), effacé à la fin de prise — exception 3 ci-dessous |
 | Noyau → UI | `models://progress` / `models://done` | `id`, octets reçus / total | **Seule** voie réseau consentie : téléchargement de modèles (RF-20, RF-36) |
 
 ** Exceptions documentées d'exfiltration de contenu du noyau (les seules) :
 1. **Fenêtre de secours** (RF-31) — texte du tampon interne, jamais par le canal d'événements.
 2. **Historique** (RF-33) — lecture choisie par l'utilisateur, supprimable à tout instant
    (`history.delete` / `history.purge`) ; chiffré au repos (DPAPI).
+3. **Affichage partiel streaming** (P2, amendement ADR-02) — hypothèses transitoires du moteur
+   Nemotron pendant la prise (`dictation://partial`) : pur affichage pastille, **jamais** écrites
+   (journal, disque, historique), **jamais** réutilisées pour l'insertion — le texte inséré reste
+   celui de la voie batch sur le tampon complet (pré-roll inclus), inchangée.
 
 ### 3.2 Commandes (UI → noyau), fichier `commands.rs`
 
@@ -205,7 +210,8 @@ Fichier `%APPDATA%\Plume\config.json`, versionné, lisible, exportable. Extrait 
   "schema": 4,
   "general": {
     "language": "fr",
-    "engine": "auto",                 // auto | whisper | parakeet
+    "engine": "auto",                 // auto | whisper | parakeet | nemo ;
+                                      // auto : nemo (modèle présent) → whisper → parakeet → fake
     "model": "auto",
     "postProcessing": "rules",        // none | rules | local_model
     "history": { "enabled": true, "storage": "memory", "retentionDays": 30 }

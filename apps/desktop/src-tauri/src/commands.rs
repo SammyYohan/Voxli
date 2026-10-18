@@ -298,7 +298,7 @@ pub fn devices_list() -> Vec<DeviceInfo> {
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
-    /// "whisper" | "parakeet".
+    /// "whisper" | "parakeet" | "nemo".
     pub kind: String,
     /// Taille estimée (Mo) — indicative.
     #[serde(rename = "sizeMb")]
@@ -313,7 +313,7 @@ pub struct ModelInfo {
 
 /// Catalogue : (id, libellé, type, taille Mo, licence) — la provenance et
 /// la licence sont visibles dans l'interface avant tout téléchargement
-/// (attribution CC-BY-4.0, THIRD-PARTY-LICENSES.md).
+/// (attribution CC-BY-4.0 / OpenMDW, THIRD-PARTY-LICENSES.md).
 const MODEL_CATALOG: &[(&str, &str, &str, Option<u64>, &str)] = &[
     (
         "ggml-base-q5_1.bin",
@@ -328,6 +328,13 @@ const MODEL_CATALOG: &[(&str, &str, &str, Option<u64>, &str)] = &[
         "whisper",
         Some(181),
         "MIT — ggerganov/whisper.cpp",
+    ),
+    (
+        "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+        "Nemotron 3.5 continu (40 langues, texte en direct — 708 Mo)",
+        "nemo",
+        Some(708),
+        "OpenMDW-1.1 — NVIDIA Nemotron Speech",
     ),
     (
         "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
@@ -480,6 +487,9 @@ fn model_url(id: &str, kind: &str) -> String {
     match kind {
         "parakeet" => format!(
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/{id}.tar.bz2"
+        ),
+        "nemo" => format!(
+            "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b/resolve/main/{id}"
         ),
         _ => format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{id}"),
     }

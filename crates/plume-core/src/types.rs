@@ -42,6 +42,8 @@ pub type Level = f32;
 pub enum EngineId {
     WhisperCpp,
     ParakeetOnnx,
+    /// Nemotron 3.5 via le SDK NeMo-Speech.cpp (streaming in-process).
+    Nemo,
     Remote,
     Fake,
 }
@@ -51,6 +53,7 @@ impl EngineId {
         match self {
             EngineId::WhisperCpp => "whisper.cpp",
             EngineId::ParakeetOnnx => "parakeet-onnx",
+            EngineId::Nemo => "nemo",
             EngineId::Remote => "remote",
             EngineId::Fake => "fake",
         }

@@ -746,5 +746,8 @@ pub fn asr_code(e: &crate::errors::AsrError) -> u32 {
         crate::errors::AsrError::Cancelled => 4,
         crate::errors::AsrError::OutOfMemory => 5,
         crate::errors::AsrError::ConsentMissing => 6,
+        // Détail SDK in-process : code dédié 8, message au journal si le
+        // chemin applicatif en a besoin (le numéro seul ne suffit plus).
+        crate::errors::AsrError::Runtime(_) => 8,
     }
 }

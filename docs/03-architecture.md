@@ -94,6 +94,15 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   (fenêtre Win32 transparente ou icône de zone de notification), pas un composant web.
 - **Conséquence testable** : le test T-17 (reprise pendant transcription) et T-21 (panique moteur)
   s'exécutent avec le webview tué volontairement ; la dictée doit continuer de fonctionner.
+- **Amendement (P2 streaming, 2026)** : la règle « aucun passage de texte dicté par l'IPC » reçoit
+  une exception unique et bornée — les **partiels streaming** (`dictation://partial`). Le principe
+  initial vise l'**insertion** : le texte inséré continue d'être produit par la voie batch du noyau,
+  sur le tampon complet (pré-roll inclus), et l'IPC n'en fait jamais partie. Les partiels sont
+  une seconde voie **d'affichage uniquement** : sortis du moteur streaming pendant la prise,
+  poussés à la pastille, jamais écrits (journal, disque, historique) et jamais réutilisés pour
+  l'insertion. Si le webview meurt au milieu d'une dictée, l'affichage des partiels disparaît et
+  l'insertion reste intacte (conséquence testable inchangée, T-17/T-21). Table IPC : docs/05 §3
+  (addition documentée, exceptions d'exfiltration 3).
 
 ### ADR-03 — Abstraction moteur ASR et stratégie bi-moteur
 

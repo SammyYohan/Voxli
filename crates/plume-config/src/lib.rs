@@ -28,10 +28,15 @@ pub enum ConfigError {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EngineChoice {
+    /// Le meilleur moteur disponible, priorité donnée au streaming
+    /// Nemotron quand son modèle est installé (ordre documenté dans
+    /// docs/05 §4).
     #[default]
     Auto,
     Whisper,
     Parakeet,
+    /// Nemotron 3.5 ASR streaming via le SDK in-process.
+    Nemo,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

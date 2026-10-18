@@ -21,6 +21,13 @@ use crate::convert::to_mono_16k;
 
 const RING_SECONDS: f32 = 2.0;
 
+/// Observateur de tranches natives pour le streaming (addition documentée,
+/// docs/05) : appelé depuis le chemin temps réel avec une tranche **mono**
+/// au débit natif du périphérique, uniquement pendant une prise active
+/// (`active` présent). Le mixage s'effectue dans un tampon préalloué :
+/// aucune allocation ajoutée au chemin chaud (RF-07).
+pub type CaptureTap = Arc<dyn Fn(&[f32], u32) + Send + Sync>;
+
 /// État partagé entre le callback temps réel et le contrôleur.
 struct Shared {
     /// Anneau de pré-roll (toujours alimenté pendant le flux actif).
@@ -35,10 +42,25 @@ struct Shared {
     frames: AtomicU64,
     discontinuities: AtomicU64,
     lost: AtomicBool,
+    /// Robinet streaming (optionnel) : appelé pendant une prise active,
+    /// avec une tranche mono au débit `rate` (docs/05, addition).
+    tap: Option<CaptureTap>,
+    /// Tampon de mixage préalloué du robinet (aucune allocation ensuite ;
+    /// croissance possible une fois si un celib très grand apparaît).
+    tap_scratch: Vec<f32>,
+    /// Nombre de canaux natifs (mixage du robinet) et débit natif.
+    channels: usize,
+    rate: u32,
 }
 
 impl Shared {
-    fn new(ring_cap: usize, _segment_cap: usize) -> Self {
+    fn new(
+        ring_cap: usize,
+        _segment_cap: usize,
+        channels: usize,
+        rate: u32,
+        tap: Option<CaptureTap>,
+    ) -> Self {
         // `_segment_cap` : la capacité de segment est pré-réservée à `start`
         // (le callback ne peut pas allouer, on la fixe au moment du besoin).
         Self {
@@ -50,6 +72,10 @@ impl Shared {
             frames: AtomicU64::new(0),
             discontinuities: AtomicU64::new(0),
             lost: AtomicBool::new(false),
+            tap,
+            tap_scratch: Vec::with_capacity(8192),
+            channels,
+            rate,
         }
     }
 
@@ -71,6 +97,27 @@ impl Shared {
                 } else {
                     // durée maximale atteinte : on cesse d'accumuler
                     // (l'orchestrateur aura déjà déclenché RF-11 côté logique)
+                }
+            }
+        }
+        // Robinet streaming : uniquement pendant une prise, mixage moyen
+        // des canaux dans le tampon préalloué (aucune allocation du
+        // chemin calme ; un débordement du tampon de 8192 échantillons
+        // par tranche ferait – rarement – une croissance unique,
+        // documentée).
+        if self.active.is_some() {
+            if let Some(tap) = &self.tap {
+                self.tap_scratch.clear();
+                if self.channels == 1 {
+                    self.tap_scratch.extend_from_slice(data);
+                } else {
+                    for frame in data.chunks_exact(self.channels) {
+                        let sum: f32 = frame.iter().sum();
+                        self.tap_scratch.push(sum / self.channels as f32);
+                    }
+                }
+                if !self.tap_scratch.is_empty() {
+                    tap(&self.tap_scratch, self.rate);
                 }
             }
         }
@@ -116,6 +163,12 @@ impl CpalCapture {
     /// titre de tolérance un nom exact est accepté. Le nom réel ouvert est
     /// consultable via `device_name`.
     pub fn new_with_device(selector: &str) -> Result<Self, CaptureError> {
+        Self::new_with_tap(selector, None)
+    }
+
+    /// Variante avec robinet streaming : chaque callback actif alimente
+    /// `tap` d'une tranche mono au débit natif (docs/05, addition).
+    pub fn new_with_tap(selector: &str, tap: Option<CaptureTap>) -> Result<Self, CaptureError> {
         let host = cpal::default_host();
         let wanted = selector.trim().is_empty() || selector.eq_ignore_ascii_case("default");
         let device = if wanted {
@@ -156,7 +209,13 @@ impl CpalCapture {
             config,
             sample_format: supported.sample_format(),
             stream: None,
-            shared: Arc::new(Mutex::new(Shared::new(ring_cap, segment_cap))),
+            shared: Arc::new(Mutex::new(Shared::new(
+                ring_cap,
+                segment_cap,
+                config.channels as usize,
+                config.sample_rate,
+                tap,
+            ))),
             ring_cap,
             segment_cap,
             pre_roll_ms: 400,

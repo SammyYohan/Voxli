@@ -35,6 +35,10 @@ pub enum AsrError {
     /// refusé par construction (ADR-03, RF-36).
     #[error("consentement absent : fonction distante désactivée")]
     ConsentMissing,
+    /// Message diagnostique d'un moteur in-process (SDK) : le détail du SDK
+    /// est conservé pour le journal, jamais pour l'interface.
+    #[error("échec du moteur in-process : {0}")]
+    Runtime(String),
 }
 
 #[derive(Debug, Error)]

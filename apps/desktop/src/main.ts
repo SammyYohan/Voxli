@@ -104,6 +104,7 @@ const fr_engine: Record<string, string> = {
   "whisper.cpp": "whisper.cpp — 100 % local",
   parakeet: "Parakeet — 100 % local",
   "parakeet-onnx": "Parakeet — 100 % local",
+  nemo: "Nemotron 3.5 — 100 % local, texte en direct",
 };
 
 let config: ConfigJson | null = null;

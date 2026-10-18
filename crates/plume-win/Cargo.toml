@@ -8,6 +8,12 @@ license.workspace = true
 [dependencies]
 thiserror = { workspace = true }
 
+[features]
+default = []
+# NeMo-Speech.cpp : liaison au SDK C installé localement (voir build.rs et
+# README §6). Off par défaut : le build nominal reste vert sans SDK.
+nemo = []
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",

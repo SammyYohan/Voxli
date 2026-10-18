@@ -37,6 +37,29 @@ body.pill {
   flex: none;
 }
 
+/** Ligne transitoire (amendement ADR-02) : une seule ligne, ellipsis,
+ * n'apparaît que lorsqu'un partiel effectif est arrivé. */
+.partial {
+  display: none;
+  color: #d1d5db;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+  opacity: 0.92;
+}
+
+.partial.live {
+  display: block;
+}
+
+body.has-partial .meter {
+  flex: none;
+  width: 56px;
+}
+
 .meter {
   flex: 1;
   height: 6px;

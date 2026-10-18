@@ -131,7 +131,7 @@ apps/desktop                   le seul binaire : fenêtre réglages + fenêtre
   un rechargement de configuration ou une perte de micro ; « coller à
   nouveau » reste fonctionnel (`Orchestrator::restore_buffer`).
 
-### 6.3 Ce qui est prouvé (compilé + tests verts, au 17/10/2026)
+### 6.3 Ce qui est prouvé (compilé + tests verts, au 17-18/10/2026)
 
 Tout le workspace passe (`cargo test --workspace`, exit 0) : **22 tests noyau,
 11 config (schéma 4 + migrations 3→4), 16 post-traitement FR, 9 audio
@@ -149,6 +149,14 @@ verts (3 fenêtres : réglages, secours, pastille). **Moteur whisper.cpp réel**
 --features whisper` vert et `cargo build -p plume-desktop --features
 custom-protocol,real-asr` vert — la transcription voix réelle est prête, les
 mesures de latence et de précision restent à produire (§6.4).
+**Liaison NeMo-Speech.cpp (au 18/10/2026)** : `cargo test -p plume-win
+--features nemo` — la DLL 0.2.0 charge et répond (`nemo-speech-asr 0.2.0`) ;
+`cargo test -p plume-asr --features nemo-stream` — le GGUF réel
+(`nemotron-3.5-asr-streaming-0.6b.q8_0.gguf`, 742 090 464 octets,
+téléchargé) charge et l'inférence offline décode une seconde de silence,
+puis le cycle streaming complet (ouverture → 4 pushes → drain → finish)
+tourne sur le vrai modèle (5/5 verts) ; `vite build` + pastille partiels
+(`dictation://partial`) écrite et thémée.
 
 ### 6.4 Ce qui reste à valider (écrit mais non prouvé)
 
@@ -157,6 +165,12 @@ mesures de latence et de précision restent à produire (§6.4).
   WER ou RAM n'est produit tant qu'une voix réelle n'a pas dicté.
 - **Feature `parakeet-asr`** : sherpa-onnx (C++/CMake) jamais compilé ici ;
   code écrit d'après l'API vérifiée de la documentation.
+- **Feature `nemo-stream` (P2 streaming)** : liaison SDK compilée, chaîne
+  d'inférence offline et cycle streaming **testés sur le GGUF réel** (§6.3) ;
+  il reste à valider **avec une vraie voix dans l'application montante** :
+  partiels affichés dans la pastille pendant la dictée, latence α de la
+  première hypothèse, décodage d'un énoncé parlé (pas du silence), et
+  l'échelle RAM en charge.
 - **Moteurs distants (P4)** : transcription BYOK compilée en opt-in (`remote`)
   et codée, mais **délibérément non branchée** au flux de raccourci — aucun
   envoi tant que le consentement RF-36 et l'intégration P4 ne sont pas tranchés.
@@ -231,6 +245,33 @@ cargo test -p plume-secure --features dpapi          # secrets Windows
 # Sans l'interface, le script reste valable :
 powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggml
 ```
+
+#### Nemotron 3.5 streaming (texte en direct dans la pastille)
+
+Moteur **Nemotron 3.5 ASR streaming 0.6B** (GGUF q8_0, ≈ 708 Mo, 40 langues,
+licence OpenMDW-1.1) via le SDK C **NeMo-Speech.cpp** in-process — le même
+binary qu'une install locale de l'outil de NVIDIA, sans serveur local ni
+réseau au runtime. Le SDK est **opt-in** :
+
+```powershell
+# 1) installer le runtime (installer officiel NeMoSpeech, windows x86_64
+#    CPU) — emplacement par défaut %LOCALAPPDATA%\Programs\NeMoSpeech ;
+#    autre emplacement → variable d'env NEMO_SPEECH_PREFIX (build.rs).
+# 2) compiler + tester la liaison (build.rs lie la lib et copie les DLL
+#    du SDK à côté de l'exécutable — aucun PATH à bricoler) :
+cargo test -p plume-win --features nemo          # version du SDK au journal
+cargo test -p plume-asr --features nemo-stream   # façade sûre
+cargo build -p plume-desktop `
+  --features custom-protocol,real-asr,nemo-stream
+# 3) modèle : Réglages → Modèles → « Nemotron 3.5 continu » (ou placer le
+#    GGUF dans %APPDATA%\Plume\models\).
+```
+
+Priorité `auto` avec nemo-stream compilé ET modèle présent : **nemo** →
+whisper.cpp → Parakeet → factice (commentaire config, docs/05 §4). Sans le modèle ni la
+feature, aucun changement de comportement (build par défaut vert, sans
+SDK). Les partiels sont un affichage transitoire de la pastille
+(amendement ADR-02) : le texte inséré reste celui de la voie batch.
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
 reproductible — le pipeline complet reste exerçable en CI sans modèle ni
