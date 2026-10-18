@@ -158,8 +158,9 @@ impl SharedCapture {
 impl Capture for SharedCapture {
     fn start(&mut self, pre_roll_ms: u32) -> Result<(), CaptureError> {
         // Session périmée éventuelle (prise muette : le VAD a refusé la
-        // transcription) : fermeture bornée avant d'ouvrir la suivante.
-        drain_and_close(&self.1);
+        // transcription) : fermeture bornée avant d'ouvrir la suivante —
+        // son texte éventuel est abandonné (prise muette = rien à insérer).
+        let _ = drain_and_close(&self.1);
         let started = lock_or_recover(&self.0).start(pre_roll_ms);
         if started.is_ok() {
         // Session d'affichage ouverte AVANT que le robinet coule (RF-07 :
@@ -261,30 +262,50 @@ impl StreamSlot {
     }
 }
 
+/// Résultat de la voie d'affichage : le texte que la session streaming a
+/// déjà finalisé pendant la prise, avec sa confiance moyenne. Réutilisable
+/// comme transcription — l'audio a déjà été décodé, aucun re-décodage.
+struct StreamOutcome {
+    text: String,
+    confidence: f32,
+}
+
 /// Ferme proprement une session (aspiration résiduelle du robinet, flush
-/// finish, aspiration bornée des derniers segments). Borne de sécurité :
-/// ~1 s + 300 drains ; le nominal est quasi instantané (l'audio a déjà été
-/// poussé pendant la prise). Le texte commité sert à l'affichage uniquement
-/// — le texte définitif reste celui de la voie batch (aucune sémantique
-/// changée, docs/05).
-fn drain_and_close(slot: &StreamSlot) {
+/// finish, aspiration bornée des derniers segments) et renvoie son texte
+/// finalisé quand la session en a produit. Borne de sécurité : ~1 s + 300
+/// drains ; le nominal est quasi instantané (l'audio a déjà été poussé
+/// pendant la prise). Le texte servi ici est celui de la voie d'affichage
+/// (RF-34 : rien n'est journalisé) ; sans session ou sans production, la
+/// voie batch reste l'autorité.
+fn drain_and_close(slot: &StreamSlot) -> Option<StreamOutcome> {
     // 1) résiduel du robinet — la session obtient tout ce qui reste.
     push_feed_residue(slot);
     // 2) finish + drain borné, puis fermeture.
+    let outcome;
     {
         let mut guard = lock_or_recover(&slot.session);
         if let Some(s) = guard.as_mut() {
-            if let Err(err) = s.finish() {
-                // Diagnostic process (jamais de contenu, RF-34).
-                slot.logger.log(Event::Error {
-                    module: "asr".into(),
-                    code: asr_code(&err),
-                });
-            }
+            outcome = match s.finish() {
+                Ok(_) => s.take_result().map(|(text, confidence)| StreamOutcome {
+                    text,
+                    confidence,
+                }),
+                Err(err) => {
+                    // Diagnostic process (jamais de contenu, RF-34).
+                    slot.logger.log(Event::Error {
+                        module: "asr".into(),
+                        code: asr_code(&err),
+                    });
+                    None
+                }
+            };
+        } else {
+            outcome = None;
         }
         *guard = None;
     }
     slot.end.store(false, Ordering::Relaxed);
+    outcome
 }
 
 /// Pousse les tranches accumulées du robinet vers la session (verrou
@@ -372,10 +393,12 @@ fn refresh_stream(slot: &StreamSlot, app: &AppHandle<Wry>) {
     );
 }
 
-/// Voirie batch inchangée : à la transcription (et à la fermeture de prise),
-/// la session streaming est finalisée AVANT la voie batch — le texte
-/// inséré reste et restera le produit du moteur batch sur le tampon entier
-/// (pré-roll inclus).
+/// Voirie batch : à la transcription, la session streaming est finalisée
+/// AVANT le décodage offline. Si elle a produit un texte finalisé pendant
+/// la prise, ce résultat (déjà décodé incrémentalement) devient la
+/// transcription — sinon l'autorité reste la voie batch sur le tampon
+/// entier (pré-roll inclus). Les deux routes sont journalisées (sans
+/// contenu, RF-34) pour mesure honnête de la latence.
 struct StreamTranscriptor {
     inner: Arc<dyn Transcriptor>,
     slot: Arc<StreamSlot>,
@@ -391,7 +414,31 @@ impl Transcriptor for StreamTranscriptor {
         audio: &AudioBuffer,
         opts: &plume_core::TranscribeOptions,
     ) -> Result<plume_core::Transcript, plume_core::AsrError> {
-        drain_and_close(&self.slot);
+        let began = std::time::Instant::now();
+        let outcome = drain_and_close(&self.slot);
+        if let Some(outcome) = outcome {
+            // Voie rapide : l'audio a déjà décodé pendant la prise ; le
+            // gain est majeur (sinon ~0,95× la durée parlée d'attente en
+            // fin de prise). Limite assumée : le pré-roll (~0,4 s d'audio
+            // antérieur au bouton) n'a pas transité par le flux — le VAD
+            // et la ponctuation de prise couvrent le reste ; un travail
+            // critique peut forcer un moteur uni-voie (whisper).
+            self.slot.logger.log(Event::DeviceEvent {
+                kind: "transcription-via-stream".into(),
+            });
+            return Ok(plume_core::Transcript {
+                text: outcome.text,
+                confidence: outcome.confidence,
+                duration: began.elapsed(),
+                engine: self.inner.id(),
+                // L'identité de modèle de la session n'est pas portée par le
+                // slot (absence d'information ≠ information fausse).
+                model: None,
+            });
+        }
+        self.slot.logger.log(Event::DeviceEvent {
+            kind: "transcription-via-batch".into(),
+        });
         self.inner.transcribe(audio, opts)
     }
 

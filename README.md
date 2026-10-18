@@ -166,11 +166,12 @@ tourne sur le vrai modèle (5/5 verts) ; `vite build` + pastille partiels
 - **Feature `parakeet-asr`** : sherpa-onnx (C++/CMake) jamais compilé ici ;
   code écrit d'après l'API vérifiée de la documentation.
 - **Feature `nemo-stream` (P2 streaming)** : liaison SDK compilée, chaîne
-  d'inférence offline et cycle streaming **testés sur le GGUF réel** (§6.3) ;
-  il reste à valider **avec une vraie voix dans l'application montante** :
-  partiels affichés dans la pastille pendant la dictée, latence α de la
-  première hypothèse, décodage d'un énoncé parlé (pas du silence), et
-  l'échelle RAM en charge.
+  d'inférence offline et cycle streaming **testés sur le GGUF réel** (§6.3).
+  Première vraie dictée (18/10/2026) : insertion réussie, mais le
+  re-décodage offline coûtait 10,7 s pour 11,3 s dictées — la voie rapide
+  (final du streaming réutilisé, amendement 2 ADR-02) est câblée ; reste
+  à re-mesurer la latence après relâchement, la latence α du premier
+  partiel, et le décodage d'un énoncé parlé via le flux (pas du silence).
 - **Moteurs distants (P4)** : transcription BYOK compilée en opt-in (`remote`)
   et codée, mais **délibérément non branchée** au flux de raccourci — aucun
   envoi tant que le consentement RF-36 et l'intégration P4 ne sont pas tranchés.
@@ -270,8 +271,11 @@ cargo build -p plume-desktop `
 Priorité `auto` avec nemo-stream compilé ET modèle présent : **nemo** →
 whisper.cpp → Parakeet → factice (commentaire config, docs/05 §4). Sans le modèle ni la
 feature, aucun changement de comportement (build par défaut vert, sans
-SDK). Les partiels sont un affichage transitoire de la pastille
-(amendement ADR-02) : le texte inséré reste celui de la voie batch.
+SDK). Pendant la prise, la pastille affiche le texte en direct ; au
+relâchement, la transcription vient des segments finalisés du flux
+(voie rapide, aucun re-décodage — les deux routes sont au journal) et la
+voie batch (tampon complet, pré-roll inclus) reste l'autorité de secours
+(amendements ADR-02 dans docs/03).
 
 Sans `real-asr`/`parakeet-asr` (défaut), le moteur factice dicte un énoncé
 reproductible — le pipeline complet reste exerçable en CI sans modèle ni

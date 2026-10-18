@@ -172,10 +172,11 @@ jamais l'audio.
 1. **Fenêtre de secours** (RF-31) — texte du tampon interne, jamais par le canal d'événements.
 2. **Historique** (RF-33) — lecture choisie par l'utilisateur, supprimable à tout instant
    (`history.delete` / `history.purge`) ; chiffré au repos (DPAPI).
-3. **Affichage partiel streaming** (P2, amendement ADR-02) — hypothèses transitoires du moteur
+3. **Affichage partiel streaming** (P2, amendements ADR-02) — hypothèses transitoires du moteur
    Nemotron pendant la prise (`dictation://partial`) : pur affichage pastille, **jamais** écrites
-   (journal, disque, historique), **jamais** réutilisées pour l'insertion — le texte inséré reste
-   celui de la voie batch sur le tampon complet (pré-roll inclus), inchangée.
+   (journal, disque, historique). Le texte inséré sort **soit** des segments finalisés du flux
+   (voie rapide — Amendement 2, aucun re-décodage offline), **soit** de la voie batch sur le
+   tampon complet (pré-roll inclus) ; jamais d'un partiel transitoire.
 
 ### 3.2 Commandes (UI → noyau), fichier `commands.rs`
 

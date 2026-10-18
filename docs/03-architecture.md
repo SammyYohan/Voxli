@@ -96,13 +96,19 @@ Détail des flux et des frontières de confiance : `docs/04-flux-et-diagrammes.m
   s'exécutent avec le webview tué volontairement ; la dictée doit continuer de fonctionner.
 - **Amendement (P2 streaming, 2026)** : la règle « aucun passage de texte dicté par l'IPC » reçoit
   une exception unique et bornée — les **partiels streaming** (`dictation://partial`). Le principe
-  initial vise l'**insertion** : le texte inséré continue d'être produit par la voie batch du noyau,
-  sur le tampon complet (pré-roll inclus), et l'IPC n'en fait jamais partie. Les partiels sont
-  une seconde voie **d'affichage uniquement** : sortis du moteur streaming pendant la prise,
-  poussés à la pastille, jamais écrits (journal, disque, historique) et jamais réutilisés pour
-  l'insertion. Si le webview meurt au milieu d'une dictée, l'affichage des partiels disparaît et
-  l'insertion reste intacte (conséquence testable inchangée, T-17/T-21). Table IPC : docs/05 §3
-  (addition documentée, exceptions d'exfiltration 3).
+  initial vise l'**insertion** : l'IPC n'en fait jamais partie. Les partiels sont une seconde
+  voie **d'affichage uniquement** : sortis du moteur streaming pendant la prise, poussés à la
+  pastille, jamais écrits (journal, disque, historique). Si le webview meurt au milieu d'une
+  dictée, l'affichage des partiels disparaît et l'insertion reste intacte (conséquence testable
+  inchangée, T-17/T-21). Table IPC : docs/05 §3 (addition documentée, exceptions d'exfiltration 3).
+- **Amendement 2 (voie rapide, 2026)** : les **segments finalisés** du streaming — ceux que
+  l'utilisateur a déjà vus s'afficher, à l'exclusion des transitoires — peuvent devenir la
+  transcription insérée (Amendement 1, dernier paragraphe). Motif mesuré : l'ancien re-décodage
+  offline coûtait ~0,95× la durée parlée en attente après relâchement (11,3 s dictés → 10,7 s).
+  La voie batch redevient l'autorité si la session n'a rien produit (silence, échec ou reprise
+  inbox). Limite assumée : le pré-roll (~0,4 s d'audio antérieur au bouton) n'a pas transité par
+  le flux ; un moteur univoque (whisper) reste disponible. Les deux routes sont journalisées
+  sans contenu (RF-34) : `transcription-via-stream` / `transcription-via-batch`.
 
 ### ADR-03 — Abstraction moteur ASR et stratégie bi-moteur
 

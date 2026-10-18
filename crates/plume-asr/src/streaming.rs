@@ -36,6 +36,13 @@ pub trait StreamingSession: Send {
     /// segments, retour du texte de référence du moteur.
     fn finish(&mut self) -> Result<String, AsrError>;
 
+    /// Texte de référence + confiance moyenne produits par la session, si
+    /// elle en a (Nemo : le final accumulé du streaming). `None` = rien à
+    /// reprendre, l'appelant retombe sur sa voie batch.
+    fn take_result(&self) -> Option<(String, f32)> {
+        None
+    }
+
     /// Texte « affichage » à cet instant : segments finalisés + hypothèse
     /// partielle courante. Jamais journalisé ni conservé (RF-34).
     fn snapshot(&self) -> String;

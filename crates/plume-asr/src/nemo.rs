@@ -310,6 +310,8 @@ impl StreamingEngine for NemoEngine {
             stream: RawStream { ptr: st_ptr },
             committed: String::new(),
             tail: String::new(),
+            conf_sum: 0.0,
+            conf_n: 0,
         }))
     }
 }
@@ -317,11 +319,14 @@ impl StreamingEngine for NemoEngine {
 // ----------------------------------------------------------- session ---
 
 /// Session streaming mono-thread : pousse des tranches, draine les mises
-/// à jour, gather final au relâchement.
+/// à jour, gather final au relâchement. La confiance de chaque segment
+/// final est agrégée (moyenne) pour la voie rapide de transcription.
 struct NemoSession {
     stream: RawStream,
     committed: String,
     tail: String,
+    conf_sum: f32,
+    conf_n: u32,
 }
 
 impl StreamingSession for NemoSession {
@@ -364,6 +369,11 @@ impl StreamingSession for NemoSession {
                 continue;
             }
             if unsafe { ffi::nemo_speech_asr_result_is_final(guard.0) } {
+                // SAFETY : lecteur du résultat possédé (garde vivant) ;
+                // confiance du segment final, agrégée pour take_result.
+                let conf = unsafe { ffi::nemo_speech_asr_result_confidence(guard.0, 0) };
+                self.conf_sum += conf.clamp(0.0, 1.0);
+                self.conf_n += 1;
                 append_piece(&mut self.committed, &text);
                 self.tail.clear();
                 updates.push(StreamUpdate::Final { text });
@@ -407,6 +417,20 @@ impl StreamingSession for NemoSession {
             append_piece(&mut s, &self.tail);
         }
         s
+    }
+
+    fn take_result(&self) -> Option<(String, f32)> {
+        if self.committed.is_empty() {
+            // Rien de finalisé : l'appelant retombe sur sa voie batch
+            // (silence, interruption très courte, échec en cours).
+            return None;
+        }
+        let conf = if self.conf_n == 0 {
+            0.5
+        } else {
+            (self.conf_sum / self.conf_n as f32).clamp(0.0, 1.0)
+        };
+        Some((self.committed.clone(), conf))
     }
 }
 
@@ -472,5 +496,8 @@ mod tests {
         eprintln!("updates silence : {}", updates.len());
         let text = s.finish().expect("finish streaming");
         eprintln!("finish silence → \"{}\"", text);
+        // Le silence ne finalise rien : la voie rapide doit s'abstenir
+        // (repli batch), jamais fabriquer de texte.
+        assert!(s.take_result().is_none(), "silence : aucun final attendu");
     }
 }
