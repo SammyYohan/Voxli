@@ -22,6 +22,16 @@ models/
 *.log
 *.profraw
 
+# Environnement et secrets locaux
+.env
+.env.*
+!.env.example
+
+# OS artifacts
+Thumbs.db
+Desktop.ini
+.DS_Store
+
 # Outils
 .vscode/
 .idea/

@@ -1,0 +1,29 @@
+# Normalisation automatique des fins de ligne
+* text=auto eol=lf
+
+# Fichiers texte spécifiques normalisés en LF
+*.rs text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Scripts Windows PowerShell / batch en CRLF
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Fichiers binaires
+*.png binary
+*.ico binary
+*.wav binary
+*.gguf binary
+*.bin binary
+*.dll binary
+*.lib binary
+*.exe binary

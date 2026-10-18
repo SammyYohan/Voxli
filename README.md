@@ -1,7 +1,6 @@
-# Plume — dictée IA locale pour Windows
+# Voxli — dictée IA locale pour Windows
 
-> **Nom de code provisoire.** `Plume` est un nom de travail, choisi pour les besoins du dépôt et
-> renommable en une commande. Aucune marque n'a été déposée ni vérifiée à ce stade.
+> **Voxli** (nom de code de développement : `Plume`) est une application de dictée vocale assistée par IA 100 % locale, respectueuse de la vie privée, sans dépendance cloud et conçue pour Windows.
 
 **Statut : P1 → P4 implémentées — en phase de test.** La conception (7 livrables) est
 terminée ; les quatre phases de développement sont codées : réglages à chaud,
@@ -59,7 +58,7 @@ provenant d'un concurrent ou d'un site d'affiliation, donc à confiance limitée
 3. **Choisir le moteur par défaut** : Whisper `small`/`large-v3-turbo` (large couverture
    linguistique) ou Parakeet v3 (meilleur WER français annoncé, CPU-friendly, 25 langues
    européennes, licence CC-BY-4.0 avec attribution obligatoire) — voir `docs/03`, ADR-03.
-4. **Confirmer le nom du produit** (`Plume` n'est qu'un nom de travail).
+4. **Nom du produit** : Confirmé sous le nom **Voxli** (les modules et crates internes conservent le préfixe technique `plume-*`).
 5. **Autoriser le spike P0** (2 semaines) : c'est lui qui produit les seules mesures réellement
    décisives (latence, fiabilité d'insertion, RAM) avant d'engager 3 à 6 mois de développement.
 
