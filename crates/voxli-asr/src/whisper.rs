@@ -1,4 +1,4 @@
-﻿//! Moteur whisper.cpp via `whisper-rs` (ADR-03) — feature `whisper`.
+//! Moteur whisper.cpp via `whisper-rs` (ADR-03) — feature `whisper`.
 //!
 //! Paramètres anti-hallucination (RF-18) et amorce de vocabulaire (RF-24).
 //! Le modèle est chargé depuis le disque ; son empreinte SHA-256 est vérifiée
@@ -98,6 +98,18 @@ impl Transcriptor for WhisperCppEngine {
 
         let mut params =
             whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
+        // RF-17 : le réglage utilisateur prime ; sinon défaut moteur = 4
+        // threads bornés au parallélisme disponible. Sans `set_threads`
+        // explicite, whisper.cpp reste à un seul thread (constat : 32 s
+        // d'inférence pour 13 s d'audio sur un i5-10210U — journal latency
+        // du 19/10/2026).
+        let n_threads = opts.threads.map(|t| t.max(1) as i32).unwrap_or_else(|| {
+            let cores = std::thread::available_parallelism()
+                .map(|n| n.get() as i32)
+                .unwrap_or(4);
+            4.min(cores)
+        });
+        params.set_n_threads(n_threads);
         params.set_language(opts.language.as_deref());
         params.set_temperature(0.0);
         params.set_no_speech_thold(0.6);
