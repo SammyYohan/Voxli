@@ -5,35 +5,80 @@
 > reste indicatif sauf les jalons au commanditaire [RECO] : une étape qui
 > exige une décision humaine ne peut pas être « poussée » par le code.
 
-Jalons écrits les 17–18/10/2026. **Dans tout le fil des jalons ci-dessous,
-« écrit » signifie : modifié dans le dépôt mais pas encore compilé** (aucune
-toolchain disponible au moment des écritures — les compilations à prouver
-restent listées en M2).
+Jalons écrits les 17–18/10/2026. **Mise à jour du 19/10/2026** : les
+correctifs du jalon M1 ci-dessous sont **compilés et testés** (la bench de
+`docs/11` §1 a été exécutée — preuves et statuts case par case dans
+`docs/11` §1). L'ancienne convention « écrit = non encore compilé » ne
+décrit plus que les jalons ultérieurs non démarrés.
 
 ---
 
-## M1 — Correctifs d'audit (code) — écrit, à compiler
+## M1 — Correctifs d'audit (code) — compilé et testé (19/10/2026)
 
 Source : `docs/08` §3 (défs P1-1…7, P2-1…4) et §5 (correctifs). Résumé des
 fichiers touchés et du statut :
 
 | Zone | Fichiers | Statut |
 |---|---|---|
-| Modèles : empreintes streamées, digest de dossier, comparaison de confiance, busy-libérable, archive path-traversal, taille récursive, `title`/`verified` UI | `commands.rs`, `main.ts`, `index.html` | écrit |
-| Capture : tampon de conversion pré-alloué, arrêt sans alloc, `NoData` pouvant descendre au code 7 stable | `voxli-audio/capture.rs`, `voxli-core/{errors,orchestrator}.rs` | écrit |
-| Orchestrateur : file RF-05 servie ou récupérée aussi après échec de `stop()` ; test de régression dédié (`t_stop_failure_then_recovery_session`) | `voxli-core`, `tests/flow.rs` | écrit |
-| Warm-up ASR réels (whisper 100 ms, parakeet/nemo 150 ms silence) + refus non-16 kHz sur le chemin distant | `voxli-asr/{whisper,parakeet,nemo,remote}.rs` | écrit |
-| Config v5 : `uiLanguage` séparé de `language`, migration 4→5 testée | `voxli-config` | écrit |
-| i18n UI fr|en (module `i18n.ts`, `data-i18n` sur les trois fenêtres, selects séparés) | `apps/desktop/src/*` | écrit |
-| Script modèle par défaut aligné `q5_1`; message raccourci exact ; tooltip tray dynamique | `scripts/fetch-model.ps1`, `strings.rs`, `main.rs` | écrit |
+| Modèles : empreintes streamées, digest de dossier, comparaison de confiance, busy-libérable, archive path-traversal, taille récursive, `title`/`verified` UI | `commands.rs`, `main.ts`, `index.html` | compilé + testé |
+| Capture : tampon de conversion pré-alloué, arrêt sans alloc, `NoData` pouvant descendre au code 7 stable | `voxli-audio/capture.rs`, `voxli-core/{errors,orchestrator}.rs` | compilé + testé |
+| Orchestrateur : file RF-05 servie ou récupérée aussi après échec de `stop()` ; test de régression dédié (`t_stop_failure_then_recovery_session`) | `voxli-core`, `tests/flow.rs` | compilé + testé |
+| Warm-up ASR réels (whisper 100 ms, parakeet/nemo 150 ms silence) + refus non-16 kHz sur le chemin distant | `voxli-asr/{whisper,parakeet,nemo,remote}.rs` | compilé (test unitaire `fake` ; builds `real-asr`/`parakeet` **non vérifiables ici** : cmake/ninja absents) |
+| Config v5 : `uiLanguage` séparé de `language`, migration 4→5 testée | `voxli-config` | compilé + testé |
+| i18n UI fr|en (module `i18n.ts`, `data-i18n` sur les trois fenêtres, selects séparés) | `apps/desktop/src/*` | compilé + testé (tsc + vite) |
+| Script modèle par défaut aligné `q5_1`; message raccourci exact ; tooltip tray dynamique | `scripts/fetch-model.ps1`, `strings.rs`, `main.rs` | compilé + testé |
 
-**Sortie de jalon M1** : la liste `cargo test` de `docs/11` §1 passe (Windows
-pour les zones matérielles, Linux pour les crates pures).
+**Correctifs d'hygiène supplémentaires découverts à la compilation/test
+(19/10/2026)** :
+
+- `voxli-storage` : échec DPAPI remonté (plus de blob vide enregistré) ;
+  la séquence d'identifiants reprend après réouverture de la base
+  (`MAX(id)`) — 8 tests sqlite passants.
+- `voxli-diagnostics` : rotation **pendant l'écriture** à 3 générations
+  (`.log`, `.log.1`, `.log.2`) — le journal ne croît plus sans borne entre
+  réouvertures, aucun contenu d'historique n'est écrasé au démarrage ;
+  `export_report` filtre **structurellement** les lignes relues du disque
+  (rédaction forcée effective, rejets comptabilisés) ; doc de `redact()`
+  réelle (utilitaire public, limites documentées).
+- `voxli-win` : fuite de handles fermée (processus + jeton) ; élévation
+  lue sur le jeton (`TokenElevation`) avec repli conservateur ;
+  presse-papiers : `GlobalFree` obligatoire sur échec d'écriture,
+  restauration tolérante format par format.
+- `voxli-hotkeys` : réservation alignée sur `Win+1..9` (test mis à jour) ;
+  docs honnêtes (l'enregistrement réel appartient au plugin).
+- `voxli-text` / `voxli-core` : module `inserter` cfg-gated pour Windows
+  (cible Linux vérifiée : `cargo check --target x86_64-unknown-linux-gnu`
+  sur 8 crates, EXIT=0) ; retrait de `duration_since` (mort) ; réglages
+  `hold_ms_*`/`multiline` documentés comme non branchés (plus tard dans
+  M2/M3).
+- `voxli-license` : `--seats 0` ou non numérique refusé explicitement par
+  `issue-license` (plus de licence « illimitée » par faute de frappe) ;
+  test d'égalité réel `PURCHASABLE_FEATURES` ↔ `Feature::as_str()`.
+- `commands.rs` : `is_safe_model_name` refuse désormais les noms non
+  cadrés (espaces en tête/fin).
+- `voxli-asr/nemo.rs` : commentaires réalignés sur le code (échec de
+  warm-up remonté ; fin de flux après 151 drains secs consécutifs, et non
+  « deux »).
+
+**Sortie de jalon M1** : la bench de `docs/11` §1 est passée le
+19/10/2026 — fmt-check, clippy `--workspace --all-targets -- -D warnings`
+(0 warning), `cargo test --workspace` (103 tests, EXIT=0) et
+`cargo test -p voxli-storage --features sqlite` (8 tests, EXIT=0),
+`tsc --noEmit` + `vite build` (EXIT=0), `cargo build --release -p
+voxli-desktop` (EXIT=0). Restent des entrées de `docs/11` §1 **hors
+machine** : `cargo test --workspace --all-features` (cmake/ninja absents
+pour whisper-rs/sherpa-onnx), `cargo tauri build` + installation sur
+machine proprette, et la procédure digests §3 (humaine).
 
 ## M2 — Validation mainteneur [WAITING / à planifier]
 
-1. Compiler & exécuter le banc de tests §1 de docs/11 (les entrées restent
-   toutes « à faire » tant que ce n'est pas exécuté).
+1. ~~Compiler & exécuter le banc de tests §1 de docs/11~~ **fait à l'essentiel
+   le 19/10/2026** : la bench a tourné côté Windows (103 tests, clippy
+   `-D warnings`, fmt-check, release build) + vérification croisée Linux des
+   8 crates non-Windows. Restent les entrées non exécutables ici :
+   `--all-features` sur machine outillée (cmake/ninja), `cargo tauri build`
+   et le test d'installation machine proprette — listées [À FAIRE] dans
+   `docs/11` §1 avec empreinte.
 2. Procédure digests de confiance (docs/11 §3) pour les quatre modèles.
 3. Relecture de l'audit par le commanditaire ; arbitrage des « décisions
    en attente » (n°1 licence, n°4 licence code, dons).

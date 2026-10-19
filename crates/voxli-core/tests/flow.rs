@@ -1,4 +1,4 @@
-﻿//! Tests de la machine à états avec doubles de test (docs/06 §1 : intégration
+//! Tests de la machine à états avec doubles de test (docs/06 §1 : intégration
 //! noyau — succès, silence, erreur moteur, échec d'insertion, focus perdu,
 //! champ sensible, durée maximale). Aucun matériel ni Windows requis.
 
@@ -243,7 +243,7 @@ fn states_of(events: &[CoreEvent]) -> Vec<&'static str> {
         .collect()
 }
 
-fn find<'e>(events: &'e [CoreEvent], f: impl Fn(&CoreEvent) -> bool) -> Option<&'e CoreEvent> {
+fn find(events: &[CoreEvent], f: impl Fn(&CoreEvent) -> bool) -> Option<&CoreEvent> {
     events.iter().find(|e| f(e))
 }
 
@@ -648,8 +648,10 @@ fn t_events_never_carry_content() {
 #[test]
 fn t_toggle_mode_press_starts_second_press_stops() {
     let b = bench(SpeechVerdict::Speech);
-    let mut cfg = OrchestratorCfg::default();
-    cfg.trigger = TriggerMode::Toggle;
+    let cfg = OrchestratorCfg {
+        trigger: TriggerMode::Toggle,
+        ..Default::default()
+    };
     let (events, last, state) = run_with_cfg(cfg, b, |o| {
         o.handle(InputEvent::HotkeyPressed);
         assert_eq!(o.state().name(), "recording");
@@ -683,8 +685,10 @@ fn t_double_push_lock_full_cycle() {
     let focus = b.focus;
     let sink_events = events.clone();
     let clock = SharedClock(clock_base.clone());
-    let mut cfg = OrchestratorCfg::default();
-    cfg.trigger = TriggerMode::DoublePushLock;
+    let cfg = OrchestratorCfg {
+        trigger: TriggerMode::DoublePushLock,
+        ..Default::default()
+    };
     let mut orch = Orchestrator::new(
         cfg,
         Deps {
@@ -739,8 +743,10 @@ fn t_double_push_hold_stops() {
     let focus = b.focus;
     let sink_events = events.clone();
     let clock = SharedClock(clock_base.clone());
-    let mut cfg = OrchestratorCfg::default();
-    cfg.trigger = TriggerMode::DoublePushLock;
+    let cfg = OrchestratorCfg {
+        trigger: TriggerMode::DoublePushLock,
+        ..Default::default()
+    };
     let mut orch = Orchestrator::new(
         cfg,
         Deps {
@@ -778,8 +784,10 @@ fn t_max_duration_warning_once() {
     let focus = b.focus;
     let sink_events = events.clone();
     let clock = SharedClock(clock_base.clone());
-    let mut cfg = OrchestratorCfg::default();
-    cfg.max_recording = Duration::from_secs(60);
+    let cfg = OrchestratorCfg {
+        max_recording: Duration::from_secs(60),
+        ..Default::default()
+    };
     let mut orch = Orchestrator::new(
         cfg,
         Deps {
@@ -898,10 +906,13 @@ fn t_language_autodetect_guard() {
         let focus = FakeFocus(Some(snapshot()));
         let clock = SharedClock(Rc::new(Cell::new(0)));
         let sink_events = events.clone();
-        let mut cfg = OrchestratorCfg::default();
-        cfg.language = None; // détection automatique demandée
-        cfg.auto_language_min = Duration::from_millis(1_500);
-        cfg.max_recording = Duration::from_secs(600);
+        let cfg = OrchestratorCfg {
+            // détection automatique demandée
+            language: None,
+            auto_language_min: Duration::from_millis(1_500),
+            max_recording: Duration::from_secs(600),
+            ..Default::default()
+        };
         let mut orch = Orchestrator::new(
             cfg,
             Deps {
@@ -978,9 +989,11 @@ fn t_profile_per_app_and_initial_prompt() {
     let clock = SharedClock(Rc::new(Cell::new(0)));
     let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
     let sink_events = events.clone();
-    let mut cfg = OrchestratorCfg::default();
-    cfg.profile_bindings = bindings;
-    cfg.max_recording = Duration::from_secs(600);
+    let cfg = OrchestratorCfg {
+        profile_bindings: bindings,
+        max_recording: Duration::from_secs(600),
+        ..Default::default()
+    };
     let mut orch = Orchestrator::new(
         cfg,
         Deps {
@@ -1050,8 +1063,10 @@ fn t_retarget_to_current_when_not_remembering() {
     let focus = ChangingFocus(Rc::new(Cell::new(0)));
     let clock = SharedClock(Rc::new(Cell::new(0)));
     let sink_events = events.clone();
-    let mut cfg = OrchestratorCfg::default();
-    cfg.remember_target_at_start = false;
+    let cfg = OrchestratorCfg {
+        remember_target_at_start: false,
+        ..Default::default()
+    };
     let mut orch = Orchestrator::new(
         cfg,
         Deps {
@@ -1152,8 +1167,13 @@ fn t_stop_failure_then_recovery_session() {
 
     let evs = events.borrow();
     assert!(
-        evs.iter()
-            .any(|e| matches!(e, CoreEvent::Error { module: "capture", code: 3 })),
+        evs.iter().any(|e| matches!(
+            e,
+            CoreEvent::Error {
+                module: "capture",
+                code: 3
+            }
+        )),
         "DeviceLost est signé capture/code 3 (codes stables RF-34)"
     );
     assert!(matches!(

@@ -143,7 +143,9 @@ impl Combo {
         if self.win {
             match self.key {
                 Some(Key::Letter('l')) => return true,
-                Some(Key::Digit(d)) if d == 1 => return true, // Win+1..9 lanceur
+                // Win+1..9 : lanceur d'applications du système (la barre des
+                // tâches capte ces combinaisons, jamais nous).
+                Some(Key::Digit(d)) if (1..=9).contains(&d) => return true,
                 Some(Key::Letter('g'))
                 | Some(Key::Letter('h'))
                 | Some(Key::Letter('s'))
@@ -179,9 +181,12 @@ impl fmt::Display for Combo {
 
 /// Résolution de conflit à l'enregistrement (RF-03) — politique pure :
 /// 1. combinaison réservée → refus immédiat avec alternatives proposées ;
-/// 2. sinon, tentative `RegisterHotKey` (côté application) ; son échec se
-///    traduit en `HotkeyError::Conflict`, jamais de panique (l'ancien plugin
-///    a historiquement paniqué — régression bannie).
+/// 2. sinon, la tentative réelle est faite par l'assemblage (plugin
+///    `global-shortcut`, unique mécanisme autorisé : `main.rs`) — tout
+///    échec y est consigné au journal PUIS signalé à l'interface, jamais
+///    de panique (ADR-05). Les variantes `Conflict`/`Register` restent
+///    exposées au polymorphisme de cette API pure mais ne sont pas
+///    construites à ce jour (l'assemblage gère l'échec autrement).
 pub fn validate_before_register(candidate: &Combo) -> Result<Vec<Combo>, HotkeyError> {
     if candidate.key.is_none() {
         return Err(HotkeyError::Unparsable("aucune touche".into()));

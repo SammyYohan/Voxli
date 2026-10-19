@@ -11,12 +11,14 @@
 
 #[cfg(target_os = "windows")]
 pub mod focus;
+#[cfg(target_os = "windows")]
 pub mod inserter;
 pub mod plan;
 pub mod post;
 
 #[cfg(target_os = "windows")]
 pub use focus::WindowsFocusReader;
+#[cfg(target_os = "windows")]
 pub use inserter::WindowsInserter;
 pub use plan::plan_insertion;
 pub use post::{apply_dictionary, apply_french_rules, FrenchProcessor, PassThroughProcessor};

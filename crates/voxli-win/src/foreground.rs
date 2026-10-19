@@ -2,13 +2,21 @@
 //!
 //! La cible est mémorisée **au démarrage de la dictée** (RF-32) — c'est
 //! `foreground_info` qui alimente le `FocusSnapshot`.
+//!
+//! Règle RF-29 durcie : quand l'élévation du processus cible ne peut pas
+//! être **prouvée** (accès refusé, jeton illisible), la réponse est
+//! conservatrice — `elevated = true` — parce que le refus d'insertion
+//! est réversible (le texte reste au tampon, RF-22) alors qu'une
+//! écriture dans une fenêtre élevée ne l'est pas.
 
 use std::os::windows::ffi::OsStringExt;
 
 use windows::core::PWSTR;
-use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    OpenProcess, OpenProcessToken, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
@@ -20,8 +28,9 @@ pub struct ForegroundInfo {
     pub title: String,
     /// Nom d'exécutable en minuscules (`notepad.exe`) — identifiant d'app.
     pub app_id: String,
-    /// `true` si le processus cible refuse `PROCESS_QUERY_LIMITED_INFORMATION`
-    /// (f couche UIPI : fenêtre élevée) — insertion hors périmètre (ADR-06).
+    /// `true` si la fenêtre cible est élevée **ou si l'élévation ne peut
+    /// pas être vérifiée** (règle conservatrice RF-29) — insertion hors
+    /// périmètre (ADR-06), jamais silencieuse (code `refused` à l'UI).
     pub elevated: bool,
 }
 
@@ -74,11 +83,40 @@ pub fn foreground_info() -> Option<ForegroundInfo> {
         } else {
             String::new()
         };
+        // Élévation : la réponse de rquery limitée ne suffit pas (un
+        // processus moyen peut ouvrir un processus élevé avec ce droit
+        // réduit). Le jeton fait foi, sinon « élevé » (doute ⇒ refus).
+        let elevated = is_process_elevated(HANDLE(process.0));
+        let _ = CloseHandle(HANDLE(process.0)); // aucun handle laissé ouvert
         Some(ForegroundInfo {
             hwnd: hwnd.0 as isize,
             title,
             app_id,
-            elevated: false,
+            elevated,
         })
     }
+}
+
+/// L'élévation du processus est posée par son jeton (`TokenElevation`).
+/// Toute lecture impossible → `true` (conservateur, RF-29) : n'écrire que
+/// dans des fenêtres dont l'élévation NON elevée est prouvée.
+unsafe fn is_process_elevated(process: HANDLE) -> bool {
+    let mut token = HANDLE::default();
+    if OpenProcessToken(process, TOKEN_QUERY, &mut token).is_err() {
+        return true;
+    }
+    let is_elevated = {
+        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut returned: u32 = 0;
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut TOKEN_ELEVATION as *mut core::ffi::c_void),
+            core::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned,
+        )
+        .map(|_| elevation.TokenIsElevated != 0)
+    };
+    let _ = CloseHandle(token);
+    is_elevated.unwrap_or(true)
 }

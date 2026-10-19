@@ -53,18 +53,10 @@ pub struct SavedClipboard {
 }
 
 impl SavedClipboard {
-    /// Empreinte du contenu texte — utilisée pour détecter une copie
-    /// concurrente de l'utilisateur (RF-30c).
-    pub fn text_fingerprint(&self) -> Option<u64> {
-        self.formats
-            .iter()
-            .find(|f| f.format == CF_UNICODETEXT.0 as u32)
-            .map(|f| {
-                f.data.iter().fold(0xcbf29ce484222325u64, |h, b| {
-                    (h ^ *b as u64).wrapping_mul(0x100000001b3)
-                })
-            })
-    }
+    // (Aucun « fingerprint » calculé ici : la seule empreinte utilisée est
+    // `read_text_fingerprint`, qui hache le TEXTE posé et pas les octets
+    // d'allocation — deux fonctions qui divergent en serait une source de
+    // désaccord RF-30c.)
 }
 
 /// Ouvre le presse-papiers avec réessais (RF-30d : presse-papiers verrouillé
@@ -144,6 +136,13 @@ pub fn set_text_excluding_history(text: &str) -> Result<(), ClipboardError> {
     let result = unsafe {
         let inner = (|| -> Result<(), ClipboardError> {
             let _ = EmptyClipboard();
+            // Formats d'éxclusion — posés AVANT le texte : en cas d'échec
+            // ici, le presse-papiers reste sans contenu (jamais un texte
+            // publié sans ses drapeaux d'hygiène RF-30b).
+            set_exclusion_flag("ExcludeClipboardContentFromMonitorProcessing")?;
+            set_exclusion_flag("CanIncludeInClipboardHistory")?;
+            set_exclusion_flag("CanUploadToCloudClipboard")?;
+
             // CF_UNICODETEXT
             let mut wide: Vec<u16> = text.encode_utf16().collect();
             wide.push(0);
@@ -157,13 +156,13 @@ pub fn set_text_excluding_history(text: &str) -> Result<(), ClipboardError> {
             }
             std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr as *mut u16, wide.len());
             let _ = GlobalUnlock(hglobal);
-            SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hglobal.0)))
-                .map_err(|_| ClipboardError::SetFailed)?;
-
-            // Formats d'exclusion — présence seule + DWORD 0.
-            set_exclusion_flag("ExcludeClipboardContentFromMonitorProcessing")?;
-            set_exclusion_flag("CanIncludeInClipboardHistory")?;
-            set_exclusion_flag("CanUploadToCloudClipboard")?;
+            // Le système adopte le bloc EN cas de succès ; en cas d'échec,
+            // LE bloc est nôtre : `GlobalFree` obligatoire (sinon fuite
+            // mémoire à chaque paste).
+            SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hglobal.0))).map_err(|_| {
+                let _ = GlobalFree(Some(hglobal));
+                ClipboardError::SetFailed
+            })?;
             Ok(())
         })();
         let _ = CloseClipboard();
@@ -187,7 +186,11 @@ unsafe fn set_exclusion_flag(name: &str) -> Result<(), ClipboardError> {
     }
     std::ptr::write_bytes(ptr as *mut u8, 0, size_of::<u32>());
     let _ = GlobalUnlock(hglobal);
-    SetClipboardData(format, Some(HANDLE(hglobal.0))).map_err(|_| ClipboardError::SetFailed)?;
+    // Même règle : échec → le bloc reste nôtre → libération immédiate.
+    SetClipboardData(format, Some(HANDLE(hglobal.0))).map_err(|_| {
+        let _ = GlobalFree(Some(hglobal));
+        ClipboardError::SetFailed
+    })?;
     Ok(())
 }
 
@@ -205,27 +208,45 @@ pub fn restore(saved: &SavedClipboard, our_fingerprint: Option<u64>) -> Result<(
         }
     }
     open_with_retry(10)?;
-    let result = unsafe {
+
+    unsafe {
         let inner = (|| -> Result<(), ClipboardError> {
             let _ = EmptyClipboard();
+            // Per-format tolérant : un format qui échoue (alloc/lock/set)
+            // libère son bloc et n'abandonne pas les autres — la
+            // restauration partielle reste meilleure qu'une perte totale
+            // du contenu d'origine (RF-30a), le presse-papiers étant
+            // déjà verrouillé à NOUS (empreinte vérifiée plus haut).
+            let mut failures = 0usize;
             for f in &saved.formats {
-                let hglobal = GlobalAlloc(GMEM_MOVEABLE, f.data.len().max(1))
-                    .map_err(|_| ClipboardError::RestoreFailed)?;
+                let hglobal = match GlobalAlloc(GMEM_MOVEABLE, f.data.len().max(1)) {
+                    Ok(h) => h,
+                    Err(_) => {
+                        failures += 1;
+                        continue;
+                    }
+                };
                 let ptr = GlobalLock(hglobal);
                 if ptr.is_null() {
+                    let _ = GlobalFree(Some(hglobal));
+                    failures += 1;
                     continue;
                 }
                 std::ptr::copy_nonoverlapping(f.data.as_ptr(), ptr as *mut u8, f.data.len());
                 let _ = GlobalUnlock(hglobal);
-                SetClipboardData(f.format, Some(HANDLE(hglobal.0)))
-                    .map_err(|_| ClipboardError::RestoreFailed)?;
+                if SetClipboardData(f.format, Some(HANDLE(hglobal.0))).is_err() {
+                    let _ = GlobalFree(Some(hglobal));
+                    failures += 1;
+                }
+            }
+            if failures == saved.formats.len() && !saved.formats.is_empty() {
+                return Err(ClipboardError::RestoreFailed);
             }
             Ok(())
         })();
         let _ = CloseClipboard();
         inner
-    };
-    result
+    }
 }
 
 /// Empreinte du presse-papiers actuel (texte), pour la détection RF-30c.

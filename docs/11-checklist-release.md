@@ -18,11 +18,20 @@ Chaque item se **démontre par une commande réellement exécutée et sa sortie
 conservée** (aucun statut « vert » n'est déclaré sur parole — règle
 transcrite de l'audit, §7).
 
-- [ ] `cargo fmt --all --check` passe sans diff [À FAIRE]
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings` sans erreur [À FAIRE]
-  (`voxli-win` et les features matérielles s'exécutent sous Windows ; les
-  crates pures passent déjà sur Linux — voir §5 et le job CI correspondant)
-- [ ] `cargo test --workspace --all-features` vert, y compris :
+> **Exécution du 19/10/2026** (machine Windows 11, rustc/cargo 1.99.1,
+> Node via pnpm). Les items cochés le sont avec les commandes ci-dessous ;
+> les non cochés restent des entrées de jalon M2/machine outillée.
+
+- [x] `cargo fmt --all --check` passe sans diff [FAIT : 19/10/2026, EXIT=0]
+- [x] `cargo clippy --workspace --all-targets -- -D warnings` sans erreur
+      [FAIT : 19/10/2026, EXIT=0, zéro avertissement ; (`voxli-win` et les
+      features matérielles s'exécutent sous Windows ; les crates pures ont aussi
+      été vérifiées en cible Linux le même jour :
+      `cargo check --target x86_64-unknown-linux-gnu` sur core, config,
+      license, storage, diagnostics, hotkeys, text, win — EXIT=0, ce qui
+      étend le job CI `tests-purs-linux` §5)]
+- [x] `cargo test --workspace` vert — 103 tests, 0 échec [FAIT :
+      19/10/2026, EXIT=0 ; compris :
 
   | Suite | Contenu couvert |
   |---|---|
@@ -31,13 +40,25 @@ transcrite de l'audit, §7).
   | `voxli-asr` | WAV 16 kHz (refus hors contrat), multipart, fake |
   | `commands.rs` (module `#[cfg(test)]`) | catalogue, noms sûrs, arborescence d'extraction, digests |
   | `voxli-audio`, `voxli-vad`, `voxli-hotkeys`, `voxli-license`, `voxli-diagnostics`, `voxli-core` | suites unitaires existantes |
+  | `voxli-storage --features sqlite` | 8 tests (reprise d'id, DPAPI en échec remonté) |
 
-- [ ] `pnpm --dir apps/desktop lint && pnpm --dir apps/desktop build` sans erreur
-      (interface TypeScript) [À FAIRE]
+      Variante `--all-features` **[À FAIRE / hors machine]** : elle tire des
+      builds C (whisper-rs, sherpa-onnx) exigés cmake/ninja, absents de la
+      machine de test — à exécuter sur la machine outillée du mainteneur,
+      résultat à consigner ici AVANT toute release.]
+- [x] Interface TypeScript sans erreur — **[FAIT : 19/10/2026]** via les
+      scripts réels du `package.json` (`check` = `tsc --noEmit`, EXIT=0) et
+      `build` = `vite build` (EXIT=0). La formulation antérieure citait un
+      script `lint` qui n'existe pas dans le dépôt — le script réel est
+      `check` [corrigé ici, la convention §1 s'applique : commande exécutée
+      réellement, sortie conservée].
 - [ ] Chemin Windows du paquet : `cargo tauri build` avec la feature
       `custom-protocol` **une fois**, installé puis lancé sur une machine
-      proprette (aucune fenêtre vide, hotkey enregistrée, modèle installable)
-      [À FAIRE]
+      proprette (aucune fenêtre vide, hotkey enregistrée, modèle
+      installable) [À FAIRE — entrée M2 ; le binaire release seul a été
+      construit : `cargo build --release -p voxli-desktop`, EXIT=0,
+      19/10/2026, mais l'installateur NSIS et le test machine proprette
+      restent à exécuter par le mainteneur]
 
 **Interdiction transversale** : aucun changement de licence appliqué sans la
 décision humaine n°4 (`docs/01`) ; aucune URL de don sans destination vérifiée ;

@@ -22,7 +22,7 @@ use voxli_core::{
 use voxli_win::nemo as ffi;
 use voxli_win::nemo::status;
 
-use crate::streaming::{append_piece, StreamingEngine, StreamingSession, StreamUpdate};
+use crate::streaming::{append_piece, StreamUpdate, StreamingEngine, StreamingSession};
 
 // ------------------------------------------------------ handles RAII ---
 
@@ -226,8 +226,9 @@ impl Transcriptor for NemoEngine {
         // Warm-up complet (RF-19) : le modèle est décodé par `new`, mais le
         // premier appel ABI alloue lui aussi ses tampons ; on passe 150 ms de
         // silence par le chemin réel de `transcribe` — résultat jeté
-        // (silence ⇒ transcript vide, RF-18). Un échec ici est symptomatique
-        // (échec endormi à la log temporaire), il ne bloque jamais le moteur.
+        // (silence ⇒ transcription vide, RF-18). Un échec est remonté tel
+        // quel à l'appelant (contrat `Result` du trait) : le moteur n'est
+        // jamais considéré prêt après une warm-up avortée.
         let silence = AudioBuffer::new(
             vec![0.0; SAMPLE_RATE_HZ as usize * 15 / 100],
             SAMPLE_RATE_HZ,
@@ -407,8 +408,9 @@ impl StreamingSession for NemoSession {
         if st != status::OK {
             return Err(AsrError::Runtime(ffi::describe(st)));
         }
-        // Aspiration bornée : 27 ms/tranche CPU nominal ; le plafond est un
-        // garde-fou (2 s max), la sortie anticipée dès deux drains secs.
+        // Aspiration bornée : plafond dur de 1 000 tours (garde-fou), sortie
+        // anticipée dès 151 drains secs consécutifs (~300 ms sans nouvelles
+        // tranches) — tout drain non vide remet le compteur à zéro.
         let mut consecutive_empty: u32 = 0;
         for _ in 0..1_000 {
             let got = self.drain()?;
@@ -479,11 +481,17 @@ mod tests {
     /// scripts/gen-voice.ps1) ou rien si absente — abstention gracieuse.
     fn voix_local() -> Option<(Vec<f32>, u32)> {
         let appdata = std::env::var("APPDATA").ok()?;
-        let p_voxli = std::path::PathBuf::from(&appdata).join("Voxli").join("test").join("voix.wav");
+        let p_voxli = std::path::PathBuf::from(&appdata)
+            .join("Voxli")
+            .join("test")
+            .join("voix.wav");
         let path = if p_voxli.is_file() {
             p_voxli
         } else {
-            std::path::PathBuf::from(appdata).join("Plume").join("test").join("voix.wav")
+            std::path::PathBuf::from(appdata)
+                .join("Plume")
+                .join("test")
+                .join("voix.wav")
         };
         let (mut samples, rate, channels) = read_wav(&path)?;
         if channels > 1 {
@@ -508,12 +516,8 @@ mod tests {
         let mut data: Option<&[u8]> = None;
         while i + 8 <= bytes.len() {
             let id = [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]];
-            let len = u32::from_le_bytes([
-                bytes[i + 4],
-                bytes[i + 5],
-                bytes[i + 6],
-                bytes[i + 7],
-            ]) as usize;
+            let len = u32::from_le_bytes([bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]])
+                as usize;
             let start = (i + 8).min(bytes.len());
             let end = (start + len).min(bytes.len());
             match &id {
@@ -641,7 +645,13 @@ mod tests {
                 // l'instant d'apparition et le texte partiel.
                 let elapse = tick as f32 / 20.0;
                 let shown = s.snapshot();
-                eprintln!("tick {} ({:.2}s): {} updates → \"{}\"", tick, elapse, updates.len(), shown);
+                eprintln!(
+                    "tick {} ({:.2}s): {} updates → \"{}\"",
+                    tick,
+                    elapse,
+                    updates.len(),
+                    shown
+                );
             }
         }
         let began = std::time::Instant::now();
@@ -650,7 +660,9 @@ mod tests {
             "FINISH {:.2}s → {} caractères (take_result: {})",
             began.elapsed().as_secs_f64(),
             fin.chars().count(),
-            s.take_result().as_ref().map(|(text, _)| text.chars().count())
+            s.take_result()
+                .as_ref()
+                .map(|(text, _)| text.chars().count())
                 .map(|c| c.to_string())
                 .unwrap_or_else(|| "abstient".into())
         );

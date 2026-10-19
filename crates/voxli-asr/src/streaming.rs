@@ -96,10 +96,16 @@ impl FakeSession {
     }
 }
 
+impl Default for FakeSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StreamingSession for FakeSession {
     fn push(&mut self, _samples: &[f32], _rate: u32) -> Result<(), AsrError> {
         self.pushes += 1;
-        if self.pushes % 4 == 0 {
+        if self.pushes.is_multiple_of(4) {
             self.tail = Some(format!("mot {}", self.pushes / 4));
         }
         Ok(())

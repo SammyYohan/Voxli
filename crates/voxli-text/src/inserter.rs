@@ -14,10 +14,23 @@ use voxli_win::uia::Uia;
 
 pub struct WindowsInserter {
     uia: Option<Uia>,
-    /// Temporisations de maintien du presse-papiers (par profil d'app, RF-30).
+    /// Temporisation de maintien effectivement appliquée au niveau 2 : le
+    /// thread de restauration (`paste_with_restore`) attend ce délai avant
+    /// de remettre l'ancien presse-papiers.
     pub hold_ms_default: u32,
+    /// Réglé depuis la config (worker.rs) mais **non lu aujourd'hui** : la
+    /// temporisation « applications lentes » (Outlook, RDP) supposerait de
+    /// choisir le maintien selon l'application identifiée au moment de
+    /// l'insertion, ce que `try_level` ne fait pas encore. Impact : délai
+    /// uniforme `hold_ms_default` partout pour l'instant. Câblage suivi via
+    /// docs/09 (M2).
     pub hold_ms_slow_apps: u32,
+    /// Idem, bureau distant.
     pub hold_ms_remote_desktop: u32,
+    /// Réglé mais **sans effet réversible** : les drapeaux d'hygiène RF-30b
+    /// (`CanIncludeInClipboardHistory` etc.) sont posés inconditionnellement
+    /// par `set_text_excluding_history` dans voxli-win. Désactiver ce
+    /// réglage exigerait un paramètre au niveau bas.
     pub exclude_from_clipboard_history: bool,
 }
 

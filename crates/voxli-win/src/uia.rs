@@ -121,7 +121,7 @@ impl Uia {
             pattern.SetValue(&bstr).map_err(|e| e.to_string())?;
             // Vérification de relecture.
             let read_back = pattern.CurrentValue().map_err(|e| e.to_string())?;
-            if read_back.to_string() != text {
+            if read_back != text {
                 return Err("relecture différente du texte posé".into());
             }
         }

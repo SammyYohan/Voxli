@@ -55,16 +55,15 @@ impl PostProcessor for FrenchProcessor {
 /// Hésitations orales courantes de dictée (RF-26) — comparaison normalisée
 /// (casse/accents ignorés), en mot entier.
 const HESITATIONS: &[&str] = &[
-    "euh", "euhh", "euhhh", "euhhhh", "heu", "heuu", "heuuu", "hum", "hmm", "hmmm", "mmh",
-    "mmm", "ben", "bah", "euhm", "uh", "um",
+    "euh", "euhh", "euhhh", "euhhhh", "heu", "heuu", "heuuu", "hum", "hmm", "hmmm", "mmh", "mmm",
+    "ben", "bah", "euhm", "uh", "um",
 ];
 
 /// Mots dont la répétition consécutive est légitime en français et ne doit
 /// jamais être supprimée (pronoms réfléchis, adverbes intensifs, affirmations).
 const REPETITION_EXCLUSIONS: &[&str] = &[
     // Pronoms réfléchis ("nous nous levons", "vous vous souvenez")
-    "nous", "vous",
-    // Adverbes intensifs et qualificatifs répétés volontairement
+    "nous", "vous", // Adverbes intensifs et qualificatifs répétés volontairement
     "tres", "trop", "bien", "vite", "beaucoup", "presque", "plus", "moins", "tout", "jamais",
     // Affirmations / négations orales répétées ("oui oui", "non non")
     "oui", "non", "si",
@@ -223,7 +222,10 @@ fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
             let w2_norm = normalize_lossy(&tokens[i + 1]);
             let w2_bare = w2_norm.trim_matches(|c: char| !c.is_alphanumeric());
 
-            if !w1_bare.is_empty() && w1_bare == w2_bare && !REPETITION_EXCLUSIONS.contains(&w1_bare) {
+            if !w1_bare.is_empty()
+                && w1_bare == w2_bare
+                && !REPETITION_EXCLUSIONS.contains(&w1_bare)
+            {
                 // Répétition consécutive détectée : absorber toutes les répétitions identiques consécutives
                 let is_capitalized = tokens[i]
                     .chars()
@@ -283,7 +285,7 @@ fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
 /// Nettoie les ponctuations orphelines aux extrémités et les doublons de virgules.
 fn clean_punctuation_edges(text: &str) -> String {
     // Retrait des virgules ou points en tout début de texte
-    let trimmed = text.trim_start_matches(|c: char| c == ',' || c == ' ');
+    let trimmed = text.trim_start_matches([',', ' ']);
     // Nettoyage des virgules doubles ",," ou ", ,"
     let mut out = String::with_capacity(trimmed.len());
     let mut prev_comma = false;
@@ -346,19 +348,17 @@ fn apply_french_spacing(text: &str) -> String {
 /// Majuscule en tête de texte et après . ! ? — in place sur le tampon char.
 fn capitalize_sentence_starts(chars: &mut [char]) {
     let mut at_start = true;
-    for i in 0..chars.len() {
-        let c = chars[i];
+    for c in chars.iter_mut() {
         if at_start {
             if c.is_alphabetic() {
-                for up in c.to_uppercase() {
-                    chars[i] = up;
-                    break;
+                if let Some(up) = c.to_uppercase().next() {
+                    *c = up;
                 }
                 at_start = false;
-            } else if !matches!(c, ' ' | '\'' | '’' | '"') {
+            } else if !matches!(*c, ' ' | '\'' | '’' | '"') {
                 at_start = false;
             }
-        } else if c == '.' || c == '!' || c == '?' {
+        } else if *c == '.' || *c == '!' || *c == '?' {
             at_start = true;
         }
     }
@@ -621,11 +621,11 @@ mod tests {
     #[test]
     fn t_french_processor_pipeline() {
         let p = FrenchProcessor;
-        let prof = profile(Style::Punctuated, &["CEFIR".into()]);
+        let prof = profile(Style::Punctuated, &["CEFIR"]);
         let out = p.process("euh bonjour cefir", &prof).unwrap();
         assert_eq!(out, "Bonjour CEFIR");
 
-        let verbatim = profile(Style::Verbatim, &["CEFIR|cefir".into()]);
+        let verbatim = profile(Style::Verbatim, &["CEFIR|cefir"]);
         let out2 = p.process("euh cefir dossier", &verbatim).unwrap();
         // Verbatim : pas de règles de ponctuation, mais dictionnaire oui.
         assert_eq!(out2, "euh CEFIR dossier");
@@ -638,10 +638,7 @@ mod tests {
             apply_french_rules("je pense, euh, qu'il a raison"),
             "Je pense qu'il a raison"
         );
-        assert_eq!(
-            apply_french_rules("heu hum c'est prêt"),
-            "C'est prêt"
-        );
+        assert_eq!(apply_french_rules("heu hum c'est prêt"), "C'est prêt");
         assert_eq!(
             apply_french_rules("c'est terminé ben voilà"),
             "C'est terminé voilà"
@@ -679,10 +676,7 @@ mod tests {
             apply_french_rules("nous nous sommes vus hier"),
             "Nous nous sommes vus hier"
         );
-        assert_eq!(
-            apply_french_rules("vous vous trompez"),
-            "Vous vous trompez"
-        );
+        assert_eq!(apply_french_rules("vous vous trompez"), "Vous vous trompez");
         // Adverbes intensifs
         assert_eq!(
             apply_french_rules("c'est très très bien"),
@@ -693,9 +687,6 @@ mod tests {
             "C'est trop trop fort"
         );
         // Affirmation orale volontaire
-        assert_eq!(
-            apply_french_rules("oui oui c'est bon"),
-            "Oui oui c'est bon"
-        );
+        assert_eq!(apply_french_rules("oui oui c'est bon"), "Oui oui c'est bon");
     }
 }

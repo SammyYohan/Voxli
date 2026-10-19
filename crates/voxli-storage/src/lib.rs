@@ -1,4 +1,4 @@
-﻿//! `voxli-storage` — historique local (RF-33).
+//! `voxli-storage` — historique local (RF-33).
 //!
 //! Défaut produit : **mémoire seule**, aucune trace de texte sur disque.
 //! L'option « conserver sur disque » (V1) utilise SQLite chiffré, lié au
@@ -47,9 +47,11 @@ pub trait HistoryStore: Send {
 
 /// Codec de chiffrement du texte au repos (RF-33). Le contenu **n'est
 /// jamais stocké en clair** quand un codec réel est branché ; l'interface
-/// empêche d'oublier l'un des deux sens.
+/// empêche d'oublier l'un des deux sens. Un échec de chiffrement est une
+/// erreur **explicite** : jamais un blob vide stocké sous le coup d'un
+/// `unwrap_or_default()` (donnée perdue sans trace).
 pub trait TextCodec: Send {
-    fn encode(&self, text: &str) -> Vec<u8>;
+    fn encode(&self, text: &str) -> Result<Vec<u8>, StorageError>;
     fn decode(&self, blob: &[u8]) -> Option<String>;
 }
 
@@ -57,8 +59,8 @@ pub trait TextCodec: Send {
 pub struct PlainCodec;
 
 impl TextCodec for PlainCodec {
-    fn encode(&self, text: &str) -> Vec<u8> {
-        text.as_bytes().to_vec()
+    fn encode(&self, text: &str) -> Result<Vec<u8>, StorageError> {
+        Ok(text.as_bytes().to_vec())
     }
     fn decode(&self, blob: &[u8]) -> Option<String> {
         String::from_utf8(blob.to_vec()).ok()
@@ -85,7 +87,7 @@ impl<S: HistoryStore, C: TextCodec> EncryptedStore<S, C> {
 
 impl<S: HistoryStore, C: TextCodec> HistoryStore for EncryptedStore<S, C> {
     fn append(&mut self, text: &str, engine: &str, created_ms: u64) -> Result<u64, StorageError> {
-        let blob = self.codec.encode(text);
+        let blob = self.codec.encode(text)?;
         // Stockage en tableau d'octets échappés UTF-8 lossy : le codec peut
         // produire des octets arbitraires (DPAPI) ; on transite par encodage
         // hexadécimal borné pour rester un TEXT sûr dans la colonne.
@@ -132,7 +134,7 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 }
 
 fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if s.is_empty() || s.len() % 2 != 0 {
+    if s.is_empty() || !s.len().is_multiple_of(2) {
         return None;
     }
     (0..s.len() / 2)
@@ -150,8 +152,9 @@ pub mod secure_backend {
     pub struct DpapiCodec;
 
     impl TextCodec for DpapiCodec {
-        fn encode(&self, text: &str) -> Vec<u8> {
-            voxli_secure::dpapi::protect(text.as_bytes()).unwrap_or_default()
+        fn encode(&self, text: &str) -> Result<Vec<u8>, StorageError> {
+            voxli_secure::dpapi::protect(text.as_bytes())
+                .map_err(|e| StorageError::Io(format!("dpapi : {e}")))
         }
         fn decode(&self, blob: &[u8]) -> Option<String> {
             let plain = voxli_secure::dpapi::unprotect(blob).ok()?;
@@ -251,7 +254,20 @@ mod sqlite_backend {
                  );",
             )
             .map_err(|e| StorageError::Corrupt(e.to_string()))?;
-            Ok(Self { conn, next_id: 1 })
+            // La séquence des identifiants est RE PRISE de la base : une
+            // réouverture (nouveau lancement de l'application) repart de
+            // MAX(id)+1 — sinon les INSERT explicites heurtaient la clé
+            // primaire existante et tout append échouait jusqu'à redémarrage
+            // (constat au niveau code : `next_id` repartait in-memory de 1).
+            let max = conn
+                .query_row("SELECT COALESCE(MAX(id), 0) FROM history", [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(|e| StorageError::Corrupt(e.to_string()))?;
+            Ok(Self {
+                conn,
+                next_id: (max.max(0) as u64) + 1,
+            })
         }
     }
 
@@ -370,8 +386,8 @@ mod tests {
     fn t_encrypted_store_round_trip_and_at_rest() {
         struct UppercaseCodec;
         impl TextCodec for UppercaseCodec {
-            fn encode(&self, text: &str) -> Vec<u8> {
-                text.to_uppercase().as_bytes().to_vec()
+            fn encode(&self, text: &str) -> Result<Vec<u8>, StorageError> {
+                Ok(text.to_uppercase().as_bytes().to_vec())
             }
             fn decode(&self, blob: &[u8]) -> Option<String> {
                 Some(String::from_utf8(blob.to_vec()).ok()?.to_lowercase())
@@ -397,6 +413,54 @@ mod tests {
         let hex = bytes_to_hex(&data);
         assert_eq!(decode_hex(&hex).unwrap(), data);
         assert!(decode_hex("abc").is_none());
+    }
+
+    /// Un échec de chiffrement est une erreur explicite : RIEN n'est
+    /// écrit (jamais de blob vide qui ferait disparaître l'entrée).
+    #[test]
+    fn t_encrypt_failure_is_surfacable() {
+        struct FailingCodec;
+        impl TextCodec for FailingCodec {
+            fn encode(&self, _text: &str) -> Result<Vec<u8>, StorageError> {
+                Err(StorageError::Io("dpapi indisponible".into()))
+            }
+            fn decode(&self, _blob: &[u8]) -> Option<String> {
+                None
+            }
+        }
+        let mut s = EncryptedStore::new(MemoryStore::new(10), FailingCodec);
+        assert!(s.append("texte", "fake", 1).is_err());
+        assert!(s.is_empty(), "aucune écriture après échec de chiffrement");
+    }
+
+    /// Régression backend SQLite (feature `sqlite`) : après réouverture,
+    /// les identifiants reprennent après le maximum existant — sinon les
+    /// INSERT explicites heurtaient la clé primaire et tout append
+    /// échouait jusqu'à redémarrage.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn t_sqlite_reopen_continues_id_sequence() {
+        let dir = std::env::temp_dir().join("voxli-storage-test-reopen");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("hist.db");
+
+        let id1 = {
+            let mut s = SqliteStore::open(&path).unwrap();
+            s.append("première", "fake", 1).unwrap()
+        };
+        {
+            let mut s = SqliteStore::open(&path).unwrap();
+            let id2 = s.append("réouvert", "fake", 2).unwrap();
+            assert_ne!(
+                id1, id2,
+                "l'id repris de la base ne doit pas entrer en collision"
+            );
+            let recent = s.recent(10);
+            assert_eq!(recent[0].text, "réouvert");
+            assert_eq!(recent.len(), 2);
+        }
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

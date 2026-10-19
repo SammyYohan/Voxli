@@ -107,8 +107,3 @@ impl Stage {
         }
     }
 }
-
-/// Durée utile au calcul de latence.
-pub fn duration_since(start: Duration, now: Duration) -> Duration {
-    now.checked_sub(start).unwrap_or(Duration::ZERO)
-}

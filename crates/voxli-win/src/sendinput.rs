@@ -93,6 +93,11 @@ pub fn send_ctrl_v() -> Result<(), String> {
     Ok(())
 }
 
+// Espace réservé aux futurs modificateurs ; référence VK_SPACE pour éviter un
+// avertissement d'import inutilisé jusqu'aux profils par application (RF-25).
+#[allow(dead_code)]
+const _KEEP: VIRTUAL_KEY = VK_SPACE;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,8 +143,3 @@ mod tests {
         assert_eq!(flags[3] & KEYEVENTF_KEYUP.0, KEYEVENTF_KEYUP.0);
     }
 }
-
-// Espace réservé aux futurs modificateurs ; référence VK_SPACE pour éviter un
-// avertissement d'import inutilisé jusqu'aux profils par application (RF-25).
-#[allow(dead_code)]
-const _KEEP: VIRTUAL_KEY = VK_SPACE;

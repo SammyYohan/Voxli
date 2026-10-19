@@ -79,6 +79,21 @@ mod tests {
 
     #[test]
     fn t_purchasable_features_match_core() {
+        // Égalité exacte (liste fermée) avec l'enum `Feature` du noyau : une
+        // chaîne achetable qui ne correspond à aucune `Feature`, ou une
+        // `Feature` qui ne serait pas achetable, est un échec de cohérence.
+        let mut expected: Vec<&str> = [
+            voxli_core::Feature::HistoryOnDisk,
+            voxli_core::Feature::CloudPostProcessing,
+            voxli_core::Feature::ExtraProfiles,
+        ]
+        .iter()
+        .map(|f| f.as_str())
+        .collect();
+        let mut purchasable: Vec<&str> = PURCHASABLE_FEATURES.to_vec();
+        purchasable.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(purchasable, expected);
         assert_eq!(PURCHASABLE_FEATURES.len(), 3);
     }
 }

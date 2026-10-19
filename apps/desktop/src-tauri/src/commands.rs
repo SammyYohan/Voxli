@@ -409,8 +409,7 @@ pub fn models_list() -> Vec<ModelInfo> {
             let installed = match kind {
                 "parakeet" => {
                     let dir = models_dir.join(id);
-                    dir.join("encoder.int8.onnx").is_file()
-                        || dir.join("encoder.onnx").is_file()
+                    dir.join("encoder.int8.onnx").is_file() || dir.join("encoder.onnx").is_file()
                 }
                 _ => path.is_file(),
             };
@@ -935,7 +934,7 @@ fn directory_digest(dir: &std::path::Path) -> Result<String, String> {
         let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
         hasher.update(rel.as_bytes());
         hasher.update(b":");
-        hasher.update(&len.to_le_bytes());
+        hasher.update(len.to_le_bytes());
         hasher.update(b"\n");
         loop {
             let n = f.read(&mut buf).map_err(|e| e.to_string())?;
@@ -945,7 +944,10 @@ fn directory_digest(dir: &std::path::Path) -> Result<String, String> {
             hasher.update(&buf[..n]);
         }
     }
-    Ok(format!("{DIR_DIGEST_V1}:{}", hex_digest(&hasher.finalize())))
+    Ok(format!(
+        "{DIR_DIGEST_V1}:{}",
+        hex_digest(&hasher.finalize())
+    ))
 }
 
 /// Digest SHA-256 brut → hexadécimal minuscule.
@@ -1027,6 +1029,12 @@ fn ensure_tree_within(root: &std::path::Path) -> Result<(), String> {
 /// pas de nom invisible commençant par un point). Empêche une config
 /// modifiée de faire lire au moteur un fichier hors `%APPDATA%\Voxli\models`.
 fn is_safe_model_name(name: &str) -> bool {
+    // Les espaces de bord ne sont pas une variante légitime d'un nom :
+    // «  .hidden.bin » (espace initiale) masque un fichier caché, et une
+    // marge accidentelle pointerait ailleurs que le modèle voulu.
+    if name != name.trim() {
+        return false;
+    }
     !name.is_empty()
         && name.len() <= 200
         && !name.starts_with('.')
@@ -1186,11 +1194,11 @@ pub fn data_export(
     let out = dest.join(&stamp);
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     // Configuration (lisible, sans secrets).
-    if let Ok(raw) = fs::read_to_string(&dir.join("config.json")) {
+    if let Ok(raw) = fs::read_to_string(dir.join("config.json")) {
         fs::write(out.join("config.json"), raw).map_err(|e| e.to_string())?;
     }
     // Empreintes des modèles installés (manifests).
-    if let Ok(raw) = fs::read_to_string(&dir.join("models").join("manifests.json")) {
+    if let Ok(raw) = fs::read_to_string(dir.join("models").join("manifests.json")) {
         fs::create_dir_all(out.join("models")).ok();
         fs::write(out.join("models").join("manifests.json"), raw).map_err(|e| e.to_string())?;
     }

@@ -104,7 +104,24 @@ fn main() {
     } else {
         Some(format!("{expires}T23:59:59Z"))
     };
-    let seats_opt = seats.parse::<u32>().ok().filter(|_| !seats.is_empty());
+    // Sièges : option absente → illimité (`None`). Présente mais non
+    // numérique ou nulle → refus explicite (jamais une licence illimitée
+    // produite par une faute de frappe).
+    let seats_opt = if seats.is_empty() {
+        None
+    } else {
+        match seats.parse::<u32>() {
+            Ok(n) if n >= 1 => Some(n),
+            Ok(_) => {
+                eprintln!("--seats : 0 n'a pas de sens ; omettez l'option pour illimité, ou choisissez >= 1");
+                std::process::exit(2);
+            }
+            Err(e) => {
+                eprintln!("--seats : valeur invalide ({e})");
+                std::process::exit(2);
+            }
+        }
+    };
 
     let doc = LicenseDoc {
         product: product.clone(),
@@ -180,7 +197,8 @@ fn rfc3339_now() -> String {
     let (h, m, s) = (time_rem / 3600, (time_rem % 3600) / 60, time_rem % 60);
     let mut year = 1970u64;
     loop {
-        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let leap =
+            (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
         let d = if leap { 366 } else { 365 };
         if days < d {
             break;
@@ -188,7 +206,7 @@ fn rfc3339_now() -> String {
         days -= d;
         year += 1;
     }
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let leap = (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400);
     let mut month = 0usize;
     let mut day = days;
     while month < 12 {
@@ -219,7 +237,7 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
 
 fn hex_to_bytes(s: &str) -> Option<Vec<u8>> {
     let b = s.trim();
-    if b.len() % 2 != 0 {
+    if !b.len().is_multiple_of(2) {
         return None;
     }
     (0..b.len() / 2)

@@ -1,4 +1,4 @@
-﻿//! `voxli-asr` — les moteurs de transcription (ADR-03).
+//! `voxli-asr` — les moteurs de transcription (ADR-03).
 //!
 //! Le code d'appel ne connaît ni whisper.cpp ni ONNX : il manipule des
 //! `AudioBuffer` et des `TranscribeOptions` via le trait `Transcriptor`.
@@ -15,7 +15,7 @@ pub use fake::FakeEngine;
 /// Streaming in-process (session d'énoncé) : trait + session factice pour
 /// les tests. Sans dépendance native : compile toujours.
 pub mod streaming;
-pub use streaming::{FakeSession, FakeStreamer, StreamingEngine, StreamingSession, StreamUpdate};
+pub use streaming::{FakeSession, FakeStreamer, StreamUpdate, StreamingEngine, StreamingSession};
 
 #[cfg(feature = "whisper")]
 pub mod whisper;

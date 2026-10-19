@@ -1,4 +1,4 @@
-﻿//! Capture WASAPI en mode partagé via `cpal` (ADR-04).
+//! Capture WASAPI en mode partagé via `cpal` (ADR-04).
 //!
 //! - le flux d'entrée est **continu** : un anneau de pré-roll tourne en
 //!   permanence ; `start` marque le début du segment (pré-rempli du
@@ -112,7 +112,7 @@ impl Shared {
                 self.meter = a;
             }
             let mono = s; // mixdown effectué au stop (canal unique du flux)
-            // Anneau
+                          // Anneau
             self.ring[self.ring_pos] = mono;
             self.ring_pos = (self.ring_pos + 1) % self.ring.len();
             self.ring_len = (self.ring_len + 1).min(self.ring.len());
@@ -155,14 +155,8 @@ impl Shared {
     /// allocation au-delà de la première tranche — scratch préalloué,
     /// `mem::take` évite l'imprunt simultané du tampon et de `self`).
     fn push_i16(&mut self, data: &[i16]) {
-        for i in 0..data.len() {
-            let f = data[i] as f32 / 32768.0;
-            if i < self.conv_scratch.len() {
-                self.conv_scratch[i] = f;
-            } else {
-                self.conv_scratch.push(f);
-            }
-        }
+        self.conv_scratch
+            .extend(data.iter().map(|&s| s as f32 / 32768.0));
         let scratch = std::mem::take(&mut self.conv_scratch);
         self.push(&scratch);
         self.conv_scratch = scratch;
@@ -170,14 +164,8 @@ impl Shared {
 
     /// Conversion + ajout d'une tranche U8 (même schéma que `push_i16`).
     fn push_u8(&mut self, data: &[u8]) {
-        for i in 0..data.len() {
-            let f = (data[i] as f32 - 128.0) / 128.0;
-            if i < self.conv_scratch.len() {
-                self.conv_scratch[i] = f;
-            } else {
-                self.conv_scratch.push(f);
-            }
-        }
+        self.conv_scratch
+            .extend(data.iter().map(|&s| (s as f32 - 128.0) / 128.0));
         let scratch = std::mem::take(&mut self.conv_scratch);
         self.push(&scratch);
         self.conv_scratch = scratch;
@@ -257,7 +245,7 @@ impl CpalCapture {
         let supported = device
             .default_input_config()
             .map_err(|_| CaptureError::UnsupportedFormat)?;
-        let config: cpal::StreamConfig = supported.clone().into();
+        let config: cpal::StreamConfig = supported.into();
         let max_seconds = 1800u64; // plafond de sécurité RF-11
         let ring_cap =
             (RING_SECONDS * config.sample_rate as f32) as usize * config.channels as usize;
@@ -408,11 +396,7 @@ impl Capture for CpalCapture {
         // Vumètre vivant : amplitude récente (décroissance exp. continue
         // dans le callback time réel) — la jauge de la pastille se remplit
         // avec la voix et se vide au silence.
-        self.shared
-            .lock()
-            .map(|s| s.meter)
-            .unwrap_or(0.0)
-            .min(1.0)
+        self.shared.lock().map(|s| s.meter).unwrap_or(0.0).min(1.0)
     }
 
     fn device_lost(&self) -> bool {
@@ -474,7 +458,6 @@ pub fn list_input_devices() -> Vec<InputDevice> {
     out
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,7 +473,11 @@ mod tests {
         // 0,3 s de parole « forte » (0,5 d'amplitude constante).
         let loud = vec![0.5_f32; 3_000];
         shared.push(&loud);
-        assert!(shared.meter > 0.45, "attaque attendue, meter={}", shared.meter);
+        assert!(
+            shared.meter > 0.45,
+            "attaque attendue, meter={}",
+            shared.meter
+        );
         // 0,6 s de silence : le niveau doit tomber quasi au zéro
         // (exp(-0,6/0,18) ≈ 3,6 %) — un crête à vie resterait à 0,5.
         let silence = vec![0.0_f32; 6_000];

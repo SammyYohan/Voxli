@@ -1,4 +1,4 @@
-﻿//! `voxli-audio` — capture et préparation du signal.
+//! `voxli-audio` — capture et préparation du signal.
 //!
 //! - Conversion mono 16 kHz float32 avec ré-échantillonnage **filtré**
 //!   (sinc fenêtré, jamais une interpolation linéaire naïve) — RF-12, RF-13 ;
@@ -28,8 +28,8 @@ pub use fake::FakeCapture;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use voxli_core::{AudioBuffer, Capture, SpeechVerdict, VoiceActivity};
     use std::time::Duration;
+    use voxli_core::{AudioBuffer, Capture, SpeechVerdict, VoiceActivity};
 
     /// Générateur de sinusoïde pure (test).
     pub(crate) fn sine(freq: f32, rate: u32, seconds: f32, amp: f32) -> Vec<f32> {

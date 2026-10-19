@@ -1,4 +1,4 @@
-﻿//! Thread pipeline de l'application (ADR-12) : il possède l'orchestrateur et
+//! Thread pipeline de l'application (ADR-12) : il possède l'orchestrateur et
 //! ses dépendances, les alimente en événements (`InputEvent`) via un canal,
 //! et relaie chaque `CoreEvent` vers la journalisation et l'interface.
 //!
@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use voxli_asr::FakeEngine;
 #[cfg(feature = "nemo-stream")]
 use voxli_asr::NemoEngine;
@@ -45,7 +46,6 @@ use voxli_storage::{HistoryStore, MemoryStore};
 use voxli_text::PassThroughProcessor;
 #[cfg(target_os = "windows")]
 use voxli_text::{WindowsFocusReader, WindowsInserter};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::commands::{lock_or_recover, UiShared};
 use crate::strings;
@@ -889,7 +889,9 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 // et de la session d'affichage. Un `sess=0` avec une prise
                 // en cours = ouverture de session ratée ; `fed=0` = robinet
                 // sec ; `updates=0` ↔ le SDK n'a rien décodé à ce stade.
-                if tick % 20 == 0 && matches!(orch.state(), DictationState::Recording { .. }) {
+                if tick.is_multiple_of(20)
+                    && matches!(orch.state(), DictationState::Recording { .. })
+                {
                     let fed = stream.fed.swap(0, Ordering::Relaxed);
                     let updates = stream.updates_seen.swap(0, Ordering::Relaxed);
                     let session_open = stream.has_session.load(Ordering::Relaxed);
@@ -956,7 +958,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 // RF-09 : vumètre — échantillonné 1 fois sur 2 (~100 ms,
                 // lecture intérieure au verrou du proxy, très bref) : la
                 // jauge de la pastille se remplit et se vide avec la voix.
-                if tick % 2 == 0 {
+                if tick.is_multiple_of(2) {
                     let level = lock_or_recover(&capture_meter).level();
                     let _ = app.emit(
                         "meter://level",

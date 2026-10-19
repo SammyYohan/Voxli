@@ -14,9 +14,9 @@ pub use pubkey::{embedded_public_key, EMBEDDED_PUBLIC_KEY_HEX, PRODUCT, PURCHASA
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ed25519_dalek::{Signature, Signer, VerifyingKey, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
-use voxli_core::Feature;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use voxli_core::Feature;
 
 /// Format de blob de licence : deux lignes, payload JSON base64 puis
 /// signature Ed25519 base64.

@@ -268,10 +268,10 @@ fn pill_maintenance_loop(app: AppHandle<Wry>, win: tauri::WebviewWindow<Wry>) {
     loop {
         std::thread::sleep(std::time::Duration::from_millis(120));
         tick = tick.wrapping_add(1);
-        if tick % 20 == 0 {
+        if tick.is_multiple_of(20) {
             place_top_center(&app, &win);
         }
-        if tick % 4 == 0 {
+        if tick.is_multiple_of(4) {
             repin_topmost(&win);
         }
         if hover_point(&app, &win, inside) != inside {
@@ -447,7 +447,7 @@ fn register_shortcuts(app: &AppHandle<Wry>, cfg: &Config, logger: &Logger) -> ta
                             code: 4,
                         });
                         logger.log(Event::DeviceEvent {
-                            kind: format!("register-pushToTalk-infructueux:{err}").into(),
+                            kind: format!("register-pushToTalk-infructueux:{err}"),
                         });
                         let _ = app.emit(
                             "notice://notice",
@@ -546,7 +546,7 @@ where
             code: 4,
         });
         logger.log(Event::DeviceEvent {
-            kind: format!("register-{name}-infructueux:{err}").into(),
+            kind: format!("register-{name}-infructueux:{err}"),
         });
         let _ = app.emit(
             "notice://notice",

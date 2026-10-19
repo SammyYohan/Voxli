@@ -176,6 +176,10 @@ pub struct FieldCapabilities {
     pub editable: bool,
     /// Champ de mot de passe (`IsPassword`) — insertion toujours refusée (RF-29).
     pub is_password: bool,
+    /// Champ multiligne. **Non détecté aujourd'hui** : `focus.rs` le pose à
+    /// `false` en dur (contrainte UIA : `ValuePattern` ne couvre que les
+    /// champs mono-ligne, docs/03 §5) et aucun consommateur ne le consulte.
+    /// Réservé pour la détection multi-ligne (M3, hors Windows).
     pub multiline: bool,
 }
 
