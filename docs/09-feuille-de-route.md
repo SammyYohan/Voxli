@@ -23,7 +23,10 @@ fichiers touchés et du statut :
 | Modèles : empreintes streamées, digest de dossier, comparaison de confiance, busy-libérable, archive path-traversal, taille récursive, `title`/`verified` UI | `commands.rs`, `main.ts`, `index.html` | compilé + testé |
 | Capture : tampon de conversion pré-alloué, arrêt sans alloc, `NoData` pouvant descendre au code 7 stable | `voxli-audio/capture.rs`, `voxli-core/{errors,orchestrator}.rs` | compilé + testé |
 | Orchestrateur : file RF-05 servie ou récupérée aussi après échec de `stop()` ; test de régression dédié (`t_stop_failure_then_recovery_session`) | `voxli-core`, `tests/flow.rs` | compilé + testé |
-| Warm-up ASR réels (whisper 100 ms, parakeet/nemo 150 ms silence) + refus non-16 kHz sur le chemin distant | `voxli-asr/{whisper,parakeet,nemo,remote}.rs` | compilé (test unitaire `fake` ; builds `real-asr`/`parakeet` **non vérifiables ici** : cmake/ninja absents) |
+| Warm-up ASR réels (whisper 100 ms, parakeet/nemo 150 ms silence) + refus non-16 kHz sur le chemin distant | `voxli-asr/{whisper,parakeet,nemo,remote}.rs` | compilé + testé (`fake`) ; **build `real-asr` vérifié le 19/10/2026**
+(cmake 4.4.4 + ninja 1.13.2 installés via winget ; EXIT=0 en 9 min 32 s,
+moteur `whisper.cpp` chargé à l'exécution avec `ggml-base-q5_1.bin`) ;
+restent `parakeet` (sherpa-onnx) et `nemo` (SDK absent) |
 | Config v5 : `uiLanguage` séparé de `language`, migration 4→5 testée | `voxli-config` | compilé + testé |
 | i18n UI fr|en (module `i18n.ts`, `data-i18n` sur les trois fenêtres, selects séparés) | `apps/desktop/src/*` | compilé + testé (tsc + vite) |
 | Script modèle par défaut aligné `q5_1`; message raccourci exact ; tooltip tray dynamique | `scripts/fetch-model.ps1`, `strings.rs`, `main.rs` | compilé + testé |
@@ -66,8 +69,10 @@ fichiers touchés et du statut :
 `cargo test -p voxli-storage --features sqlite` (8 tests, EXIT=0),
 `tsc --noEmit` + `vite build` (EXIT=0), `cargo build --release -p
 voxli-desktop` (EXIT=0). Restent des entrées de `docs/11` §1 **hors
-machine** : `cargo test --workspace --all-features` (cmake/ninja absents
-pour whisper-rs/sherpa-onnx), `cargo tauri build` + installation sur
+machine** : `cargo test --workspace --all-features` (partiellement débloqué : le
+chemin whisper.cpp/`real-asr` est construit et vérifié le 19/10/2026 ;
+restent sherpa-onnx — parakeet, le `.part` est resté interrompu —
+et le SDK NeMo), `cargo tauri build` + installation sur
 machine proprette, et la procédure digests §3 (humaine).
 
 ## M2 — Validation mainteneur [WAITING / à planifier]

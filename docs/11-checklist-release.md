@@ -42,10 +42,13 @@ transcrite de l'audit, §7).
   | `voxli-audio`, `voxli-vad`, `voxli-hotkeys`, `voxli-license`, `voxli-diagnostics`, `voxli-core` | suites unitaires existantes |
   | `voxli-storage --features sqlite` | 8 tests (reprise d'id, DPAPI en échec remonté) |
 
-      Variante `--all-features` **[À FAIRE / hors machine]** : elle tire des
-      builds C (whisper-rs, sherpa-onnx) exigés cmake/ninja, absents de la
-      machine de test — à exécuter sur la machine outillée du mainteneur,
-      résultat à consigner ici AVANT toute release.]
+      Avancée 19/10/2026 : la partie whisper-rs du chemin C est désormais
+      faisable sur la machine de test — cmake 4.4.4 + ninja 1.13.2
+      installés (winget), build `--features custom-protocol,real-asr`
+      EXIT=0, moteur `whisper.cpp` chargé au runtime. Restent à la machine
+      outillée : sherpa-onnx (parakeet) et le SDK NeMo pour la liste
+      `--all-features` complète, résultat à consigner ici AVANT toute
+      release.]
 - [x] Interface TypeScript sans erreur — **[FAIT : 19/10/2026]** via les
       scripts réels du `package.json` (`check` = `tsc --noEmit`, EXIT=0) et
       `build` = `vite build` (EXIT=0). La formulation antérieure citait un
