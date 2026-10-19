@@ -9,10 +9,11 @@
 //! voie batch sur le tampon complet, qui reste l'autorité (docs/05 §3.1,
 //! exception 3).
 //!
-//! Auto-désactivation : si un re-décodage dépasse [`MAX_DECODE_MS`], les
-//! partiels s'arrêtent pour le reste de la session (machine lente) —
-//! dégradation en douceur : l'utilisateur retrouve le comportement batch
-//! sans coupure ni message d'erreur.
+//! Auto-désactivation : si un re-décodage dépasse le plafond (voir
+//! [`max_decode_ms_from_env`]), les partiels s'arrêtent pour le reste de
+//! la session (machine lente) — dégradation en douceur : l'utilisateur
+//! retrouve le comportement batch sans coupure ni message d'erreur ;
+//! la coupure reste toutefois consignée au journal par le pilote.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,6 +36,17 @@ pub const MIN_INTERVAL_MS: u128 = 1_500;
 /// session (machine lente) : la finalisation batch prend le relais.
 pub const MAX_DECODE_MS: u128 = 2_500;
 
+/// Plafond de durée d'un re-décodage partiel : 2 500 ms par défaut, réglable
+/// par la variable d'environnement `VOXLI_PARTIAL_MAX_DECODE_MS` (réglage
+/// avancé, comme `VOXLI_PARTIAL_WINDOW_SEC` ; la configuration produit n'y
+/// touche pas) — borné 250..120 000. Lu à l'ouverture de chaque session.
+fn max_decode_ms_from_env() -> u128 {
+    let ms: u128 = std::env::var("VOXLI_PARTIAL_MAX_DECODE_MS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(MAX_DECODE_MS);
+    ms.clamp(250, 120_000)
+}
 /// Garde-fou mémoire du tampon partiel : 60 s d'audio canon 16 kHz.
 const MAX_BUFFER_SAMPLES: usize = (SAMPLE_RATE_HZ as usize) * 60;
 
@@ -138,7 +150,7 @@ where
             decoded_until: 0,
             last_decode_at: None,
             last_text: String::new(),
-            max_decode_ms: MAX_DECODE_MS,
+            max_decode_ms: max_decode_ms_from_env(),
             min_interval_ms: MIN_INTERVAL_MS,
             min_new_samples: MIN_NEW_SAMPLES,
             window_samples: window_samples_from_env(),
@@ -231,15 +243,22 @@ where
         self.decoded_until = self.buffer.len();
         self.last_decode_at = Some(Instant::now());
         if took_ms > self.max_decode_ms {
-            // Machine trop lente : stop propre des partiels pour la session.
+            // Machine trop lente : les partiels s'arrêtent pour le reste
+            // de la session — mais le décodage DÉJÀ PAYÉ n'est pas jeté :
+            // sa lecture reste affichée une dernière fois, puis chaque
+            // tick suivant s'abstient (le pilote consigne la coupure une
+            // seule fois, cf. `is_disabled`).
             self.disabled = true;
-            return Ok(Vec::new());
         }
         if text.is_empty() {
             return Ok(Vec::new());
         }
         self.last_text = text.clone();
         Ok(vec![StreamUpdate::Partial { text }])
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.disabled
     }
 
     fn finish(&mut self) -> Result<String, AsrError> {
@@ -265,7 +284,8 @@ mod tests {
 
     const US: usize = SAMPLE_RATE_HZ as usize / 10; // 100 ms d'audio
 
-    /// Décodeur lent : le premier décodage passe le plafond -> auto-off.
+    /// Décodeur lent : le premier décodage passe le plafond -> auto-off,
+    /// mais sa lecture n'est pas jetée (émise une dernière fois).
     #[test]
     fn t_partial_disable_on_slow_decode() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -283,8 +303,16 @@ mod tests {
         );
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         let out = sess.drain().unwrap();
-        assert!(out.is_empty(), "décodage trop lent -> rien n'est émis");
-        assert!(sess.disabled(), "session auto-désactivée");
+        // Le décodage payé est émis une dernière fois avant la coupure…
+        assert_eq!(
+            out.len(),
+            1,
+            "décodage trop lent -> émis une dernière fois puis stop"
+        );
+        assert!(matches!(out[0], StreamUpdate::Partial { ref text } if text == "texte"));
+        // …et la session ne décode plus jamais.
+        assert!(sess.is_disabled(), "session auto-désactivée (trait)");
+        assert!(sess.disabled(), "session auto-désactivée (inhérente)");
         assert_eq!(calls.load(Ordering::Relaxed), 1, "un seul décodage tenté");
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         assert!(sess.drain().unwrap().is_empty(), "plus jamais après off");

@@ -359,6 +359,10 @@ fn stream_driver_body(
     rx: std::sync::mpsc::Receiver<StreamCmd>,
 ) {
     let mut session: Option<Box<dyn StreamingSession>> = None;
+    // Coupure partiels consignée une seule fois par session (l'auto-off
+    // resterait sinon muet : constat UX du 19/10, jamais de texte en
+    // pastille sans explication).
+    let mut coupe_journalisee = false;
     for cmd in rx.iter() {
         match cmd {
             StreamCmd::Open {
@@ -371,6 +375,7 @@ fn stream_driver_body(
                         Ok(s) => {
                             session = Some(s);
                             slot.has_session.store(true, Ordering::Relaxed);
+                            coupe_journalisee = false;
                         }
                         Err(err) => {
                             slot.logger.log(Event::Error {
@@ -441,6 +446,18 @@ fn stream_driver_body(
                             });
                             mort = true;
                         }
+                    }
+                    // Auto-off des partiels (machine lente) : consigné une
+                    // fois « proprement » — le plafonneur reste réglable via
+                    // VOXLI_PARTIAL_MAX_DECODE_MS (cf. whisper_partial.rs).
+                    if !mort
+                        && !coupe_journalisee
+                        && session.as_ref().map(|s| s.is_disabled()) == Some(true)
+                    {
+                        coupe_journalisee = true;
+                        slot.logger.log(Event::DeviceEvent {
+                            kind: "partiels-coupés:re-décodage-trop-lent-sur-cette-machine".into(),
+                        });
                     }
                     if mort {
                         session = None;
@@ -1038,9 +1055,9 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
     // JAMAIS être `None` (détection aléatoire sur deux mots) — retomber
     // sur la langue d'affichage, toujours renseignée (défaut fr).
     let listen_language = Some(c.general.language.clone()).filter(|s| !s.is_empty());
-    let auto_fallback = listen_language.clone().or_else(|| {
-        Some(c.general.ui_language.clone()).filter(|s| !s.is_empty())
-    });
+    let auto_fallback = listen_language
+        .clone()
+        .or_else(|| Some(c.general.ui_language.clone()).filter(|s| !s.is_empty()));
     OrchestratorCfg {
         pre_roll_ms: c.audio.pre_roll_ms,
         max_recording: Duration::from_secs(c.audio.max_recording_seconds as u64),
@@ -1237,8 +1254,22 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
                     });
                 }
             }
+        } else if matches!(cfg.general.engine, EngineChoice::Whisper) {
+            // Choix explicite sans modèle installé : même signal que les
+            // autres moteurs (code 7 = modèle manquant) — jamais de repli
+            // factice muet (constat UX du 19/10).
+            logger.log(Event::Error {
+                module: "asr".into(),
+                code: 7,
+            });
         }
     }
+    // Repli factice : toujours CONSIGNÉ distinctement — une dictée « qui
+    // réussit » sur texte préfabriqué ne doit jamais pouvoir se confondre
+    // avec un vrai moteur (constat UX du 19/10).
+    logger.log(Event::DeviceEvent {
+        kind: "moteur-factice:aucun-moteur-réel-disponible".into(),
+    });
     logger.log(Event::EngineLoaded {
         engine: "fake".into(),
         model_id: "faux".into(),

@@ -536,7 +536,7 @@ pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
 }
 
 #[tauri::command]
-pub fn models_remove(id: String) -> Result<(), String> {
+pub fn models_remove(id: String, shared: State<'_, UiShared>) -> Result<(), String> {
     let models_dir = Config::default_dir().join("models");
     if !MODEL_CATALOG.iter().any(|e| e.id == id) {
         return Err("Modèle inconnu.".to_string());
@@ -549,6 +549,17 @@ pub fn models_remove(id: String) -> Result<(), String> {
     } else {
         Ok(())
     };
+    // Le retrait modifie le moteur effectif au prochain rebuild (RF-15) —
+    // il doit se voir au journal, sinon la disparition d'un modèle reste
+    // indémontrable (constat UX du 19/10 : modèle disparu sans trace).
+    match &ok {
+        Ok(()) => shared.logger.log(Event::DeviceEvent {
+            kind: format!("modèle-retiré:{id}"),
+        }),
+        Err(_) => shared.logger.log(Event::DeviceEvent {
+            kind: format!("modèle-retrait-échec:{id}"),
+        }),
+    }
     ok.map_err(|e| format!("{} : {e}", strings::ERR_WRITE))
 }
 
@@ -672,19 +683,97 @@ fn download_model_thread(
     if legacy.is_file() {
         let _ = std::fs::remove_file(&legacy);
     }
-    let start_from = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
     shared.logger.log(Event::DeviceEvent {
         kind: "téléchargement-démarré".into(),
     });
 
     // Échéance par INACTIVITÉ (30 s sans octet), pas de plafond global : un
     // téléchargement long sur ligne lente doit pouvoir finir (RF-20), une
-    // connexion morte doit échouer tôt et reprendre ensuite. Le diction de
-    // 600 s global du premier jet coupait les téléchargements volumineux.
+    // connexion morte doit échouer tôt et reprendre ensuite (le délai
+    // global de 600 s du premier jet coupait les téléchargements
+    // volumineux).
     let agent: ureq::Agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(20))
         .timeout_read(std::time::Duration::from_secs(30))
         .build();
+
+    // Reprise AUTOMATIQUE (audit UX 19/10 : une connexion réinitialisée à
+    // mi-transfert faisait échouer le téléchargement — l'utilisateur devait
+    // re-cliquer, parfois en boucle, sans jamais finir). Chaque essai
+    // reprend au `.part` déjà présent (plage `Range`) ; les erreurs réseau
+    // réessayent avec un backoff croissant dans la limite de
+    // MAX_TENTATIVES ; l'annulation reste immédiate à chaque instant.
+    const MAX_TENTATIVES: u32 = 8;
+    let mut attempt: u32 = 0;
+    loop {
+        attempt += 1;
+        if attempt > 1 {
+            // Backoff annulable : 1, 2, 4, 8, 15, 30 puis 60 s.
+            let wait = [1u64, 2, 4, 8, 15, 30, 60][((attempt - 2) as usize).min(6)];
+            shared.logger.log(Event::DeviceEvent {
+                kind: format!("téléchargement-reprise-auto:essai={attempt},attente={wait}s"),
+            });
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait);
+            while std::time::Instant::now() < deadline {
+                if cancel.load(Ordering::SeqCst) {
+                    return Err("annulé".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+        match transfer_attempt(app, id, url, cancel, &agent, &tmp) {
+            Attempt::Complete => break,
+            Attempt::AlreadyComplete => {
+                return finalize_download(app, id, kind, expected, true);
+            }
+            Attempt::Fatal(e) => return Err(e),
+            Attempt::Retryable(detail) => {
+                shared.logger.log(Event::DeviceEvent {
+                    kind: format!(
+                        "téléchargement-réseau-interrompu:essai={attempt},{}",
+                        detail.chars().take(96).collect::<String>()
+                    ),
+                });
+                if attempt >= MAX_TENTATIVES {
+                    let partio = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+                    return Err(format!(
+                        "réseau : {detail} ({attempt} tentatives ; les {partio} o déjà reçus sont conservés, un nouvel essai reprendra)"
+                    ));
+                }
+            }
+        }
+    }
+    shared.logger.log(Event::DeviceEvent {
+        kind: "téléchargement-fini".into(),
+    });
+    finalize_download(app, id, kind, expected, false)
+}
+
+/// Issue d'une tentative de transfert (voir `download_model_thread`).
+enum Attempt {
+    /// Flux serveur consommé intégralement : prêt pour la restitution.
+    Complete,
+    /// Le `.part` est déjà au complet : le serveur refuse la plage (416).
+    AlreadyComplete,
+    /// Erreur réseau : le `.part` est conservé, un nouvel essai reprendra.
+    Retryable(String),
+    /// Erreur fatale (annulation, disque) : abandon immédiat.
+    Fatal(String),
+}
+
+/// UN essai de transfert : connexion avec plage `Range` posée à la taille
+/// du `.part` courant, écriture par blocs, progression émise. Aucune
+/// reprise ici — c'est le rôle de la boucle appelante.
+fn transfer_attempt(
+    app: &AppHandle<Wry>,
+    id: &str,
+    url: &str,
+    cancel: &AtomicBool,
+    agent: &ureq::Agent,
+    tmp: &std::path::Path,
+) -> Attempt {
+    let shared = app.state::<UiShared>();
+    let start_from = std::fs::metadata(tmp).map(|m| m.len()).unwrap_or(0);
     // P2 (audit) : un `.part` déjà complet répond 416 (plage hors contenu)
     // — ce n'est PAS un échec réseau : le fichier entier est déjà légitime-
     // ment là. Passer directement à la restitution ; sinon le fichier
@@ -699,9 +788,9 @@ fn download_model_thread(
             shared.logger.log(Event::DeviceEvent {
                 kind: "téléchargement-reprise-déjà-complète".into(),
             });
-            return finalize_download(app, id, kind, expected, true);
+            return Attempt::AlreadyComplete;
         }
-        Err(e) => return Err(format!("réseau : {e}")),
+        Err(e) => return Attempt::Retryable(format!("réseau : {e}")),
     };
     // Code du serveur : 206 = l'amorce de plage est accordée (reprise);
     // 200 = contenu ENTIER envoyé sans tenir compte de la plage — repartir
@@ -723,12 +812,15 @@ fn download_model_thread(
     };
 
     let mut file = if from > 0 {
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&tmp)
-            .map_err(|e| e.to_string())?
+        match std::fs::OpenOptions::new().append(true).open(tmp) {
+            Ok(f) => f,
+            Err(e) => return Attempt::Fatal(e.to_string()),
+        }
     } else {
-        std::fs::File::create(&tmp).map_err(|e| e.to_string())?
+        match std::fs::File::create(tmp) {
+            Ok(f) => f,
+            Err(e) => return Attempt::Fatal(e.to_string()),
+        }
     };
     let mut reader = resp.into_reader();
     let mut buf = vec![0u8; DOWNLOAD_CHUNK];
@@ -736,14 +828,18 @@ fn download_model_thread(
     let mut next_emit = downloaded + 512 * 1024;
     loop {
         if cancel.load(Ordering::SeqCst) {
-            return Err("annulé".into());
+            return Attempt::Fatal("annulé".into());
         }
-        let n = reader.read(&mut buf).map_err(|e| format!("réseau : {e}"))?;
-        if n == 0 {
-            break;
-        }
+        use std::io::Read;
+        let n = match reader.read(&mut buf) {
+            Ok(0) => return Attempt::Complete,
+            Ok(n) => n,
+            Err(e) => return Attempt::Retryable(format!("réseau : {e}")),
+        };
         use std::io::Write;
-        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        if let Err(e) = file.write_all(&buf[..n]) {
+            return Attempt::Fatal(e.to_string());
+        }
         downloaded += n as u64;
         if expected_total > 0 && downloaded >= next_emit {
             next_emit = downloaded + 512 * 1024;
@@ -757,10 +853,6 @@ fn download_model_thread(
             );
         }
     }
-    shared.logger.log(Event::DeviceEvent {
-        kind: "téléchargement-fini".into(),
-    });
-    finalize_download(app, id, kind, expected, false)
 }
 
 /// Restitution finale commune (après un téléchargement OU après un 416 de

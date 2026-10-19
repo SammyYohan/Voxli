@@ -173,3 +173,61 @@ impl Transcriptor for WhisperCppEngine {
         EngineId::WhisperCpp
     }
 }
+
+#[cfg(test)]
+mod filter_tests {
+    use super::WhisperCppEngine;
+
+    // RF-18 : le filtre ancre les motifs en TÊTE (hallucinations de
+    // silence/fond) — un même motif au milieu ou en fin de dictée légitime
+    // ne doit jamais effacer le tout (« À demain, bye-bye »).
+    #[test]
+    fn motifes_tete_sans_residu_verbal_alpha() {
+        // Résidu uniquement ponctuation/espaces → hallucination (None).
+        assert!(WhisperCppEngine::filter_hallucination("Merci d'avoir regardé !").is_none());
+        assert!(WhisperCppEngine::filter_hallucination("bye-bye.").is_none());
+        assert!(WhisperCppEngine::filter_hallucination("  Sous-titres .  ").is_none());
+        assert!(WhisperCppEngine::filter_hallucination("BYE-BYE").is_none());
+        // Plusieurs motifs successifs en tête.
+        assert!(WhisperCppEngine::filter_hallucination(
+            "Merci d'avoir regardé. Merci d'avoir écouté."
+        )
+        .is_none());
+        // Erreur typique de Whisper sur silence : motif + « à nous… » (RF-18).
+        assert!(WhisperCppEngine::filter_hallucination(
+            "Merci d'avoir regardé — à nous dans la prochaine vidéo !"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn motif_isole_en_fin_ou_milieu_est_conserve() {
+        assert_eq!(
+            WhisperCppEngine::filter_hallucination("À demain, bye-bye."),
+            Some("À demain, bye-bye.".to_string())
+        );
+        assert_eq!(
+            WhisperCppEngine::filter_hallucination("La sous-titrage n'existe pas ici."),
+            Some("La sous-titrage n'existe pas ici.".to_string())
+        );
+    }
+
+    #[test]
+    fn motif_tete_avec_residu_verbal_est_conserve() {
+        // Résidu verbal après le motif de tête → dictée légitime, conservée.
+        assert_eq!(
+            WhisperCppEngine::filter_hallucination("Sous-titrage du dialogue, s'il te plaît"),
+            Some("Sous-titrage du dialogue, s'il te plaît".to_string())
+        );
+    }
+
+    #[test]
+    fn vide_ou_blancs() {
+        assert!(WhisperCppEngine::filter_hallucination("").is_none());
+        assert!(WhisperCppEngine::filter_hallucination("   ").is_none());
+        assert_eq!(
+            WhisperCppEngine::filter_hallucination("  Bonjour. "),
+            Some("Bonjour.".to_string())
+        );
+    }
+}

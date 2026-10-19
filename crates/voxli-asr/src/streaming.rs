@@ -46,6 +46,14 @@ pub trait StreamingSession: Send {
     /// Texte « affichage » à cet instant : segments finalisés + hypothèse
     /// partielle courante. Jamais journalisé ni conservé (RF-34).
     fn snapshot(&self) -> String;
+
+    /// La session a auto-désactivé ses partiels (machine trop lente) :
+    /// le pilote consigne la coupure une seule fois au journal — sans
+    /// quoi la disparition des partiels serait muette pour l'utilisateur
+    /// (constat UX du 19/10).
+    fn is_disabled(&self) -> bool {
+        false
+    }
 }
 
 /// Fabrique de session streaming — la reconnaissance offline passe par le
