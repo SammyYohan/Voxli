@@ -310,21 +310,29 @@
         <div id="engines-list"></div>
         <p id="engine-effective" class="muted" hidden></p>
       </div>
-      <table id="models" class="list">
-        <thead>
-          <tr>
-            <th data-i18n="models.colModel">Modèle</th>
-            <th data-i18n="models.colState">État</th>
-            <th data-i18n="models.colCheck">Contrôle</th>
-            <th data-i18n="models.colActions">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="models-body"></tbody>
-      </table>
+      <!-- Catalogue détaillé : replié en mode Simple (classe `advanced`),
+           mais la sélection du moteur au-dessus reste VISIBLE : c'est elle
+           qui montre ce qui est installé / téléchargeable. -->
+      <div id="models-advanced" class="advanced">
+        <table id="models" class="list">
+          <thead>
+            <tr>
+              <th data-i18n="models.colModel">Modèle</th>
+              <th data-i18n="models.colState">État</th>
+              <th data-i18n="models.colCheck">Contrôle</th>
+              <th data-i18n="models.colActions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="models-body"></tbody>
+        </table>
+      </div>
       <div id="model-progress" class="meter slim" hidden>
         <div id="model-progress-fill" class="meter-fill"></div>
       </div>
-      <span id="model-status" class="muted"></span>
+      <div class="model-progress-row">
+        <span id="model-status" class="muted"></span>
+        <button id="btn-model-cancel" type="button" data-i18n="models.cancel" hidden>Annuler</button>
+      </div>
     </section>
 
     <!-- ================================================== profils -->

@@ -15,6 +15,46 @@ détail des correctifs d'hygiène faits au passage.
 
 ## [Non publié]
 
+### Audit UX/UI (résolu le 19/10/2026, code seul — compilation locale requise)
+
+- **Partiels réellement visibles dans la pastille** : le worker émettait
+  `s.snapshot()` sur la voie `dictation://partial`, mais le streamer
+  partiel whisper renvoyait toujours `""` — le texte drainé était jeté ;
+  la pastille ne montrait qu'un curseur sans texte ni animation.
+  `snapshot()` renvoie désormais le dernier re-décodage conservé
+  (`last_text`), la pill ne pose plus `has-partial` sur un texte vide et
+  le texte entre par une animation (fondu + glissement 160 ms).
+- **Anti-hallucination ancré en tête de texte** (RF-18) : le filtre
+  `contains` effaçait des dictées légitimes (« bye-bye » en fin de
+  message, etc.). Désormais ancré début de texte, avec résidu non verbal
+  uniquement — le contenu dicté au milieu d'une phrase n'est plus
+  amputé.
+- **Deux-points compacts préservés** (RF-27) : `12:00`, `3:2` et autres
+  formats horaires ne sont plus reformatés en `12 : 00` par la
+  typographie fine française ; l'insécable reste appliquée partout
+  ailleurs (`mot :`, `50 %`).
+- **L'option « auto » retombe sur la langue d'affichage** (RF-16) : en
+  détection automatique, le repli sous 1,5 s s'avérait vide (détection
+  aléatoire sur deux mots) ; il retombe désormais sur `uiLanguage` —
+  jamais `None`.
+- **Sélection moteur toujours visible en mode Simple** : seule la table
+  du catalogue passe en « avancé » ; les radios du moteur (avec leur
+  état réel) restent visibles.
+- **Téléchargements pilotables** : bouton Annuler (branché sur
+  `models_download_cancel`, acquittement neutre « annulé »), statut avec
+  le NOM du modèle et le pourcentage, bande indéterminée quand la taille
+  serveur est inconnue (au lieu d'un « 0 % » figé), un seul télécharge-
+  ment à la fois avec un message clair.
+- **Thème appliqué au démarrage** : la CSP du build bloquait le script
+  inline de thème (flash clair en sombre, « système » ignoré) — hachage
+  SHA-256 du script ajouté au CSP, `applyTheme()` appelé en tête de
+  `main()` (double filet), l'onglet « système » suit désormais
+  `prefers-color-scheme` (re-render sans recharger).
+- **Boutons lisibles en thème sombre** : encre sombre sur accent vif
+  (ratio ≈ 8:1, WCAG AA) ; `secondary` garde son encre grisée.
+- **Fenêtre partielle réglable sans toucher au schéma v5** :
+  `VOXLI_PARTIAL_WINDOW_SEC` (avancé, borné 2..8 s, défaut 8 s).
+
 ### Fonctionnalités commanditées : partiels en direct + sélection moteur (19/10/2026)
 
 - **Texte en direct pendant la prise, quel que soit le moteur** : les

@@ -23,8 +23,9 @@ use crate::streaming::{StreamUpdate, StreamingEngine, StreamingSession};
 use crate::whisper::WhisperCppEngine;
 
 /// Fenêtre glissante décodée pour les partiels : le re-décodage ne porte que
-/// sur les 8 dernières secondes du tampon, pour borner le cochange CPU
-/// par tick pris (8 s = [`PARTIAL_WINDOW_SAMPLES`]).
+/// sur les dernières secondes du tampon, pour borner le coût CPU par tick
+/// (défaut et plafond : 8 s = [`PARTIAL_WINDOW_SAMPLES`] ; réglage avancé
+/// possible par la variable d'environnement `VOXLI_PARTIAL_WINDOW_SEC`).
 pub const PARTIAL_WINDOW_SAMPLES: usize = (SAMPLE_RATE_HZ as usize / 10) * 80; // 8 s
 /// Audio neuf minimal (échantillons) entre deux re-décodages (1,2 s).
 pub const MIN_NEW_SAMPLES: usize = (SAMPLE_RATE_HZ as usize / 10) * 12;
@@ -36,6 +37,20 @@ pub const MAX_DECODE_MS: u128 = 2_500;
 
 /// Garde-fou mémoire du tampon partiel : 60 s d'audio canon 16 kHz.
 const MAX_BUFFER_SAMPLES: usize = (SAMPLE_RATE_HZ as usize) * 60;
+
+/// Durée (s) de la fenêtre de re-décodage partielle : 8 s par défaut,
+/// réglable par la variable d'environnement `VOXLI_PARTIAL_WINDOW_SEC`
+/// (réglage avancé, la configuration produit v5 n'y touche pas) —
+/// bornée 2..8 pour que le coût CPU/par tick reste cadré et que les
+/// tests restent hermétiques (ils passent par `with_thresholds`).
+fn window_samples_from_env() -> usize {
+    let sec: f64 = std::env::var("VOXLI_PARTIAL_WINDOW_SEC")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(8.0);
+    let clamped = sec.clamp(2.0, 8.0);
+    (SAMPLE_RATE_HZ as f64 * clamped) as usize
+}
 
 /// Fabrique de sessions partiels au-dessus de `WhisperCppEngine`.
 ///
@@ -96,12 +111,19 @@ where
     /// Longueur de tampon déjà couverte par un décodage (audio neuf = delta).
     decoded_until: usize,
     last_decode_at: Option<Instant>,
+    /// Dernier texte partiel décodé (source d'affichage du snapshot) —
+    /// voir `snapshot()` ci-dessous.
+    last_text: String,
     /// Plafond de durée d'un décodage (production : [`MAX_DECODE_MS`]).
     max_decode_ms: u128,
     /// Intervalle minimal entre décodages (production : [`MIN_INTERVAL_MS`]).
     min_interval_ms: u128,
     /// Audio neuf minimal avant un re-décodage (production : 1,2 s).
     min_new_samples: usize,
+    /// Longueur de la fenêtre re-décodée (production : réglable via
+    /// `VOXLI_PARTIAL_WINDOW_SEC`, défaut 8 s ; tests : constante exacte
+    /// pour rester hermétiques).
+    window_samples: usize,
     disabled: bool,
 }
 
@@ -115,9 +137,11 @@ where
             buffer: Vec::new(),
             decoded_until: 0,
             last_decode_at: None,
+            last_text: String::new(),
             max_decode_ms: MAX_DECODE_MS,
             min_interval_ms: MIN_INTERVAL_MS,
             min_new_samples: MIN_NEW_SAMPLES,
+            window_samples: window_samples_from_env(),
             disabled: false,
         }
     }
@@ -135,9 +159,11 @@ where
             buffer: Vec::new(),
             decoded_until: 0,
             last_decode_at: None,
+            last_text: String::new(),
             max_decode_ms,
             min_interval_ms,
             min_new_samples,
+            window_samples: PARTIAL_WINDOW_SAMPLES,
             disabled: false,
         }
     }
@@ -194,8 +220,9 @@ where
                 return Ok(Vec::new());
             }
         }
-        // Fenêtre : uniquement la fin du tampon (coût CPU borné par tick).
-        let window_len = PARTIAL_WINDOW_SAMPLES.min(self.buffer.len());
+        // Fenêtre : uniquement la fin du tampon (coût CPU borné par tick,
+        // durée réglable — voir `window_samples_from_env`).
+        let window_len = self.window_samples.min(self.buffer.len());
         let start = self.buffer.len() - window_len;
         let window = AudioBuffer::new(self.buffer[start..].to_vec(), SAMPLE_RATE_HZ);
         let t0 = Instant::now();
@@ -211,6 +238,7 @@ where
         if text.is_empty() {
             return Ok(Vec::new());
         }
+        self.last_text = text.clone();
         Ok(vec![StreamUpdate::Partial { text }])
     }
 
@@ -221,9 +249,11 @@ where
     }
 
     fn snapshot(&self) -> String {
-        // Les partiels transitent par les événements `drain` ; le snapshot
-        // (hors flux) n'invente pas une seconde source de vérité.
-        String::new()
+        // Le consommateur (`worker.rs`, emit `dictation://partial`) lit le
+        // snapshot comme source d'affichage : renvoyer le dernier re-déco-
+        // dage. Le texte définitif reste la voie batch, sans seconde vérité
+        // (RF-34 : affichage seul, jamais inséré ni journalisé).
+        self.last_text.clone()
     }
 }
 
@@ -296,8 +326,8 @@ mod tests {
             PARTIAL_WINDOW_SAMPLES,
             "appel final = fenêtre exacte de 8 s"
         );
-        // Snapshot vide : le partiel ne prétend rien être.
-        assert_eq!(sess.snapshot(), "");
+        // Snapshot : le dernier partiel décodé (le vrai texte d'affichage).
+        assert_eq!(sess.snapshot(), "partiel-eco");
         assert_eq!(sess.finish().unwrap(), "");
     }
 }

@@ -1033,6 +1033,14 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
         insertion: voxli_core::InsertionPolicy::ClipboardFirst,
         dictionary: p.dictionary.clone(),
     };
+    // Langue d'écoute : « auto » (chaîne vide) est un choix légitime de
+    // l'UI (recommandée). RF-16 : le repli sous 1,5 s d'énoncé NE DOIT
+    // JAMAIS être `None` (détection aléatoire sur deux mots) — retomber
+    // sur la langue d'affichage, toujours renseignée (défaut fr).
+    let listen_language = Some(c.general.language.clone()).filter(|s| !s.is_empty());
+    let auto_fallback = listen_language.clone().or_else(|| {
+        Some(c.general.ui_language.clone()).filter(|s| !s.is_empty())
+    });
     OrchestratorCfg {
         pre_roll_ms: c.audio.pre_roll_ms,
         max_recording: Duration::from_secs(c.audio.max_recording_seconds as u64),
@@ -1041,10 +1049,10 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
         profile: profile_of(&c.profiles.default),
         profile_bindings: bindings,
         excluded_apps: c.insertion.excluded_apps.clone(),
-        language: Some(c.general.language.clone()).filter(|s| !s.is_empty()),
+        language: listen_language,
         initial_prompt: None, // amorce construite du dictionnaire (RF-24)
         auto_language_min: Duration::from_millis(1_500),
-        auto_language_fallback: Some(c.general.language.clone()).filter(|s| !s.is_empty()),
+        auto_language_fallback: auto_fallback,
         trigger: match c.hotkeys.mode {
             TriggerModeCfg::Hold => TriggerMode::Hold,
             TriggerModeCfg::Toggle => TriggerMode::Toggle,

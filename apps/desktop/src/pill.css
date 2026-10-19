@@ -152,6 +152,21 @@ body[data-state="recording"].has-partial .label {
 }
 .partial.live {
   display: block;
+  /* Animation d'entrée : le texte arrive en glissant légèrement vers le
+   * haut avec un fondu court — la parole « prend » la pilule. Le contenu
+   * est remplacé en place pendant la prise : l'animation ne rejoue que
+   * sur l'apparition (display none -> block), pas à chaque mot. */
+  animation: entrer-partiel 0.16s ease-out;
+}
+@keyframes entrer-partiel {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .partial.live::after {
   content: "▍";

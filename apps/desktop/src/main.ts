@@ -104,6 +104,14 @@ import { applyDom, applyUiLanguage, t, uiLanguage } from "./i18n";
 
 let config: ConfigJson | null = null;
 
+/** Catalogue relayé par `models_list` : libellés affichés pendant la
+ * progression (l'événement `models://progress` ne porte que l'id). */
+const knownModels: ModelInfo[] = [];
+
+/** Téléchargement en cours (RF-36 : un seul à la fois). Pilote l'état
+ * « occupé » des boutons et la visibilité du bouton Annuler. */
+let downloadingId: string | null = null;
+
 function $id(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (el === null) throw new Error(`élément manquant : #${id}`);
@@ -120,6 +128,41 @@ function showNotice(message: string): void {
   noticeTimer = window.setTimeout(() => {
     box.hidden = true;
   }, 6000);
+}
+
+/** Lancement d'un téléchargement de modèle (onboarding ou catalogue) :
+ * bande de progression visible, nom du fichier affiché, bouton Annuler
+ * branché sur `models_download_cancel` (RF-36 : action explicite). Un
+ * seul téléchargement à la fois — les autres demandes sont ignorées. */
+async function startDownload(id: string): Promise<void> {
+  if (downloadingId !== null) {
+    showNotice(t("models.busy"));
+    return;
+  }
+  downloadingId = id;
+  const bar = $id("model-progress");
+  ($id("btn-model-cancel") as HTMLElement).hidden = false;
+  // Reprise visible à zéro : la première mise à jour serveur réajuste
+  // (le % résiduel de l'essai précédent n'a pas de sens).
+  (document.getElementById("model-progress-fill") as HTMLElement).style.width = "0%";
+  bar.classList.remove("indeterminate");
+  bar.hidden = false;
+  const label = knownModels.find((m) => m.id === id)?.label ?? id;
+  ($id("model-status") as HTMLElement).textContent = t("models.downloadingName", {
+    name: label,
+  });
+  try {
+    await invoke("models_download", { id });
+    showNotice(t("notice.modelStarted"));
+  } catch (err) {
+    // Refus immédiat (déjà en cours, modèle inconnu…) : remettre l'écran
+    // au propre — jamais de barre fantôme.
+    downloadingId = null;
+    ($id("btn-model-cancel") as HTMLElement).hidden = true;
+    bar.hidden = true;
+    ($id("model-status") as HTMLElement).textContent = "";
+    showNotice(String(err));
+  }
 }
 
 function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
@@ -313,6 +356,7 @@ async function refreshLicense(): Promise<LicenseInfo> {
 
 async function refreshModels(): Promise<void> {
   const models: ModelInfo[] = await invoke("models_list");
+  knownModels.splice(0, knownModels.length, ...models);
   const body = $id("models-body") as HTMLElement;
   body.replaceChildren();
   for (const m of models) {
@@ -342,29 +386,18 @@ async function refreshModels(): Promise<void> {
     } else {
       btn.textContent = t("models.download");
       btn.addEventListener("click", async () => {
-        try {
-          await invoke("models_download", { id: m.id });
-          const bar = $id("model-progress");
-          // Reprise visible à zéro : la première mise à jour serveur
-          // réajuste (le % résiduel de l'essai précédent n'a pas de sens).
-          (document.getElementById("model-progress-fill") as HTMLElement).style.width = "0%";
-          bar.hidden = false;
-          ($id("model-status") as HTMLElement).textContent = t("models.downloading");
-        } catch (err) {
-          showNotice(String(err));
-        }
+        void startDownload(m.id);
       });
     }
     td.appendChild(btn);
     tr.appendChild(td);
     body.appendChild(tr);
   }
-  // Règle Simple/Avancé : dès qu'UNE voix dicte, le catalogue technique
-  // n'a plus besoin d'être vu au quotidien (il reste en Mode avancé) ;
-  // sans moteur réel, l'écran Simple garde l'installation sous la main.
-  document
-    .getElementById("sec-modeles")
-    ?.classList.toggle("advanced", models.some((m) => m.installed));
+  // Règle Simple/Avancé : le catalogue détaillé (table des modèles) vit
+  // dans la classe `advanced` (index.html) — il n'est plus masqué d'ici.
+  // Ce qui reste VISIBLE en mode Simple, c'est la sélection du moteur
+  // (les radios, avec leur état réel) : c'est elle qui répond à « quelle
+  // voix est installée, laquelle est disponible ».
 
   // Bannière d'onboarding 1-clic : visible tant qu'aucun modèle n'est installé
   const onboarding = document.getElementById("onboarding-card");
@@ -728,20 +761,23 @@ function wireEvents(): void {
 
   // Onboarding 1-clic : téléchargement immédiat du modèle Whisper base
   $id("btn-onboarding-download").addEventListener("click", async () => {
-    try {
-      await invoke("models_download", { id: "ggml-base-q5_1.bin" });
-      const bar = $id("model-progress");
-      (document.getElementById("model-progress-fill") as HTMLElement).style.width = "0%";
-      bar.hidden = false;
-      ($id("model-status") as HTMLElement).textContent = t("models.downloading");
-      showNotice(t("notice.modelStarted"));
-    } catch (err) {
-      showNotice(String(err));
-    }
+    void startDownload("ggml-base-q5_1.bin");
+  });
+
+  // Annulation d'un téléchargement en cours : l'arrêt est demandé au
+  // noyau, il se produit au prochain segment réseau (≤ 256 KiB). Le
+  // `models://done` (ok=false, reason "annulé") referme la bande.
+  $id("btn-model-cancel").addEventListener("click", () => {
+    void invoke("models_download_cancel");
   });
 }
 
 async function main(): Promise<void> {
+  // Thème AVANT tout : ce premier appel (synchronisé, sans await) peint la
+  // fenêtre dans la préférence locale ; le script de tête de index.html
+  // couvre la toute première peinture, celui-ci garantit la cohérence
+  // même si la CSP du build a bloqué le script inline.
+  applyTheme();
   config = await invoke<ConfigJson>("config_get");
   // Langue d'affichage (v5) avant tout peinture de texte dynamique.
   applyUiLanguage(config.general.uiLanguage);
@@ -790,25 +826,49 @@ async function main(): Promise<void> {
   void listen<{ id: string; downloaded: number; total: number }>(
     "models://progress",
     (ev) => {
-      const fill = document.getElementById("model-progress-fill");
+      const bar = $id("model-progress");
+      const fill = document.getElementById("model-progress-fill") as HTMLElement;
       if (fill === null) return;
-      const pct =
-        ev.payload.total > 0 ? (ev.payload.downloaded / ev.payload.total) * 100 : 0;
-      fill.style.width = `${pct.toFixed(1)}%`;
-      ($id("model-status") as HTMLElement).textContent = t("models.mbDownloaded", {
-        n: Math.round(ev.payload.downloaded / (1024 * 1024)),
-      });
+      if (ev.payload.total > 0) {
+        bar.classList.remove("indeterminate");
+        fill.style.width = `${((ev.payload.downloaded / ev.payload.total) * 100).toFixed(1)}%`;
+      } else {
+        // Taille inconnue (serveur sans content-length) : bande animée
+        // indéterminée au lieu d'un « 0 % » figé.
+        bar.classList.add("indeterminate");
+        fill.style.width = "40%";
+      }
+      const label = knownModels.find((m) => m.id === ev.payload.id)?.label ?? ev.payload.id;
+      ($id("model-status") as HTMLElement).textContent =
+        ev.payload.total > 0
+          ? t("models.progress", {
+              name: label,
+              n: Math.round(ev.payload.downloaded / (1024 * 1024)),
+              n2: Math.round(ev.payload.total / (1024 * 1024)),
+              p: Math.round((ev.payload.downloaded / ev.payload.total) * 100),
+            })
+          : t("models.progressUnknown", {
+              name: label,
+              n: Math.round(ev.payload.downloaded / (1024 * 1024)),
+            });
     },
   );
   void listen<{ id: string; ok?: boolean; reason?: string }>("models://done", (ev) => {
+    downloadingId = null;
+    ($id("btn-model-cancel") as HTMLElement).hidden = true;
     ($id("model-progress") as HTMLElement).hidden = true;
     ($id("model-status") as HTMLElement).textContent = "";
     if (ev.payload.ok === false) {
-      const reason =
-        "reason" in ev.payload && ev.payload.reason !== "" && ev.payload.reason !== undefined
-          ? ev.payload.reason
-          : t("notice.networkError");
-      showNotice(t("notice.modelInterrupted", { reason }));
+      const reason = ev.payload.reason ?? "";
+      if (reason === "annulé") {
+        // Annulation demandée par l'utilisateur : un acquittement neutre,
+        // pas une erreur — la reprise `Range` est possible à tout moment.
+        showNotice(t("models.cancelled"));
+      } else {
+        const clean =
+          reason !== "" ? reason : t("notice.networkError");
+        showNotice(t("notice.modelInterrupted", { reason: clean }));
+      }
     } else {
       showNotice(t("notice.modelOk"));
     }

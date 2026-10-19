@@ -308,12 +308,21 @@ fn clean_punctuation_edges(text: &str) -> String {
 
 /// Insécable (\u{00A0}) avant les ponctuations doubles et unités monétaires/
 /// pourcentage : une espace ordinaire est remplacée, une absence d'espace
-/// est comblée sauf continuation de type URL (…://).
+/// est comblée sauf continuation de type URL (…://) et sauf « deux-points
+/// compacts » suivis d'un alphanumérique (horaires 12:00, ratios 3:2).
 fn apply_french_spacing(text: &str) -> String {
     let nbsp = '\u{00A0}';
     let mut out = String::with_capacity(text.len() + 4);
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
+        // Cas compact 12:00 / 3:2 / heure:minute : des deux-points immé-
+        // diatement suivis d'un caractère alphanumérique ne constituent PAS
+        // une ponctuation double française (horaire, ratio, code). Transcri-
+        // re tel quel — RF-27 : le contenu dicté reste fidèle.
+        if c == ':' && matches!(chars.peek(), Some(n) if n.is_alphanumeric()) {
+            out.push(c);
+            continue;
+        }
         if matches!(c, ':' | ';' | '!' | '?' | '%' | '€') {
             let trailing = out.ends_with(' ');
             // Continuation URL (…://) : ne rien insérer.

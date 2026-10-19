@@ -55,18 +55,35 @@ impl WhisperCppEngine {
     }
 
     /// Filtre les hallucinations de silence (RF-18) — retourne `None` si le
-    /// texte ne doit pas être inséré.
+    /// texte ne doit pas être inséré. Ancrage en DÉBUT de texte uniquement :
+    /// un motif isolé au milieu d'une dictée légitime (« bye-bye » en fin de
+    /// message) ne doit jamais effacer le tout. Un motif de tête est une
+    /// hallucination seulement si le résidu ne contient plus rien de verbal.
     pub fn filter_hallucination(text: &str) -> Option<String> {
-        let lower = text.trim().to_lowercase();
+        let trimmed = text.trim();
+        let mut lower = trimmed.to_lowercase();
         if lower.is_empty() {
             return None;
         }
-        for pattern in HALLUCINATION_PATTERNS {
-            if lower.contains(pattern) {
-                return None;
-            }
+        loop {
+            let matched = HALLUCINATION_PATTERNS
+                .iter()
+                .find(|pattern| lower.starts_with(**pattern));
+            let Some(pattern) = matched else {
+                break;
+            };
+            // Résidu après le motif : la ponctuation/espaces qui suit n'est
+            // pas de la parole (« sous-titres, » → vide).
+            lower = lower[pattern.len()..]
+                .trim()
+                .trim_start_matches(|c: char| !c.is_alphanumeric())
+                .trim()
+                .to_string();
         }
-        Some(text.trim().to_string())
+        if lower.chars().all(|c| !c.is_alphanumeric()) {
+            return None;
+        }
+        Some(trimmed.to_string())
     }
 }
 

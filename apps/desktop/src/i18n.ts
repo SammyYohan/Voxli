@@ -190,6 +190,24 @@ const STRINGS: Record<string, [string, string]> = {
   "models.remove": ["retirer", "remove"],
   "models.download": ["télécharger", "download"],
   "models.downloading": ["téléchargement…", "downloading…"],
+  "models.downloadingName": ["Téléchargement de {name}…", "Downloading {name}…"],
+  "models.progress": [
+    "{name} — {n} Mo / {n2} Mo ({p} %)",
+    "{name} — {n} MB / {n2} MB ({p}%)",
+  ],
+  "models.progressUnknown": [
+    "{name} — {n} Mo (taille inconnue)",
+    "{name} — {n} MB (size unknown)",
+  ],
+  "models.cancel": ["Annuler", "Cancel"],
+  "models.cancelled": [
+    "Téléchargement annulé — reprise possible à tout moment.",
+    "Download cancelled — resumable at any time.",
+  ],
+  "models.busy": [
+    "Un téléchargement est déjà en cours.",
+    "A download is already running.",
+  ],
   "models.mbDownloaded": ["{n} Mo téléchargés", "{n} MB downloaded"],
   "models.sizeMb": ["— {n} Mo env.", "— about {n} MB"],
   "models.verifiedBadge": [

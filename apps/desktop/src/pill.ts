@@ -85,13 +85,16 @@ void (async function init() {
   });
 
   // Hypothèse transitoire du streaming (amendement ADR-02) : la ligne
-  // s'écrit en direct. Uniquement de l'affichage.
+  // s'écrit en direct. Uniquement de l'affichage. Un volant vide (partiel
+  // filtré, silence « anti-hallucination ») ne pose PAS has-partial :
+  // sinon le libellé disparaît derrière un curseur orphelin.
   void listen<{ text: string; atMs: number }>("dictation://partial", (ev) => {
     const el = document.getElementById("partial");
     if (el === null) return;
-    el.textContent = ev.payload.text;
-    el.classList.add("live");
-    document.body.classList.add("has-partial");
+    const text = ev.payload.text;
+    el.textContent = text;
+    el.classList.toggle("live", text !== "");
+    document.body.classList.toggle("has-partial", text !== "");
   });
 
   // Survol (détection noyau, fenêtre traversée au clic) : la légende

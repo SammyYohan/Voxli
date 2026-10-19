@@ -308,6 +308,32 @@ table.list .wrap {
   transition: width 0.15s ease-out;
 }
 
+/* Téléchargement sans content-length : le serveur n'annonce pas la taille,
+   le pourcentage est indéterminé. Le remplissage glisse en boucle (aucun
+   « 0 % » figé) jusqu'à la fin du flux. */
+.meter.indeterminate .meter-fill {
+  animation: bande-indeterminee 1.2s ease-in-out infinite;
+}
+@keyframes bande-indeterminee {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+/* Ligne de progression du téléchargement : statut + bouton Annuler. */
+.model-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.model-progress-row #btn-model-cancel {
+  margin-right: 0;
+}
+
 button {
   margin-right: 6px;
 }
@@ -335,6 +361,18 @@ html[data-theme="dark"] .notice {
   background: #221a0a;
   border-color: #4d3d18;
   color: #dcbe87;
+}
+
+/* Contraste des boutons en sombre (WCAG AA) : le texte blanc sur l'accent
+   vif (#a2aaff) plafonne à ~2:1. En sombre, les boutons pleins portent un
+   encre sombre sur l'accent — ratio ≈ 8:1, l'identité violette reste.
+   `button.secondary` restore son ink grisé (fond transparent inchangé). */
+html[data-theme="dark"] button,
+html[data-theme="dark"] .btn-primary {
+  color: #0b0a14;
+}
+html[data-theme="dark"] button.secondary {
+  color: var(--muted);
 }
 
 html[data-theme="light"] {
