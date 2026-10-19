@@ -42,14 +42,49 @@ h1 {
   color: var(--accent);
 }
 
+/* Héros centré (fenêtre Réglages) : l'identité (logo + nom + baseline) est
+   le moment de présentation — le reste du formulaire reste aligné à
+   gauche pour la lisibilité des rangées. */
+.hero-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tagline {
+  max-width: 56ch;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Les notices système vivent dans le header : elles gardent leur
+   alignement de texte à gauche (bloc, pas légende). */
+header .notice {
+  text-align: left;
+}
+
 h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
   margin: 28px 0 8px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 6px;
+  text-align: center;
+  border-bottom: none;
+  padding-bottom: 8px;
+}
+
+/* Filet de chapitre : court, centré, hint violet — remplace la règle
+   pleine largeur (alignement centré demandé) ; suit les deux thèmes. */
+h2::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 1px;
+  margin: 8px auto 0;
+  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
 }
 
 section,
@@ -62,6 +97,7 @@ footer {
   margin-top: 32px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+  text-align: center;
 }
 
 .muted {
@@ -86,6 +122,7 @@ button {
 .status {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
   margin: 0;
 }
@@ -207,6 +244,7 @@ body.rescue .actions {
   gap: 8px;
   margin-top: 14px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* ----------------------------------------------------- v2 : réglages ---- */
@@ -421,7 +459,9 @@ body.mode-avance .simple-only {
   margin-right: 8px;
 }
 
-/* ================================================== Onboarding 1-clic */
+/* ================================================== Onboarding 1-clic
+   Carte de bienvenue : le moment héroïque de la page — contenu et
+   bouton d'action centrés (alignement centré demandé). */
 .notice.onboarding {
   background: linear-gradient(135deg, rgba(62, 69, 138, 0.09), rgba(29, 122, 79, 0.08));
   border: 1px solid var(--accent-soft);
@@ -429,11 +469,13 @@ body.mode-avance .simple-only {
   margin-bottom: 20px;
   padding: 16px 18px;
   border-radius: var(--radius);
+  text-align: center;
 }
 
 .onboarding-header {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 3px;
 }
 
@@ -445,6 +487,11 @@ body.mode-avance .simple-only {
 .onboarding-desc {
   margin: 8px 0 14px;
   color: var(--muted);
+}
+
+.onboarding-actions {
+  display: flex;
+  justify-content: center;
 }
 
 .btn-primary {

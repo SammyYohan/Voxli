@@ -31,7 +31,6 @@ body.pill {
   height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
   overflow: hidden;
 }
 .stage::before {
@@ -57,6 +56,23 @@ body[data-state="recovery"] .stage::before {
   z-index: 1;
 }
 
+/* Groupe principal : point + libellé + texte en direct. Centré tant que
+ * rien à lire (prise sans partiel : le couple flotte au milieu de la
+ * pilule, pas collé à gauche) ; dès qu'un texte partiel arrive, il frise
+ * depuis la gauche et le vumètre reste épinglé à droite (comportement
+ * documenté du vumètre ci-dessous). */
+.main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+body.has-partial .main {
+  justify-content: flex-start;
+}
+
 /* Le point — halo sombre pour rester lisible sur un fond clair. */
 .dot {
   flex: none;
@@ -67,11 +83,8 @@ body[data-state="recovery"] .stage::before {
   box-shadow: 0 0 0 3px rgba(13, 17, 21, 0.6);
 }
 
-/* Repos (idle) : seul le point, centré, respiration discrète — l'app est
- * prête, le raccourci armé. */
-body[data-state="idle"] .stage {
-  justify-content: center;
-}
+/* Repos (idle) : seul le point, centré dans la pilule, respiration
+ * discrète — l'app est prête, le raccourci armé. */
 body[data-state="idle"] .dot {
   width: 9px;
   height: 9px;
@@ -180,14 +193,14 @@ body[data-state="recording"].has-partial .label {
   }
 }
 
-/* Jauge de voix : épinglée à la FIN de la zone (le texte frise à
-   gauche, la jauge ne bouge jamais). Le remplissage et la vidange sont
-   animés côté TS (balistiques VU via requestAnimationFrame) — aucune
-   transition CSS ici, qui donnerait un aspect figé. L'intensité (opacité,
-   halo) suit le niveau par la variable `--lvl` posée par le TS. */
+/* Jauge de voix : épinglée à la FIN de la pilule (le texte frise à
+ * gauche, la jauge ne bouge jamais). Le remplissage et la vidange sont
+ * animés côté TS (balistiques VU via requestAnimationFrame) — aucune
+ * transition CSS ici, qui donnerait un aspect figé. L'intensité (opacité,
+ * halo) suit le niveau par la variable `--lvl` posée par le TS. */
 .meter {
   flex: none;
-  margin-left: auto;
+  margin-left: 10px;
   width: 64px;
   height: 6px;
   background: #1f2937;
