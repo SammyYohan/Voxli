@@ -125,11 +125,29 @@ détail des correctifs d'hygiène faits au passage.
   constante `ERR_HOTKEY_P0` renommée `ERR_HOTKEY_TAKEN`.
 - Infobulle de la barre système dynamique depuis la configuration
   (`tray_tooltip`), mise à jour au re-enregistrement à chaud (RF-01).
+- **Icône de l'application corrigée dans l'exécutable** (le « coin
+  zoomé » rapporté sur l'icône fenêtre/barre des tâches) : l'exe ne
+  contenait qu'**une seule image** (un PNG 256 px) tombée du mono-icône
+  `assets/logo.ico` copié par le script d'icônes, et la regénération du
+  19/10 n'est jamais redevenue active dans l'exe (out-dirs de build
+  `voxli-desktop-*` non invalidés — les icônes ne déclenchent pas de
+  re-run de `build.rs`). Purge des out-dirs + rebuild : **6 images
+  embarquées** (16-256 BMP), rendu vérifié via le décodeur du shell
+  (SHDefExtractIcon) à 16/32/48 px — logo complet et lisible.
 
 ### Scripts
 
 - `scripts/fetch-model.ps1` : modèle par défaut `ggml-base-q5_1.bin`
   (aligné sur le catalogue et l'onboarding, P1-7).
+- `scripts/make-icons.ps1` réécrit : il ne copie plus le mono-icône
+  `assets/logo.ico` (un seul PNG 256 px) sur `icons/icon.ico` — cause
+  directe de l'icône exe incomplète. Il génère désormais un ICO
+  multi-tailles **16/24/32/48/64/256 encodé BMP 32bpp + masque AND**
+  (format canonique décodé à l'identique par rc.exe/le shell), écrit
+  de façon identique dans `assets/logo.ico` et
+  `apps/desktop/src-tauri/icons/icon.ico`, plus les PNG 32/128/256 ;
+  en-tête : repasser par ce script à chaque changement de logo
+  (ne pas regénérer `icon.ico` via `pnpm tauri icon`).
 
 ### Documentation
 
