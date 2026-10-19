@@ -55,6 +55,14 @@ interface StateInfo {
   engine: string;
 }
 
+/** État d'un moteur retourné par `engines_list` : compilé dans ce build
+ * et réellement utilisable (modèle présent sur le disque). */
+interface EngineInfo {
+  id: string;
+  compiled: boolean;
+  usable: boolean;
+}
+
 interface DeviceInfo {
   id: string;
   name: string;
@@ -326,6 +334,7 @@ async function refreshModels(): Promise<void> {
         try {
           await invoke("models_remove", { id: m.id });
           void refreshModels();
+          void refreshEngines();
         } catch (err) {
           showNotice(String(err));
         }
@@ -361,6 +370,72 @@ async function refreshModels(): Promise<void> {
   const onboarding = document.getElementById("onboarding-card");
   if (onboarding) {
     onboarding.hidden = models.some((m) => m.installed);
+  }
+}
+
+/** Vue des moteurs de dictée : la sélection EST la config
+ * `general.engine` ; l'écriture passe par `config_set` et le worker
+ * reconstruit son bundle en live (jamais de redémarrage). Chaque moteur
+ * est affiché avec son état réel du build et de la machine. */
+async function refreshEngines(): Promise<void> {
+  const engines: EngineInfo[] = await invoke("engines_list");
+  const list = document.getElementById("engines-list");
+  if (list === null) return;
+  list.replaceChildren();
+  for (const e of engines) {
+    const row = document.createElement("label");
+    row.className = "engine-choice";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "engine-choice";
+    radio.value = e.id;
+    radio.checked = config !== null && config.general.engine === e.id;
+    radio.disabled = !e.usable;
+    row.appendChild(radio);
+    const span = document.createElement("span");
+    span.textContent = t(`engines.${e.id}`);
+    row.appendChild(span);
+    if (!e.usable) {
+      row.classList.add("engine-unavailable");
+      const hint = document.createElement("span");
+      hint.className = "muted engine-hint";
+      hint.textContent = e.compiled ? t("engines.hintModel") : t("engines.hintSdk");
+      row.appendChild(hint);
+    }
+    radio.addEventListener("change", () => {
+      if (radio.checked) void setEngine(e.id);
+    });
+    list.appendChild(row);
+  }
+  void effectiveEngineLine();
+}
+
+/** Sélection d'un moteur : config écrite immédiatement (RF-01 : le reste
+ * de la config transmise est l'objet validé actuel, miroir de l'affichage). */
+async function setEngine(id: string): Promise<void> {
+  if (config === null || config.general.engine === id) return;
+  try {
+    config.general.engine = id;
+    await invoke("config_set", { newConfig: config });
+    void refreshEngines();
+  } catch (err) {
+    showNotice(String(err));
+  }
+}
+
+/** Moteur effectivement monté (source : `state_get`, donc le worker) —
+ * le réel, pas le choix ; ligne distincte quand il diffère de la sélection. */
+async function effectiveEngineLine(): Promise<void> {
+  const line = document.getElementById("engine-effective");
+  if (line === null) return;
+  try {
+    const s = await invoke<StateInfo>("state_get");
+    const raw = t(`engine.${s.engine}`);
+    const name = raw === `engine.${s.engine}` ? s.engine : raw;
+    line.hidden = false;
+    line.textContent = t("engines.effective", { engine: name });
+  } catch {
+    // Lecture impossible : la ligne reste masquée (jamais de fausse info).
   }
 }
 
@@ -684,6 +759,7 @@ async function main(): Promise<void> {
 
   void refreshDevices();
   void refreshModels();
+  void refreshEngines();
   void refreshHistory();
 
   // Événements (docs/05 §3 + additions documentées).
@@ -703,6 +779,7 @@ async function main(): Promise<void> {
     } catch {
       // badge inchangé si la lecture échoue (jamais de fausse info)
     }
+    void effectiveEngineLine();
   });
   void listen<Notice>("notice://notice", (ev) => {
     showNotice(ev.payload.message);
@@ -736,6 +813,7 @@ async function main(): Promise<void> {
       showNotice(t("notice.modelOk"));
     }
     void refreshModels();
+    void refreshEngines();
   });
 }
 

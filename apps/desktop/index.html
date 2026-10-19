@@ -9,7 +9,7 @@
       /** Thème appliqué avant la première peinture (préférence locale,
        * jamais une configuration produit). */
       (function () {
-        var pref = localStorage.getItem("voxli.ui.theme") || localStorage.getItem("plume.ui.theme") || "system";
+        var pref = localStorage.getItem("voxli.ui.theme") || "system";
         var dark =
           pref === "dark"
             ? true
@@ -305,6 +305,11 @@
         <b>seule</b> connexion réseau de Voxli depuis cet écran. Chaque fichier
         est vérifié après réception ; la preuve reste dans un journal local.
       </p>
+      <div id="engines-box">
+        <p class="muted" data-i18n="engines.choose">Moteur de dictée — le changement s'applique immédiatement :</p>
+        <div id="engines-list"></div>
+        <p id="engine-effective" class="muted" hidden></p>
+      </div>
       <table id="models" class="list">
         <thead>
           <tr>

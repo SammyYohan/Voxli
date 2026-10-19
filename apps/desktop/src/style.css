@@ -6,11 +6,13 @@
   --ink: #23212a;
   --muted: #6d6a75;
   --line: #e0ddd6;
-  --Voxli: #3e458a;
-  --Voxli-soft: #b9bef2;
+  --accent: #3e458a;
+  --accent-soft: #b9bef2;
   --ok: #1d7a4f;
   --bad: #a13c3c;
   --radius: 10px;
+  --surface: #ffffff;
+  --chip: #eceae5;
 }
 
 * {
@@ -37,7 +39,7 @@ body {
 h1 {
   font-size: 22px;
   margin: 0 0 4px;
-  color: var(--Voxli);
+  color: var(--accent);
 }
 
 h2 {
@@ -67,7 +69,7 @@ footer {
 }
 
 code {
-  background: #eceae5;
+  background: var(--chip);
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 12px;
@@ -89,8 +91,8 @@ button {
 }
 
 .badge {
-  background: var(--Voxli-soft);
-  color: var(--Voxli);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 999px;
@@ -152,7 +154,8 @@ form input {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--surface);
+  color: var(--ink);
 }
 
 form button {
@@ -161,7 +164,7 @@ form button {
 }
 
 button {
-  background: var(--Voxli);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: var(--radius);
@@ -191,7 +194,8 @@ body.rescue textarea {
   height: 42vh;
   min-height: 140px;
   resize: vertical;
-  background: #fff;
+  background: var(--surface);
+  color: var(--ink);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 10px;
@@ -227,7 +231,8 @@ body.rescue .actions {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--surface);
+  color: var(--ink);
   width: 100%;
 }
 
@@ -286,7 +291,7 @@ table.list .wrap {
 /* Vumètre (RF-09) : local, passif, jamais enregistré. */
 .meter {
   height: 8px;
-  background: #eceae5;
+  background: var(--chip);
   border-radius: 4px;
   margin-top: 8px;
   overflow: hidden;
@@ -299,7 +304,7 @@ table.list .wrap {
 .meter-fill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, var(--ok), var(--Voxli));
+  background: linear-gradient(90deg, var(--ok), var(--accent));
   transition: width 0.15s ease-out;
 }
 
@@ -308,17 +313,28 @@ button {
 }
 
 /* Thème sombre : mêmes variables, valeurs inversées ; appliqué par
-   data-theme (script en tête de page — jamais de flash). */
+   data-theme (script en tête de page — jamais de flash). 19/10 demander
+   commanditaire : vite sombre #000000 ; les zones de texte reposent sur
+   une surface dédiée (--surface) et reste lisibles. */
 html[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #1d1b24;
+  --paper: #000000;
+  --surface: #15131a;
+  --chip: #1b1922;
   --ink: #ece9f2;
   --muted: #a19baf;
   --line: #353140;
-  --Voxli: #a2aaff;
-  --Voxli-soft: #4a4f8f;
+  --accent: #a2aaff;
+  --accent-soft: #4a4f8f;
   --ok: #52d9a0;
   --bad: #ff9d9d;
+}
+
+/* Les notices ambrées doivent aussi être lisibles en sombre. */
+html[data-theme="dark"] .notice {
+  background: #221a0a;
+  border-color: #4d3d18;
+  color: #dcbe87;
 }
 
 html[data-theme="light"] {
@@ -343,7 +359,7 @@ body.mode-avance .simple-only {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -363,14 +379,14 @@ body.mode-avance .simple-only {
 }
 
 #mode-bar input {
-  accent-color: var(--Voxli);
+  accent-color: var(--accent);
   margin-right: 8px;
 }
 
 /* ================================================== Onboarding 1-clic */
 .notice.onboarding {
   background: linear-gradient(135deg, rgba(62, 69, 138, 0.09), rgba(29, 122, 79, 0.08));
-  border: 1px solid var(--Voxli-soft);
+  border: 1px solid var(--accent-soft);
   color: var(--ink);
   margin-bottom: 20px;
   padding: 16px 18px;
@@ -385,7 +401,7 @@ body.mode-avance .simple-only {
 
 .onboarding-header strong {
   font-size: 15px;
-  color: var(--Voxli);
+  color: var(--accent);
 }
 
 .onboarding-desc {
@@ -394,7 +410,7 @@ body.mode-avance .simple-only {
 }
 
 .btn-primary {
-  background: var(--Voxli);
+  background: var(--accent);
   color: #fff;
   font-weight: 600;
   padding: 9px 18px;
@@ -421,7 +437,7 @@ body.mode-avance .simple-only {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
 }
 
@@ -437,7 +453,7 @@ body.mode-avance .simple-only {
   padding: 7px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
   flex: 1;
   min-width: 170px;
@@ -465,7 +481,7 @@ body.mode-avance .simple-only {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--paper);
+  background: var(--surface);
   border: 1px solid var(--line);
   padding: 5px 12px;
   border-radius: 999px;
@@ -504,5 +520,29 @@ body.mode-avance .simple-only {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* Sélection de moteur (écran Voix) */
+#engines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+#engines-list label.engine-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+}
+
+#engines-list label.engine-unavailable {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+#engines-list .engine-hint {
+  font-size: 0.9em;
 }
 

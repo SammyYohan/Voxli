@@ -100,7 +100,10 @@ pub fn verify(
 ) -> Result<Entitlement, LicenseError> {
     let mut lines = blob.trim().lines();
     let header = lines.next().ok_or(LicenseError::BadFormat)?.trim();
-    if header != BLOB_FORMAT && header != "plume-license-v1" {
+    // Depuis le 19/10, un seul en-tête accepté (`voxli-license-v1`) :
+    // l'ancien format de nom de code n'a jamais été publié, le compat
+    // `plume-license-v1` est retiré (aucun blob existant à relire).
+    if header != BLOB_FORMAT {
         return Err(LicenseError::BadFormat);
     }
     let payload_b64 = lines.next().ok_or(LicenseError::BadFormat)?.trim();

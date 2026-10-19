@@ -197,6 +197,28 @@ const STRINGS: Record<string, [string, string]> = {
     "matches the published trusted reference (docs/11 §3)",
   ],
 
+  // Moteurs (sélection, écran Voix) --------------------------------------------
+  "engines.choose": [
+    "Moteur de dictée — le changement s'applique immédiatement :",
+    "Dictation engine — the change applies immediately:",
+  ],
+  "engines.auto": ["Automatique (recommandé)", "Automatic (recommended)"],
+  "engines.whisper": ["whisper.cpp — local", "whisper.cpp — local"],
+  "engines.nemo": [
+    "Nemotron 3.5 streaming — texte en direct",
+    "Nemotron 3.5 streaming — real-time",
+  ],
+  "engines.parakeet": ["Parakeet TDT — local", "Parakeet TDT — local"],
+  "engines.hintModel": [
+    "indisponible — installez son modèle ci-dessous",
+    "unavailable — install its model below",
+  ],
+  "engines.hintSdk": [
+    "indisponible — SDK non inclus dans ce build",
+    "unavailable — SDK not included in this build",
+  ],
+  "engines.effective": ["Moteur effectif : {engine}", "Active engine: {engine}"],
+
   // Profils --------------------------------------------------------------------
   "profiles.section": ["Profils & dictionnaires", "Profiles & dictionaries"],
   "profiles.lockNotice": [

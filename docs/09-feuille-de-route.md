@@ -75,6 +75,56 @@ restent sherpa-onnx — parakeet, le `.part` est resté interrompu —
 et le SDK NeMo), `cargo tauri build` + installation sur
 machine proprette, et la procédure digests §3 (humaine).
 
+## M1.5 — Commanditaire UX : partiels cross-engine + sélection moteur [FAIT, 19/10/2026]
+
+Demande du commanditaire (19/10/2026) : du texte en direct pendant la prise
+avec n'importe quel moteur, et une sélection de moteur complète à l'écran
+(moteur actif visible, activation/désactivation). Implémentation :
+
+- `voxli-asr/whisper_partial.rs` (feature `whisper`) — partiels par
+  re-décodage fenêtré (≤ 8 s) du tampon pendant la prise, émis par la voie
+  streaming existante : jamais insérés ni journalisés (RF-34 + exception 3
+  de docs/05 §3.1). Auto-désactivation de la session si un re-décodage
+  dépasse 2,5 s (machine lente : la finalisation batch reste l'autorité
+  du texte inséré). Défauts bornés : ≥ 1,2 s d'audio neuf par tick,
+  ≥ 1,5 s entre deux re-décodages.
+- Worker (bundle whisper) : `streaming: Some(...)`monté automatiquement —
+  l'affichage direct s'active dès qu'un moteur batch est chargé, sans
+  réglage utilisateur ; dégradation en douceur sur machine lente.
+- Écran Voix : commande `enginesList` (état par moteur : compilé = feature
+  du build ; utilisable = modèle présent sur le disque) + sélection radio
+  de `general.engine` via `configSet` — **appliquée en live** par le
+  pipeline (rebuild du bundle, RF-20 ; jamais de redémarrage) ; ligne
+  « moteur effectif » alimentée par `stateGet`. i18n fr/EN.
+- Nouveaux tests : 2 unitaires `whisper_partial` (throttle, fenêtre bornée,
+  auto-off) — suite `voxli-asr` : 5 tests vert.
+
+- Purge du nom de code `Plume` (demande commanditaire, 19/10) : répertoire
+  de données sans exception `%APPDATA%\Voxli` (l'héritage conditionnel du
+  18/10 est retiré) ; données locales déplacées une bonne fois pour toutes
+  `%APPDATA%\Plume` → `%APPDATA%\Voxli` (config, 856 Mo de modèles,
+  historique, journaux) ; en-têtes de clé/blob de licence retagués
+  `voxli-*` (aucun blob émis sous l'ancien format — le compat est
+  retiré) ; clé localStorage de thème héritée retirée ; README nettoyé ;
+  variables CSS issues du renommage mécanique (`--Voxli`) rebaptisées
+  `--accent`/`--accent-soft`.
+- Thème sombre : noir profond `#000000` (était `#1d1b24`, demande
+  commanditaire) et nouvelles variables `--surface` / `--chip` — les
+  zones de texte (réglages, dictionnaires, vocabulaire, fenêtre de
+  secours) étaient en `background:#fff` codé en dur : texte clair sur
+  fond blanc en sombre ; désormais surface dédiée, bordure et couleur
+  de texte explicites.
+
+Bench exécutée après les changements (19/10/2026) : fmt-check EXIT=0 ;
+clippy `--workspace --all-targets -- -D warnings` EXIT=0 ;
+`cargo test --workspace` EXIT=0 ; `cargo check -p voxli-desktop`
+`custom-protocol,real-asr` EXIT=0 ; `tsc --noEmit` + `vite build` EXIT=0 ;
+`cargo build --release -p voxli-desktop --features
+custom-protocol,real-asr` EXIT=0 (7 min 25 s). Lancement du binaire
+release vérifié : journal et `engine_loaded` whisper.cpp dans
+`%APPDATA%\Voxli\logs\voxli.log`, `%APPDATA%\Plume` non recréé par la
+nouvelle version (preuve du retrait de l'héritage).
+
 ## M2 — Validation mainteneur [WAITING / à planifier]
 
 1. ~~Compiler & exécuter le banc de tests §1 de docs/11~~ **fait à l'essentiel

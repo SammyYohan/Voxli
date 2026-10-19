@@ -432,18 +432,14 @@ impl Config {
         Ok(())
     }
 
-    /// Répertoire par défaut `%APPDATA%\Voxli` (cfg Windows) ; sinon `./voxli-data`.
+    /// Répertoire par défaut : `%APPDATA%\Voxli` (cfg Windows) ; sinon
+    /// `./voxli-data`. L'héritage du nom de code `Plume` (repli conditionnel
+    /// du 18/10) est retiré le 19/10 : les données locales ont été déplacées
+    /// une fois pour toutes vers `%APPDATA%\Voxli` — plus aucun chemin
+    /// `Plume` dans le code ni dans les chaînes applicatives.
     pub fn default_dir() -> PathBuf {
         match std::env::var("APPDATA") {
-            Ok(base) if !base.is_empty() => {
-                let voxli = PathBuf::from(&base).join("Voxli");
-                let plume = PathBuf::from(&base).join("Plume");
-                if !voxli.exists() && plume.exists() {
-                    plume
-                } else {
-                    voxli
-                }
-            }
+            Ok(base) if !base.is_empty() => PathBuf::from(&base).join("Voxli"),
             _ => PathBuf::from("./voxli-data"),
         }
     }

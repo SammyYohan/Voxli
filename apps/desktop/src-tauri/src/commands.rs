@@ -460,6 +460,81 @@ fn dir_size_bytes(dir: &std::path::Path) -> u64 {
     total
 }
 
+/// État déclaré d'un moteur pour l'écran « Voix » : compilé dans CE build
+/// (feature) et réellement utilisable sur CETTE machine (modèle présent
+/// sur le disque). Aucune promesse sans vérification.
+#[derive(Serialize)]
+pub struct EngineInfo {
+    /// Identifiant config — valeurs de `general.engine` (serde lowercase).
+    pub id: String,
+    /// La feature moteur est compilée dans ce build.
+    pub compiled: bool,
+    /// Compilé ET prêt à dicter ici (modèle installé) — sinon grisé à l'UI.
+    pub usable: bool,
+}
+
+/// Liste des moteurs candidats. La sélection s'écrit via `config_set`
+/// (`general.engine`) et le worker reconstruit son bundle en live
+/// (« engine_stale », RF-20) — jamais de redémarrage requis.
+#[tauri::command]
+pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
+    let cfg = lock_or_recover(&shared.config).clone();
+    let models_dir = Config::default_dir().join("models");
+
+    // whisper.cpp — modèle du réglage utilisateur, ou le défaut catalogue
+    // quand `model` vaut « auto » (même résolution que le worker).
+    let whisper_compiled = cfg!(feature = "real-asr");
+    let whisper_model = if cfg.general.model.is_empty() || cfg.general.model == "auto" {
+        "ggml-base-q5_1.bin"
+    } else {
+        cfg.general.model.as_str()
+    };
+    let whisper_usable = whisper_compiled && models_dir.join(whisper_model).is_file();
+
+    // Nemotron streaming — le SDK est compilé (feature `nemo-stream`) et
+    // le GGUF doit être sur le disque.
+    let nemo_compiled = cfg!(feature = "nemo-stream");
+    let nemo_usable = nemo_compiled
+        && models_dir
+            .join("nemotron-3.5-asr-streaming-0.6b.q8_0.gguf")
+            .is_file();
+
+    // Parakeet (sherpa-onnx) — installation = encoder présent, même
+    // critère que `models_list`.
+    let parakeet_compiled = cfg!(feature = "parakeet-asr");
+    let parakeet_usable = parakeet_compiled
+        && MODEL_CATALOG.iter().any(|e| {
+            e.kind == "parakeet"
+                && (models_dir.join(e.id).join("encoder.int8.onnx").is_file()
+                    || models_dir.join(e.id).join("encoder.onnx").is_file())
+        });
+
+    // « auto » résout toujours vers quelque chose (factice en bout de
+    // chaîne, jamais muet) : utilisable par construction.
+    vec![
+        EngineInfo {
+            id: "auto".into(),
+            compiled: true,
+            usable: true,
+        },
+        EngineInfo {
+            id: "whisper".into(),
+            compiled: whisper_compiled,
+            usable: whisper_usable,
+        },
+        EngineInfo {
+            id: "nemo".into(),
+            compiled: nemo_compiled,
+            usable: nemo_usable,
+        },
+        EngineInfo {
+            id: "parakeet".into(),
+            compiled: parakeet_compiled,
+            usable: parakeet_usable,
+        },
+    ]
+}
+
 #[tauri::command]
 pub fn models_remove(id: String) -> Result<(), String> {
     let models_dir = Config::default_dir().join("models");

@@ -464,14 +464,7 @@ mod tests {
             .join("models")
             .join("nemotron-3.5-asr-streaming-0.6b.q8_0.gguf");
         if p_voxli.is_file() {
-            return Some(p_voxli);
-        }
-        let p_plume = std::path::PathBuf::from(appdata)
-            .join("Plume")
-            .join("models")
-            .join("nemotron-3.5-asr-streaming-0.6b.q8_0.gguf");
-        if p_plume.is_file() {
-            Some(p_plume)
+            Some(p_voxli)
         } else {
             None
         }
@@ -481,18 +474,13 @@ mod tests {
     /// scripts/gen-voice.ps1) ou rien si absente — abstention gracieuse.
     fn voix_local() -> Option<(Vec<f32>, u32)> {
         let appdata = std::env::var("APPDATA").ok()?;
-        let p_voxli = std::path::PathBuf::from(&appdata)
+        let path = std::path::PathBuf::from(&appdata)
             .join("Voxli")
             .join("test")
             .join("voix.wav");
-        let path = if p_voxli.is_file() {
-            p_voxli
-        } else {
-            std::path::PathBuf::from(appdata)
-                .join("Plume")
-                .join("test")
-                .join("voix.wav")
-        };
+        if !path.is_file() {
+            return None;
+        }
         let (mut samples, rate, channels) = read_wav(&path)?;
         if channels > 1 {
             let mut mono = Vec::with_capacity(samples.len() / channels as usize);

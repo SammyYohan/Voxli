@@ -37,7 +37,7 @@ transcrite de l'audit, §7).
   |---|---|
   | `voxli-core/tests/flow.rs` | machine d'états complète (25 scénarios, y compris `t_stop_failure_then_recovery_session`) |
   | `voxli-config/tests/config.rs` | schéma v5 (`uiLanguage`) et migrations 1→5 |
-  | `voxli-asr` | WAV 16 kHz (refus hors contrat), multipart, fake |
+  | `voxli-asr` | WAV 16 kHz (refus hors contrat), multipart, fake ; partiels `whisper_partial` (feature `whisper`, 5 tests : throttle, fenêtre bornée ≤ 8 s, auto-off > 2,5 s) |
   | `commands.rs` (module `#[cfg(test)]`) | catalogue, noms sûrs, arborescence d'extraction, digests |
   | `voxli-audio`, `voxli-vad`, `voxli-hotkeys`, `voxli-license`, `voxli-diagnostics`, `voxli-core` | suites unitaires existantes |
   | `voxli-storage --features sqlite` | 8 tests (reprise d'id, DPAPI en échec remonté) |
@@ -54,7 +54,9 @@ transcrite de l'audit, §7).
       `build` = `vite build` (EXIT=0). La formulation antérieure citait un
       script `lint` qui n'existe pas dans le dépôt — le script réel est
       `check` [corrigé ici, la convention §1 s'applique : commande exécutée
-      réellement, sortie conservée].
+      réellement, sortie conservée]. Re-exécutés le 19/10/2026 après
+      l'ajout de l'écran de sélection moteur (`enginesList` dans l'écran
+      Modèles) : `tsc --noEmit` EXIT=0, `vite build` EXIT=0.]
 - [ ] Chemin Windows du paquet : `cargo tauri build` avec la feature
       `custom-protocol` **une fois**, installé puis lancé sur une machine
       proprette (aucune fenêtre vide, hotkey enregistrée, modèle
@@ -138,9 +140,16 @@ sur le fichier modèle regroupé, pas sur le répertoire : convention du champ
       qu'un certificat n'existe pas [À FAIRE : décision de budget
       commanditaire]).
 - [ ] `%APPDATA%\Voxli` : première exécution crée `config.json` au schéma
-      courant (v5 au moment de la rédaction) et JAMAIS autre chose ; le
-      chemin Plume hérité n'est utilisé que si Voxli n'existe pas déjà
-      (code `default_dir`).
+      courant (v5 au moment de la rédaction) et JAMAIS autre chose
+      [19/10/2026 : l'héritage `Plume` de `default_dir` est retiré — le
+      répertoire est toujours et uniquement `%APPDATA%\Voxli` ; les
+      données locales ont été déplacées une fois pour toutes depuis
+      `%APPDATA%\Plume` (config.json, 856 Mo de modèles, historique,
+      journaux) — revalidé au démarrage du 19/10/2026 : la relecture
+      `config.json` aboutit, `engine_loaded` whisper.cpp est consigné dans
+      le journal `%APPDATA%\Voxli\logs\voxli.log`, et `%APPDATA%\Plume`
+      n'est pas recréé ; l'item reste [À FAIRE] sur machine proprette
+      (première exécution sans données migrées)].
 - [ ] Désinstallation : rien de tenace hors `%APPDATA%\Voxli` (aucune clé de
       registre d'état, aucun service).
 

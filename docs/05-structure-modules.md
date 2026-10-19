@@ -165,18 +165,23 @@ jamais l'audio.
 | Noyau → UI | `meter://level` | niveau normalisé (échantillonné 1/2 tick, ~100 ms) | Passif : jamais enregistré, jamais transmis |
 | Noyau → UI | `session://finished` | durée, moteur, niveau d'insertion, succès | Aucun contenu |
 | Noyau → UI | `notice://notice` | `kind` + message FR neutre (`strings.rs`) | `nothing`, `busy`, `inserted`, `refused`, `max-warning`, `locked`, `queued`, `retarget`, `hotkey` — **addition documentée à cette table** ; aucun événement ne contient de texte dicté (T-34) |
-| Noyau → UI | `dictation://partial` | hypothèse transitoire du streaming (`text`, horodatage) | **Addition documentée à cette table** (amendement ADR-02, P2 streaming) : affichage en direct pendant la prise uniquement, jamais journalisé ni conservé (RF-34), effacé à la fin de prise — exception 3 ci-dessous |
+| Noyau → UI | `dictation://partial` | hypothèse transitoire du moteur en cours (`text`, horodatage) — Nemotron streaming (P2) ou re-décodage fenêtré whisper (`whisper_partial`) | **Addition documentée à cette table** (amendement ADR-02, P2 streaming + extension cross-engine 19/10/2026) : affichage en direct pendant la prise uniquement, jamais journalisé ni conservé (RF-34), effacé à la fin de prise — exception 3 ci-dessous |
 | Noyau → UI | `models://progress` / `models://done` | `id`, octets reçus / total | **Seule** voie réseau consentie : téléchargement de modèles (RF-20, RF-36) |
 
 ** Exceptions documentées d'exfiltration de contenu du noyau (les seules) :
 1. **Fenêtre de secours** (RF-31) — texte du tampon interne, jamais par le canal d'événements.
 2. **Historique** (RF-33) — lecture choisie par l'utilisateur, supprimable à tout instant
    (`history.delete` / `history.purge`) ; chiffré au repos (DPAPI).
-3. **Affichage partiel streaming** (P2, amendements ADR-02) — hypothèses transitoires du moteur
-   Nemotron pendant la prise (`dictation://partial`) : pur affichage pastille, **jamais** écrites
-   (journal, disque, historique). Le texte inséré sort **soit** des segments finalisés du flux
-   (voie rapide — Amendement 2, aucun re-décodage offline), **soit** de la voie batch sur le
-   tampon complet (pré-roll inclus) ; jamais d'un partiel transitoire.
+3. **Affichage partiel streaming** (P2, amendements ADR-02 ; extension cross-engine
+   19/10/2026) — hypothèses transitoires du moteur pendant la prise (`dictation://partial`) :
+   pur affichage pastille, **jamais** écrites (journal, disque, historique). Deux sources :
+   le streaming Nemotron (segments finalisés du flux), et, pour tout moteur batch offline,
+   un **re-décodage fenêtré** du tampon (`whisper_partial.rs`) — fenêtre ≤ 8 s, au moins
+   1,2 s d'audio neuf par tick, écoulement borné, auto-désactivation si un re-décodage
+   dépasse 2,5 s (machine lente : retour au comportement batch sans message). Le texte inséré
+   sort **soit** des segments finalisés du flux (voie rapide — Amendement 2, aucun re-décodage
+   offline), **soit** de la voie batch sur le tampon complet (pré-roll inclus) ; jamais d'un
+   partiel transitoire.
 
 ### 3.2 Commandes (UI → noyau), fichier `commands.rs`
 
@@ -189,6 +194,7 @@ jamais l'audio.
 | UI → Noyau | `diagnosticsExport` | chemin de destination optionnel | Rédige le rapport (ni dictée, ni presse-papiers) |
 | UI → Noyau | `devicesList` | — | Liste des micros (RF-08 : identifiant cpal stable) |
 | UI → Noyau | `modelsList` / `modelsDownload` / `modelsDownloadCancel` / `modelsRemove` | `id` | Catalogue + SHA-256 consigné (RF-20) ; un seul téléchargement à la fois |
+| UI → Noyau | `enginesList` | — | État déclaratif de chaque moteur pour l'écran Voix (compilé = feature du build ; utilisable = compilé **et** modèle présent sur le disque). La sélection s'écrit via `configSet` (`general.engine`), appliquée en live par le pipeline (rebuild du bundle, RF-20) |
 | UI → Noyau | `historyQuery` / `historyDelete` / `historyPurge` | `n`, `id` | Lecture bornée ; contenu affiché car l'UI est locale sans ressource distante (§3.1 exception 2) |
 | UI → Noyau | `licenseStatus` / `licenseImport` | blob de licence | Vérification locale Ed25519 hors ligne (ADR-08) ; persisté seulement si valide |
 | UI → Noyau | `dictionariesImport` / `dictionariesExport` | `profile`, CSV | Dictionnaire utilisateur RF-23 (cible|variantes) ; poussé au pipeline |

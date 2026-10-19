@@ -15,6 +15,33 @@ détail des correctifs d'hygiène faits au passage.
 
 ## [Non publié]
 
+### Fonctionnalités commanditées : partiels en direct + sélection moteur (19/10/2026)
+
+- **Texte en direct pendant la prise, quel que soit le moteur** : les
+  moteurs batch offline (whisper.cpp) produisent dorénavant des partiels
+  d'affichage par re-décodage fenêtré du tampon (≤ 8 s), via la voie
+  streaming existante — pur affichage, jamais inséré ni journalisé
+  (RF-34) ; auto-désactivation si la machine est trop lente (la
+  finalisation batch reste l'autorité du texte inséré).
+- **Écran Voix : sélection du moteur** : chaque moteur est listé avec son
+  état réel (compilé ; utilisable = modèle présent sur le disque), le
+  moteur sélectionné est visible, la sélection s'applique immédiatement
+  via `configSet` (le pipeline reconstruit son bundle sans redémarrage) ;
+  ligne « moteur effectif » alimentée par `stateGet`. i18n fr/EN.
+- **Purge du nom de code `Plume`** : répertoire de données toujours et
+  uniquement `%APPDATA%\Voxli` (données locales déplacées une fois pour
+  toutes depuis `%APPDATA%\Plume` : config, modèles, historique,
+  journaux) ; en-têtes de clé et de licence retagués `voxli-*` (le
+  compat de l'ancien format est retiré — aucun blob émis sous ce
+  format) ; clé localStorage de thème héritée retirée.
+- **Thème sombre au noir profond** : fond à `#000000` ; nouvelle
+  variable `--surface` pour les champs (réglages, dictionnaires,
+  vocabulaire, fenêtre de secours) qui étaient en `#fff` codé en dur —
+  blanc sur blanc en sombre, désormais lisibles.
+- Bench repassée après changements : fmt-check, clippy `-D warnings`,
+  `cargo test --workspace`, `tsc --noEmit`, `vite build` — tous EXIT=0
+  (docs/09 M1.5 pour le détail).
+
 ### Hygiène et correctifs activés par la mise en compilation (19/10/2026)
 
 - `voxli-storage` : échec DPAPI remonté à l'appelant (la clé n'est plus

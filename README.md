@@ -4,7 +4,7 @@
 
 # Voxli — dictée IA locale pour Windows
 
-> **Voxli** est une application de dictée vocale assistée par IA 100 % locale, respectueuse de la vie privée, sans dépendance cloud et conçue pour Windows (nom de code de développement initial : `Plume`).
+> **Voxli** est une application de dictée vocale assistée par IA 100 % locale, respectueuse de la vie privée, sans dépendance cloud et conçue pour Windows.
 
 **Statut : P1 → P4 implémentées — en phase de test.** La conception (7 livrables) est
 terminée ; les quatre phases de développement sont codées : réglages à chaud,

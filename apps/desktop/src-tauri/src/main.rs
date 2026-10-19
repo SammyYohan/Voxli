@@ -137,6 +137,7 @@ fn main() {
             commands::models_download,
             commands::models_download_cancel,
             commands::models_remove,
+            commands::engines_list,
             commands::history_query,
             commands::history_delete,
             commands::history_purge,

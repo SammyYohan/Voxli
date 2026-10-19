@@ -22,6 +22,14 @@ pub mod whisper;
 #[cfg(feature = "whisper")]
 pub use whisper::WhisperCppEngine;
 
+/// Partiels d'affichage pour moteurs batch (feature `whisper`) : re-décodage
+/// fenêtré pendant la prise, émis par la voie streaming, jamais inséré ni
+/// journalisé (RF-34 + amendement ADR-02).
+#[cfg(feature = "whisper")]
+pub mod whisper_partial;
+#[cfg(feature = "whisper")]
+pub use whisper_partial::WhisperPartialStreamer;
+
 /// Nemotron 3.5 ASR streaming (SDK C in-process) — feature `nemo-stream`.
 #[cfg(feature = "nemo-stream")]
 pub mod nemo;

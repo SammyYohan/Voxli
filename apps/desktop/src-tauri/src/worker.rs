@@ -15,8 +15,9 @@
 //! - `notice://notice` `{ kind, message }` — **addition documentée** à la
 //!   table : messages FR neutres définis dans `strings.rs`, jamais de contenu ;
 //! - `dictation://partial` `{ text, atMs }` — **addition documentée** (amendement
-//!   ADR-02) : hypothèses transitoires du streaming Nemotron pendant une
-//!   prise, pur affichage — jamais journalisées ni conservées (RF-34).
+//!   ADR-02) : hypothèses transitoires du streaming pendant une prise
+//!   (Nemotron P2, ou re-décodage fenêtré whisper — `whisper_partial`) :
+//!   pur affichage, jamais journalisées ni conservées (RF-34).
 
 use serde::Serialize;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -32,6 +33,8 @@ use voxli_asr::NemoEngine;
 use voxli_asr::ParakeetOnnxEngine;
 #[cfg(feature = "real-asr")]
 use voxli_asr::WhisperCppEngine;
+#[cfg(feature = "real-asr")]
+use voxli_asr::WhisperPartialStreamer;
 use voxli_asr::{StreamingEngine, StreamingSession};
 use voxli_audio::{CaptureTap, CpalCapture, EnergyVad, FakeCapture, VadConfig};
 use voxli_config::{Config, EngineChoice, TriggerMode as TriggerModeCfg};
@@ -1199,6 +1202,12 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
         if path.is_file() {
             match WhisperCppEngine::load(&path) {
                 Ok(engine) => {
+                    // Un même moteur, deux rôles : voie batch (autorité du
+                    // texte inséré, tampon complet RF-22) et partiels
+                    // d'affichage (re-décodage fenêtré, jamais inséré —
+                    // RF-34 + amendement ADR-02).
+                    let engine = Arc::new(engine);
+                    let batch: Arc<dyn Transcriptor> = engine.clone();
                     let model_id = path
                         .file_name()
                         .map(|f| f.to_string_lossy().into_owned())
@@ -1208,8 +1217,8 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
                         model_id,
                     });
                     return EngineBundle {
-                        batch: Arc::new(engine),
-                        streaming: None,
+                        batch,
+                        streaming: Some(Arc::new(WhisperPartialStreamer::new(engine))),
                     };
                 }
                 // Modèle absent ou illisible : repli visible, jamais silencieux.
