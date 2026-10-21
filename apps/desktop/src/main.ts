@@ -57,6 +57,16 @@ interface StateInfo {
   engine: string;
 }
 
+/** État d'un moteur retourné par `engines_list` : compilé dans ce build
+ * et réellement utilisable (modèle présent sur le disque). Source de
+ * vérité pour la sélectibilité des lignes nemo/parakeet du catalogue —
+ * un SDK compilé hier ne peut pas être codé en dur aujourd'hui. */
+interface EngineInfo {
+  id: string;
+  compiled: boolean;
+  usable: boolean;
+}
+
 interface DeviceInfo {
   id: string;
   name: string;
@@ -568,6 +578,15 @@ async function activateWhisperModel(id: string): Promise<void> {
 
 async function refreshModels(): Promise<void> {
   const models: ModelInfo[] = await invoke("models_list");
+  // engins : la sélectibilité nemo/parakeet dépend du BUILD (SDK compilé ?)
+  // et du DISQUE (modèle présent ?) — jamais codée en dur ; échec lecture
+  // = lignes non sélectionnables avec l'avis SDK (jamais de fausse promesse).
+  let engines: EngineInfo[] | null = null;
+  try {
+    engines = await invoke<EngineInfo[]>("engines_list");
+  } catch {
+    engines = null;
+  }
   knownModels.splice(0, knownModels.length, ...models);
 
   // Migration : un id de modèle non-whisper dans la config (empoisonné
@@ -627,10 +646,14 @@ async function refreshModels(): Promise<void> {
     const tr = document.createElement("tr");
     const footprint = m.sha256 ? `${m.sha256.slice(0, 16)}…` : "";
     const sizeTxt = m.sizeMb !== null ? ` ${t("models.sizeMb", { n: m.sizeMb })}` : "";
+    // La sélection reflète la MÊME config quel que soit le genre :
+    // whisper = engine+model explicites ; nemo/parakeet = son engine
+    // (un modèle unique par genre — la ligne est le sélecteur).
     const selected =
       config !== null &&
-      config.general.engine === "whisper" &&
-      config.general.model === m.id;
+      (m.kind === "whisper"
+        ? config.general.engine === "whisper" && config.general.model === m.id
+        : config.general.engine === m.kind);
     // La ligne EST le sélecteur (Handy-style) : ✓ dans la colonne État
     // = le choix actif. Offlistes (nemo/parakeet) : non sélectionnables.
     tr.innerHTML =
@@ -684,16 +707,48 @@ async function refreshModels(): Promise<void> {
     // poussaient la config vers un modèle que le worker ne sait pas
     // monter (repli factice silencieux… réglé par le garde ci-dessous).
     if (m.kind !== "whisper") {
-      tr.title = t("models.noActivation");
-      // Hint VISIBLE sous la ligne, pas seulement au survol : jamais de
-      // zone « pourquoi je ne peux pas sélectionner cette voix » muette.
-      const hint = document.createElement("span");
-      hint.className = "license";
-      hint.textContent = t("engines.hintSdk");
-      const firstTd = tr.firstElementChild;
-      if (firstTd !== null) {
-        firstTd.appendChild(document.createElement("br"));
-        firstTd.appendChild(hint);
+      // La sélectibilité nemo/parakeet suit le BUILD réel (engins_list) :
+      // SDK compilé + modèle présent = ACTIVABLE au clic ; SDK compilé
+      // sans modèle = le clic lance le téléchargement ; SDK non compilé =
+      // avis visible (jamais de promesse non tenable).
+      const eng = engines?.find((e) => e.id === m.kind);
+      if (eng?.compiled) {
+        // `selected` est déjà calculé en haut de boucle (kind-aware).
+        tr.classList.add("selectable");
+        tr.tabIndex = 0;
+        if (selected) tr.classList.add("selected");
+        if (eng.usable) {
+          tr.addEventListener("click", async () => {
+            if (config === null) return;
+            const cfg = config;
+            if (cfg.general.engine === m.kind) return void refreshModels();
+            cfg.general.engine = m.kind;
+            cfg.general.model = m.id;
+            try {
+              await invoke("config_set", { newConfig: cfg });
+            } catch (err) {
+              showNotice(String(err));
+            }
+            void refreshModels();
+            void effectiveEngineLine();
+          });
+        } else {
+          tr.addEventListener("click", () => {
+            void startDownload(m.id);
+          });
+        }
+      } else {
+        tr.title = t("models.noActivation");
+        // Hint VISIBLE sous la ligne, pas seulement au survol : jamais de
+        // zone « pourquoi je ne peux pas sélectionner cette voix » muette.
+        const hint = document.createElement("span");
+        hint.className = "license";
+        hint.textContent = t("engines.hintSdk");
+        const firstTd = tr.firstElementChild;
+        if (firstTd !== null) {
+          firstTd.appendChild(document.createElement("br"));
+          firstTd.appendChild(hint);
+        }
       }
     } else {
       // classes + clic ; `selected` est déjà calculé en haut de boucle.

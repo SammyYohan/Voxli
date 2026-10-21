@@ -330,7 +330,10 @@ quand la voix change (comparaison label **+ fichier modèle** dans
 sélection unique, plus aucune zone grisée). Nemotron/Parakeet restent
 listés, téléchargeables, mais **non activables** tant que leur SDK n'est
 pas compilé : la ligne l'explique sur elle-même (avis visible, jamais
-l'ancien repli factice silencieux).
+l'ancien repli factice silencieux). **Une fois la feature opt-in
+compilée** (SDK installé, cf. plus haut), la ligne devient activable au
+clic — et lance le téléchargement si le fichier est absent — sans
+re-service ; le retour à Whisper se fait par le même clic de ligne.
 
 #### Nemotron 3.5 streaming (texte en direct dans la pastille)
 
