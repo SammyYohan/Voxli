@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "соответствует опубликованному доверенному эталону (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Движок диктовки — изменение применяется сразу:",
   "engines.auto": "Автоматически (рекомендуется)",
-  "engines.whisper": "whisper.cpp — локально",
-  "engines.nemo": "Nemotron 3.5 streaming — в реальном времени",
-  "engines.parakeet": "Parakeet TDT — локально",
-  "engines.hintModel": "недоступно — установите его модель ниже",
   "engines.hintSdk": "недоступно — SDK не входит в эту сборку",
   "engines.effective": "Активный движок: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "Ядро выбирает лучшую whisper-модель, имеющуюся на диске.",
   "models.noActivation": "Установлено, но не активируется в этой сборке (нужен SDK движка) — файл остаётся на диске.",
   "engines.fellFake": "Пригодной модели пока нет: работает демонстрационный движок — скачайте whisper-модель ниже.",
+  "models.introTop": "Ваш активный голос: СТРОКА — селектор: клик = активация (или загрузка, если модель отсутствует). Выбор сохраняется сразу, без кнопки подтверждения.",
 };

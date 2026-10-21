@@ -706,19 +706,7 @@ body.mode-avance .simple-only {
   margin: 6px 0 2px;
 }
 
-#engines-list label.engine-choice {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  cursor: pointer;
-}
-
-#engines-list label.engine-unavailable {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-#engines-list .engine-hint {
-  font-size: 0.9em;
-}
+/* Les radios d'engines ont été supprimés le 21/10 (surface de sélection
+   unique = lignes du catalogue, cf. `refreshModels`) : leurs règles CSS
+   `#engines-list …` sont purgées en même temps que l'élément. */
 

@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "komt overeen met de gepubliceerde betrouwbare referentie (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Dicteermotor — de wijziging werkt meteen:",
   "engines.auto": "Automatisch (aanbevolen)",
-  "engines.whisper": "whisper.cpp — lokaal",
-  "engines.nemo": "Nemotron 3.5 streaming — in realtime",
-  "engines.parakeet": "Parakeet TDT — lokaal",
-  "engines.hintModel": "niet beschikbaar — installeer het model hieronder",
   "engines.hintSdk": "niet beschikbaar — de SDK zit niet in deze versie",
   "engines.effective": "Actieve motor: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "De kern kiest het beste whispermodel dat op schijf aanwezig is.",
   "models.noActivation": "Geïnstalleerd, maar niet activeerbaar in deze build (motor-SDK ontbreekt) — het bestand blijft op schijf.",
   "engines.fellFake": "Voorlopig geen bruikbaar model: de demo-engine neemt over — download hieronder een whispermodel.",
+  "models.introTop": "Jouw actieve stem: de RIJ is de kiezer — klik = activeren (of downloaden als deze ontbreekt). De keuze wordt onmiddellijk weggeschreven, zonder bevestigingsknop.",
 };

@@ -91,12 +91,7 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— 约 {n} MB",
   "models.verifiedBadge": "与公开的可信参照一致（docs/11 §3）",
 
-  "engines.choose": "听写引擎 — 更改立即生效：",
   "engines.auto": "自动（推荐）",
-  "engines.whisper": "whisper.cpp — 本地",
-  "engines.nemo": "Nemotron 3.5 流式 — 实时",
-  "engines.parakeet": "Parakeet TDT — 本地",
-  "engines.hintModel": "不可用 — 请在下方安装对应模型",
   "engines.hintSdk": "不可用 — 本版本未包含 SDK",
   "engines.effective": "当前引擎：{engine}",
 
@@ -214,4 +209,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "核心会自动选用磁盘上存在的最佳 whisper 模型。",
   "models.noActivation": "已下载，但在此版本中无法启用（需要引擎 SDK）——文件保留在磁盘上。",
   "engines.fellFake": "当前没有可用模型：演示引擎临时接管——请在下方下载 whisper 模型。",
+  "models.introTop": "选择您的启用嗓音：行即选择器——点击即启用（若未安装则开始下载）。所选即时写入生效，无需确认按钮。",
 };

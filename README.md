@@ -314,21 +314,27 @@ noyau (`validate_before_register`). Échap annule. Note : la combinaison
 d'un raccourci *actif* reste interceptée par le système tant qu'il est
 enregistré — la capture sert à choisir une combinaison libre.
 
-#### Catalogue élargi + connexion automatique
+#### Catalogue élargi + sélection à la ligne (style Handy)
 
 La zone de téléchargement propose désormais, hors whisper *base* :
-**tiny** (43 Mo, machines modestes), **small**, **medium** (554 Mo) et
-**large-v3-turbo** (574 Mo, précision maximale, GPU conseillé) —
-toujours ggerganov/whisper.cpp, licence affichée avant tout téléchargement
-(P1-3). Un modèle fraîchement téléchargé est **branché automatiquement**
-au moteur (config écrite live, même sémantique que le choix de moteur) ;
-un modèle déjà installé affiche un bouton **« Utiliser »** pour y revenir
-sans re-télécharger. Nemotron/Parakeet restent listés et refusés proprement
-tant que leur SDK n'est pas installé (aucun faux « installé »).
+**tiny** (43 Mo, machines modestes), **small** (190 Mo), **medium**
+(539 Mo) et **large-v3-turbo** (574 Mo, précision maximale, GPU conseillé)
+— toujours ggerganov/whisper.cpp, licence affichée avant tout
+téléchargement (P1-3). Les tailles affichées sont les tailles réseau
+réelles (Content-Length mesuré le 21/10/2026, cohérent avec le champ
+`size_mb` du catalogue). La **sélection se fait par LIGNE** : clic =
+activation (ou téléchargement si absente), ligne « Automatique
+(recommandé) » en tête ; le moteur reconstruit réellement son contexte
+quand la voix change (comparaison label **+ fichier modèle** dans
+`engine_stale`). Les radios d'engines ont été supprimées (surface de
+sélection unique, plus aucune zone grisée). Nemotron/Parakeet restent
+listés, téléchargeables, mais **non activables** tant que leur SDK n'est
+pas compilé : la ligne l'explique sur elle-même (avis visible, jamais
+l'ancien repli factice silencieux).
 
 #### Nemotron 3.5 streaming (texte en direct dans la pastille)
 
-Moteur **Nemotron 3.5 ASR streaming 0.6B** (GGUF q8_0, ≈ 708 Mo, 40 langues,
+Moteur **Nemotron 3.5 ASR streaming 0.6B** (GGUF q8_0, ≈ 742 Mo, 40 langues,
 licence OpenMDW-1.1) via le SDK C **NeMo-Speech.cpp** in-process — le même
 binary qu'une install locale de l'outil de NVIDIA, sans serveur local ni
 réseau au runtime. Le SDK est **opt-in** :

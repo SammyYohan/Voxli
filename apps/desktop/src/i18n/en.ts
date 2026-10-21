@@ -104,12 +104,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "matches the published trusted reference (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Dictation engine — the change applies immediately:",
   "engines.auto": "Automatic (recommended)",
-  "engines.whisper": "whisper.cpp — local",
-  "engines.nemo": "Nemotron 3.5 streaming — real-time",
-  "engines.parakeet": "Parakeet TDT — local",
-  "engines.hintModel": "unavailable — install its model below",
   "engines.hintSdk": "unavailable — SDK not included in this build",
   "engines.effective": "Active engine: {engine}",
 
@@ -239,4 +234,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "The core picks the best whisper model present on disk.",
   "models.noActivation": "Downloaded, but not activatable in this build (engine SDK needed) — the file stays on disk.",
   "engines.fellFake": "No usable model right now: the demo engine took over — download a whisper model below.",
+  "models.introTop": "Your active voice: the ROW is the selector — click to activate (or download if absent). The choice is written immediately, no confirm button.",
 };

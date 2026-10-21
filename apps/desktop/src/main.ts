@@ -57,14 +57,6 @@ interface StateInfo {
   engine: string;
 }
 
-/** État d'un moteur retourné par `engines_list` : compilé dans ce build
- * et réellement utilisable (modèle présent sur le disque). */
-interface EngineInfo {
-  id: string;
-  compiled: boolean;
-  usable: boolean;
-}
-
 interface DeviceInfo {
   id: string;
   name: string;
@@ -570,7 +562,7 @@ async function activateWhisperModel(id: string): Promise<void> {
   } catch (err) {
     showNotice(String(err));
   }
-  void refreshEngines();
+  void refreshModels();
   void effectiveEngineLine();
 }
 
@@ -627,7 +619,6 @@ async function refreshModels(): Promise<void> {
       showNotice(String(err));
     }
     void refreshModels();
-    void refreshEngines();
     void effectiveEngineLine();
   });
   body.appendChild(autoRow);
@@ -666,7 +657,6 @@ async function refreshModels(): Promise<void> {
             config.general.model = "auto";
             config.general.engine = "auto";
             await invoke("config_set", { newConfig: config });
-            void refreshEngines();
           }
           void refreshModels();
         } catch (err) {
@@ -695,6 +685,16 @@ async function refreshModels(): Promise<void> {
     // monter (repli factice silencieux… réglé par le garde ci-dessous).
     if (m.kind !== "whisper") {
       tr.title = t("models.noActivation");
+      // Hint VISIBLE sous la ligne, pas seulement au survol : jamais de
+      // zone « pourquoi je ne peux pas sélectionner cette voix » muette.
+      const hint = document.createElement("span");
+      hint.className = "license";
+      hint.textContent = t("engines.hintSdk");
+      const firstTd = tr.firstElementChild;
+      if (firstTd !== null) {
+        firstTd.appendChild(document.createElement("br"));
+        firstTd.appendChild(hint);
+      }
     } else {
       // classes + clic ; `selected` est déjà calculé en haut de boucle.
       tr.classList.add("selectable");
@@ -718,62 +718,23 @@ async function refreshModels(): Promise<void> {
   // (les radios, avec leur état réel) : c'est elle qui répond à « quelle
   // voix est installée, laquelle est disponible ».
 
-  // Bannière d'onboarding 1-clic : visible tant qu'aucun modèle n'est installé
+  // Bannière d'onboarding 1-clic : visible tant qu'AUCUN modèle whisper
+  // utilisable n'est installé — un nemo/parakeet téléchargé ne rend pas
+  // l'application dictable (SDK requis) et ne doit donc PAS la masquer
+  // (sinon : repli factice SANS indication de remède visible — vu le
+  // 21/10 quand seul Nemotron était installé).
   const onboarding = document.getElementById("onboarding-card");
   if (onboarding) {
-    onboarding.hidden = models.some((m) => m.installed);
+    onboarding.hidden = models.some((m) => m.kind === "whisper" && m.installed);
   }
 }
 
-/** Vue des moteurs de dictée : la sélection EST la config
- * `general.engine` ; l'écriture passe par `config_set` et le worker
- * reconstruit son bundle en live (jamais de redémarrage). Chaque moteur
- * est affiché avec son état réel du build et de la machine. */
-async function refreshEngines(): Promise<void> {
-  const engines: EngineInfo[] = await invoke("engines_list");
-  const list = document.getElementById("engines-list");
-  if (list === null) return;
-  list.replaceChildren();
-  for (const e of engines) {
-    const row = document.createElement("label");
-    row.className = "engine-choice";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = "engine-choice";
-    radio.value = e.id;
-    radio.checked = config !== null && config.general.engine === e.id;
-    radio.disabled = !e.usable;
-    row.appendChild(radio);
-    const span = document.createElement("span");
-    span.textContent = t(`engines.${e.id}`);
-    row.appendChild(span);
-    if (!e.usable) {
-      row.classList.add("engine-unavailable");
-      const hint = document.createElement("span");
-      hint.className = "muted engine-hint";
-      hint.textContent = e.compiled ? t("engines.hintModel") : t("engines.hintSdk");
-      row.appendChild(hint);
-    }
-    radio.addEventListener("change", () => {
-      if (radio.checked) void setEngine(e.id);
-    });
-    list.appendChild(row);
-  }
-  void effectiveEngineLine();
-}
-
-/** Sélection d'un moteur : config écrite immédiatement (RF-01 : le reste
- * de la config transmise est l'objet validé actuel, miroir de l'affichage). */
-async function setEngine(id: string): Promise<void> {
-  if (config === null || config.general.engine === id) return;
-  try {
-    config.general.engine = id;
-    await invoke("config_set", { newConfig: config });
-    void refreshEngines();
-  } catch (err) {
-    showNotice(String(err));
-  }
-}
+/** Vue SUPPRIMÉE (radios d'engines). Le 21/10 : le doublon radios/table
+ * créait des « zones non sélectionnables » (nemo/parakeet grisées) qui
+ * perdaient l'utilisateur. La table des modèles est la seule surface de
+ * sélection désormais (ligne Automatique en tête + lignes whisper),
+ * cf. `refreshModels` ; `engine-effective` affiche le réel. L'écriture
+ * de la config reste `config_set` (RF-01). */
 
 /** Choix de calcul (CPU/GPU, additif v5) : la même sémantique que le
  * moteur — écrit via sendConfig (miroir complet), le noyau reconstruit
@@ -1193,7 +1154,6 @@ async function main(): Promise<void> {
 
   void refreshDevices();
   void refreshModels();
-  void refreshEngines();
   void refreshHistory();
 
   // Événements (docs/05 §3 + additions documentées).
@@ -1290,8 +1250,6 @@ async function main(): Promise<void> {
           config.general.model = id;
           config.general.engine = "whisper";
           await invoke("config_set", { newConfig: config });
-          void refreshEngines();
-          void effectiveEngineLine();
         } catch (err) {
           showNotice(String(err));
         }
@@ -1299,8 +1257,10 @@ async function main(): Promise<void> {
         showNotice(t("models.noActivation"));
       }
     }
+    // Repeint de la table : la ligne téléchargée passe « installé » et
+    // le ✓ de sélection suit l'auto-connexion (jamais d'état périmé).
     void refreshModels();
-    void refreshEngines();
+    void effectiveEngineLine();
   });
 }
 

@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "corrisponde alla referenza affidabile pubblicata (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Motore di dettatura — la modifica viene applicata all'istante:",
   "engines.auto": "Automatico (consigliato)",
-  "engines.whisper": "whisper.cpp — locale",
-  "engines.nemo": "Nemotron 3.5 streaming — in tempo reale",
-  "engines.parakeet": "Parakeet TDT — locale",
-  "engines.hintModel": "non disponibile — installare il modello qui sotto",
   "engines.hintSdk": "non disponibile — l'SDK non è incluso in questa versione",
   "engines.effective": "Motore attivo: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "Il nucleo sceglie il miglior modello whisper presente sul disco.",
   "models.noActivation": "Installato, ma non attivabile in questa build (manca l'SDK del motore) — il file resta sul disco.",
   "engines.fellFake": "Nessun modello utilizzabile per ora: il motore dimostrativo prende il controllo — scarica un modello whisper qui sotto.",
+  "models.introTop": "La tua voce attiva: la RIGA è il selettore — clic = attivazione (o download se assente). La scelta viene scritta subito, senza pulsante di conferma.",
 };

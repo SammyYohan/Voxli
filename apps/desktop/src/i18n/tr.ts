@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "yayınlanan güvenilir referansla eşleşiyor (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Dikte motoru — değişiklik anında uygulanır:",
   "engines.auto": "Otomatik (önerilir)",
-  "engines.whisper": "whisper.cpp — yerel",
-  "engines.nemo": "Nemotron 3.5 streaming — gerçek zamanlı",
-  "engines.parakeet": "Parakeet TDT — yerel",
-  "engines.hintModel": "kullanılamıyor — modelini aşağıda yükleyin",
   "engines.hintSdk": "kullanılamıyor — SDK bu derlemeye dahil değil",
   "engines.effective": "Etkin motor: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "Çekirdek diskteki en iyi whisper modelini seçer.",
   "models.noActivation": "İndirildi ancak bu derlemede etkinleştirilemez (motor SDK'sı gerekir) — dosya diskte kalır.",
   "engines.fellFake": "Şu anda kullanılabilir model yok: demo motor devralıyor — aşağıdan bir whisper modeli indirin.",
+  "models.introTop": "Etkin sesiniz: SATIR seçicidir — tıklamak = etkinleştirme (yoksa indirme). Seçim anında yazılır, onay düğmesi yoktur.",
 };

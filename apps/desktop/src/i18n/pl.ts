@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "zgodny z opublikowanym zaufanym wzorcem (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Silnik dyktowania — zmiana działa natychmiast:",
   "engines.auto": "Automatycznie (zalecane)",
-  "engines.whisper": "whisper.cpp — lokalnie",
-  "engines.nemo": "Nemotron 3.5 streaming — w czasie rzeczywistym",
-  "engines.parakeet": "Parakeet TDT — lokalnie",
-  "engines.hintModel": "niedostępny — zainstaluj jego model poniżej",
   "engines.hintSdk": "niedostępny — SDK nie jest dołączone do tej wersji",
   "engines.effective": "Aktywny silnik: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "Rdzeń wybiera najlepszy model whisper obecny na dysku.",
   "models.noActivation": "Zainstalowano, ale nie można aktywować w tej kompilacji (brakuje SDK silnika) — plik pozostaje na dysku.",
   "engines.fellFake": "Na razie brak użytecznego modelu: przejmuje silnik demo — pobierz model whisper poniżej.",
+  "models.introTop": "Twój aktywny głos: WIERSZ jest selektorem — klik = aktywacja (lub pobieranie, jeśli brakuje). Wybór jest zapisywany natychmiast, bez przycisku potwierdzenia.",
 };

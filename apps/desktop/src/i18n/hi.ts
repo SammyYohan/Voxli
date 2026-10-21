@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "प्रकाशित भरोसेमंद संदर्भ से मेल खाता है (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "डिक्टेशन इंजन — बदलाव तुरंत लागू होता है:",
   "engines.auto": "स्वतः (सुझावित)",
-  "engines.whisper": "whisper.cpp — लोकल",
-  "engines.nemo": "Nemotron 3.5 streaming — रीयल-टाइम",
-  "engines.parakeet": "Parakeet TDT — लोकल",
-  "engines.hintModel": "उपलब्ध नहीं — इसका मॉडल नीचे इंस्टॉल करें",
   "engines.hintSdk": "उपलब्ध नहीं — SDK इस बिल्ड में शामिल नहीं है",
   "engines.effective": "सक्रिय इंजन: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "कोर डिस्क पर उपलब्ध सर्वश्रेष्ठ whisper मॉडल चुनता है।",
   "models.noActivation": "स्थापित, पर इस बिल्ड में सक्रिय नहीं किया जा सकता (इंजन SDK चाहिए) — फ़ाइल डिस्क पर रहेगी।",
   "engines.fellFake": "अभी कोई प्रयोग योग्य मॉडल नहीं: डेमो इंजन संभाल रहा है — नीचे से whisper मॉडल डाउनलोड करें।",
+  "models.introTop": "आपकी सक्रिय आवाज़: पंक्ति ही चयनकर्ता है — क्लिक = सक्रियण (अनुपस्थित हो तो डाउनलोड)। विकल्प तुरंत लिखा जाता है, पुष्टि बटन नहीं।",
 };

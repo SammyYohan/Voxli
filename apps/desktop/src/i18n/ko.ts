@@ -91,12 +91,7 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— 약 {n} MB",
   "models.verifiedBadge": "공개된 신뢰 기준과 일치(docs/11 §3)",
 
-  "engines.choose": "받아쓰기 엔진 — 변경하면 즉시 적용됩니다:",
   "engines.auto": "자동(권장)",
-  "engines.whisper": "whisper.cpp — 로컬",
-  "engines.nemo": "Nemotron 3.5 스트리밍 — 실시간",
-  "engines.parakeet": "Parakeet TDT — 로컬",
-  "engines.hintModel": "사용 불가 — 아래에서 해당 모델을 설치하세요",
   "engines.hintSdk": "사용 불가 — 이 빌드에는 SDK가 포함되지 않았습니다",
   "engines.effective": "활성 엔진: {engine}",
 
@@ -214,4 +209,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "코어가 디스크에 있는 최적의 whisper 모델을 선택합니다.",
   "models.noActivation": "다운로드는 되었지만 이 빌드에서는 활성화할 수 없습니다 (엔진 SDK 필요) — 파일은 디스크에 유지됩니다.",
   "engines.fellFake": "지금은 사용 가능한 모델이 없습니다: 데모 엔진이 대신 동작합니다 — 아래에서 whisper 모델을 다운로드하세요.",
+  "models.introTop": "활성 목소리 선택: 행 자체가 선택기입니다 — 클릭 = 활성화 (없으면 다운로드). 선택은 즉시 기록되며 확인 버튼이 없습니다.",
 };

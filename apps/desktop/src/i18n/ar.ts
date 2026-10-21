@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "يطابق المرجع الموثوق المنشور (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "محرّك الإملاء — يسري التغيير فورًا:",
   "engines.auto": "تلقائي (مستحسن)",
-  "engines.whisper": "whisper.cpp — محلي",
-  "engines.nemo": "Nemotron 3.5 streaming — فوري",
-  "engines.parakeet": "Parakeet TDT — محلي",
-  "engines.hintModel": "غير متاح — ثبّت نموذجه أدناه",
   "engines.hintSdk": "غير متاح — SDK غير مضمن في هذا الإصدار",
   "engines.effective": "المحرّك النشط: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "يختار النواة أفضل نموذج whisper متوفر على القرص.",
   "models.noActivation": "مُثبَّت لكن لا يمكن تفعيله في هذا الإصدار (يلزم SDK للمحرك) — يبقى الملف على القرص.",
   "engines.fellFake": "لا يوجد نموذج قابل للاستخدام حاليًا: يتولى محرك العرض التجريبي — نزّل نموذج whisper أدناه.",
+  "models.introTop": "صوتك النشط: السطر هو المحدِّد — النقر = تفعيل (أو تنزيل إن كان غائبًا). يتم التسجيل فورًا، دون زر تأكيد.",
 };

@@ -662,7 +662,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
 
     // --- Moteur ASR (ADR-03) : réel si compilé + modèle présent ; sinon
     // moteur factice explicite au journal (jamais de fallback silencieux).
-    let mut engine = build_engine(&cfg, &logger);
+    let (mut engine, mounted_model) = build_engine(&cfg, &logger);
     if let Err(err) = engine.batch.warmup() {
         logger.log(Event::Error {
             module: "asr".into(),
@@ -672,6 +672,12 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
     let engine_label = Arc::new(std::sync::Mutex::new(
         engine.batch.id().as_str().to_string(),
     ));
+    // Identité du fichier modèle monté : complément du label — deux
+    // montages « whisper.cpp » successifs peuvent porter des poids
+    // différents (base → small), la comparaison n'a de sens qu'avec les
+    // DEUX (coquille + contenu), sinon l'activation d'une autre voix
+    // restait muette (incohérence constatée le 21/10).
+    let engine_model = Arc::new(std::sync::Mutex::new(mounted_model));
     // Métadonnée moteur pour l'UI (état_get).
     *lock_or_recover(&app.state::<UiShared>().engine) = engine.batch.id().as_str().to_string();
     // Slot streaming : fabrique (si moteur capable) + langue/verbatim.
@@ -789,8 +795,10 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     Some(cfg.general.language.clone()).filter(|s| !s.is_empty()),
                     cfg.profiles.default.style == voxli_config::Style::Verbatim,
                 );
-                if engine_stale(&engine_label, &cfg) {
-                    engine = build_engine(&cfg, &logger);
+                if engine_stale(&engine_label, &engine_model, &cfg) {
+                    let (rebuilt, mounted) = build_engine(&cfg, &logger);
+                    engine = rebuilt;
+                    *lock_or_recover(&engine_model) = mounted;
                     if let Err(err) = engine.batch.warmup() {
                         logger.log(Event::Error {
                             module: "asr".into(),
@@ -846,7 +854,7 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                 if matches!(
                     orch.state(),
                     DictationState::Idle | DictationState::Recovery { .. }
-                ) && engine_stale(&engine_label, &cfg)
+                ) && engine_stale(&engine_label, &engine_model, &cfg)
                 {
                     logger.log(Event::DeviceEvent {
                         kind: "model-installed-rebuild".into(),
@@ -854,7 +862,9 @@ pub fn run(app: AppHandle<Wry>, logger: Arc<Logger>, rx: Receiver<WorkerMsg>) {
                     let last = orch.last_transcript().cloned();
                     let orch_cfg = to_orchestrator_cfg(&cfg, pro_profiles);
                     drop(orch);
-                    engine = build_engine(&cfg, &logger);
+                    let (rebuilt, mounted) = build_engine(&cfg, &logger);
+                    engine = rebuilt;
+                    *lock_or_recover(&engine_model) = mounted;
                     if let Err(err) = engine.batch.warmup() {
                         logger.log(Event::Error {
                             module: "asr".into(),
@@ -1107,7 +1117,9 @@ struct EngineBundle {
 }
 
 /// ID du GGUF Nemotron 3.5 streaming (catalogue modèles, docs/04).
-#[cfg(feature = "nemo-stream")]
+/// Inconditionnel : `engine_stale` doit pouvoir nommer le modèle attendu
+/// même dans un build sans SDK (le wanted nemo n'y survient pas, mais la
+/// constante documente l'identité canonique).
 const NEMO_MODEL_ID: &str = "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf";
 
 /// Dossier du GGUF Nemotron installé (gestionnaire de modèles).
@@ -1144,7 +1156,7 @@ fn log_engine_failure(logger: &Logger, err: &voxli_core::AsrError) {
     });
 }
 
-fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
+fn build_engine(cfg: &Config, logger: &Logger) -> (EngineBundle, String) {
     // Nemotron 3.5 (feature `nemo-stream`) : priorité `auto` quand le GGUF
     // est installé (il apporte le streaming d'affichage) ; choix explicite
     // exige le modèle (absent → code 7 au journal, repli factice audible,
@@ -1159,10 +1171,13 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
                         model_id: NEMO_MODEL_ID.into(),
                     });
                     let e = Arc::new(e);
-                    return EngineBundle {
-                        batch: e.clone(),
-                        streaming: Some(e),
-                    };
+                    return (
+                        EngineBundle {
+                            batch: e.clone(),
+                            streaming: Some(e),
+                        },
+                        NEMO_MODEL_ID.into(),
+                    );
                 }
                 Err(err) => log_engine_failure(logger, &err),
             }
@@ -1196,10 +1211,13 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
                             engine: "parakeet".into(),
                             model_id: "parakeet-tdt-0.6b-v3".into(),
                         });
-                        return EngineBundle {
-                            batch: Arc::new(engine),
-                            streaming: None,
-                        };
+                        return (
+                            EngineBundle {
+                                batch: Arc::new(engine),
+                                streaming: None,
+                            },
+                            "parakeet-tdt-0.6b-v3".into(),
+                        );
                     }
                     Err(err) => {
                         logger.log(Event::Error {
@@ -1296,12 +1314,15 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
                     };
                     logger.log(Event::EngineLoaded {
                         engine: "whisper.cpp".into(),
-                        model_id,
+                        model_id: model_id.clone(),
                     });
-                    return EngineBundle {
-                        batch,
-                        streaming: Some(Arc::new(WhisperPartialStreamer::new(partial_ctx))),
-                    };
+                    return (
+                        EngineBundle {
+                            batch,
+                            streaming: Some(Arc::new(WhisperPartialStreamer::new(partial_ctx))),
+                        },
+                        model_id,
+                    );
                 }
                 // Modèle absent ou illisible : repli visible, jamais silencieux.
                 Err(err) => {
@@ -1331,10 +1352,13 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
         engine: "fake".into(),
         model_id: "faux".into(),
     });
-    EngineBundle {
-        batch: Arc::new(FakeEngine::default()),
-        streaming: None,
-    }
+    (
+        EngineBundle {
+            batch: Arc::new(FakeEngine::default()),
+            streaming: None,
+        },
+        "faux".into(),
+    )
 }
 
 /// Dossier du modèle Parakeet installé (gestionnaire de modèles).
@@ -1369,7 +1393,15 @@ fn parakeet_available(_cfg: &Config) -> bool {
 
 /// RF-01 : détecte si le moteur à reconstruire diffère de celui en service —
 /// évite de recharger un modèle coûteux pour un changement sans rapport.
-fn engine_stale(label: &Arc<std::sync::Mutex<String>>, cfg: &Config) -> bool {
+/// La comparaison porte sur la COQUILLE (label : whisper.cpp, nemo…) ET le
+/// CONTENU (fichier modèle monté) : deux montages whisper.cpp n'ont pas
+/// nécessairement le même poids — sans cela, activer une autre voix
+/// installée ne déclenchait aucune reconstruction (constat du 21/10).
+fn engine_stale(
+    label: &Arc<std::sync::Mutex<String>>,
+    mounted_model: &Arc<std::sync::Mutex<String>>,
+    cfg: &Config,
+) -> bool {
     let wanted = match cfg.general.engine {
         EngineChoice::Whisper => {
             if whisper_available(cfg) {
@@ -1406,8 +1438,22 @@ fn engine_stale(label: &Arc<std::sync::Mutex<String>>, cfg: &Config) -> bool {
             }
         }
     };
+    // Modèle attendu : résolution PARTAGÉE avec build_engine et
+    // engines_list (`resolve_whisper_model`) — une seule vérité. Le
+    // miroir du journal (`model_id` d'engine_loaded) sert de référence
+    // côté monté ; « faux » pour le repli factice.
+    let wanted_model = if wanted == "whisper.cpp" {
+        crate::commands::resolve_whisper_model(cfg, &Config::default_dir().join("models"))
+    } else if wanted == "nemo" {
+        NEMO_MODEL_ID.into()
+    } else if wanted == "parakeet" {
+        "parakeet-tdt-0.6b-v3".into()
+    } else {
+        "faux".into()
+    };
     let current = lock_or_recover(label).clone();
-    current != wanted
+    let current_model = lock_or_recover(mounted_model).clone();
+    current != wanted || current_model != wanted_model
 }
 
 // ------------------------------------------------- diffusion des événements ---

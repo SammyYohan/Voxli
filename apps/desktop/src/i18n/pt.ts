@@ -100,12 +100,7 @@ export const dict: Record<string, string> = {
   "models.verifiedBadge": "corresponde à referência confiável publicada (docs/11 §3)",
 
   // Moteurs (sélection, écran Voix)
-  "engines.choose": "Motor de ditado — a mudança é aplicada de imediato:",
   "engines.auto": "Automático (recomendado)",
-  "engines.whisper": "whisper.cpp — local",
-  "engines.nemo": "Nemotron 3.5 em streaming — em tempo real",
-  "engines.parakeet": "Parakeet TDT — local",
-  "engines.hintModel": "indisponível — instale o modelo abaixo",
   "engines.hintSdk": "indisponível — o SDK não está incluído nesta versão",
   "engines.effective": "Motor ativo: {engine}",
 
@@ -235,4 +230,5 @@ export const dict: Record<string, string> = {
   "models.autoHint": "O núcleo escolhe o melhor modelo whisper presente no disco.",
   "models.noActivation": "Instalado, mas não ativável nesta compilação (falta o SDK do motor) — o ficheiro permanece no disco.",
   "engines.fellFake": "Nenhum modelo utilizável por agora: o motor de demonstração assume — descarregue um modelo whisper abaixo.",
+  "models.introTop": "A sua voz ativa: a LINHA é o seletor — clique = ativação (ou download se estiver ausente). A escolha é escrita de imediato, sem botão de confirmação.",
 };
