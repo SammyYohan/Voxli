@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "Sneltoets is al in gebruik: hij hoort bij een andere actie.",
   "hk.needModifier": "Voeg minstens één modificatietoets toe (Ctrl, Alt, Shift of Win).",
   "hk.unsupported": "Toets hier niet ondersteund: letter, cijfer, F1–F24, Spatie, Tab, Enter of `.",
-  "models.connect": "Gebruiken",
+  "models.autoHint": "De kern kiest het beste whispermodel dat op schijf aanwezig is.",
+  "models.noActivation": "Geïnstalleerd, maar niet activeerbaar in deze build (motor-SDK ontbreekt) — het bestand blijft op schijf.",
+  "engines.fellFake": "Voorlopig geen bruikbaar model: de demo-engine neemt over — download hieronder een whispermodel.",
 };

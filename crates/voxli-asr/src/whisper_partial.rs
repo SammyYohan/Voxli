@@ -148,6 +148,10 @@ where
     /// Ajustement automatique de la fenêtre à la machine mesurée
     /// (production uniquement — les tests restent hermétiques).
     adaptive: bool,
+    /// Ticks consécutifs au-dessus du plafond : la coupe (machine lente)
+    /// n'arrive qu'au deuxième — la fenêtre rétrécit d'abord, on ne coupe
+    /// pas sur une première mesure qui l'adaptation peut suffire.
+    slow_streak: u8,
     disabled: bool,
 }
 
@@ -167,6 +171,7 @@ where
             min_new_samples: MIN_NEW_SAMPLES,
             window_samples: window_samples_from_env(),
             adaptive: true,
+            slow_streak: 0,
             disabled: false,
         }
     }
@@ -190,6 +195,7 @@ where
             min_new_samples,
             window_samples: PARTIAL_WINDOW_SAMPLES,
             adaptive: false,
+            slow_streak: 0,
             disabled: false,
         }
     }
@@ -287,12 +293,19 @@ where
         // éventuelle s'applique ensuite et stoppe tout engagement futur.
         self.adapt_window(took_ms);
         if took_ms > self.max_decode_ms {
-            // Machine trop lente : les partiels s'arrêtent pour le reste
-            // de la session — mais le décodage DÉJÀ PAYÉ n'est pas jeté :
-            // sa lecture reste affichée une dernière fois, puis chaque
-            // tick suivant s'abstient (le pilote consigne la coupure une
-            // seule fois, cf. `is_disabled`).
-            self.disabled = true;
+            // Machine trop lente : PAS de coupe à la première mesure — la
+            // fenêtre vient de rétrécir (`adapt_window`), le coût peut
+            // suffire au tick suivant. DEUX ticks consécutifs au-dessus du
+            // plafond prouvent le plafonnement : les partiels s'arrêtent
+            // alors pour le reste de la session — le décodage DÉJÀ PAYÉ
+            // reste affiché (lecture non jetée), les ticks suivants
+            // s'abstiennent (le pilote consigne la coupure une fois).
+            self.slow_streak = self.slow_streak.saturating_add(1);
+            if self.slow_streak >= 2 {
+                self.disabled = true;
+            }
+        } else {
+            self.slow_streak = 0;
         }
         if text.is_empty() {
             return Ok(Vec::new());
@@ -328,8 +341,10 @@ mod tests {
 
     const US: usize = SAMPLE_RATE_HZ as usize / 10; // 100 ms d'audio
 
-    /// Décodeur lent : le premier décodage passe le plafond -> auto-off,
-    /// mais sa lecture n'est pas jetée (émise une dernière fois).
+    /// Décodeur lent : le premier décodage passé le plafond -> la fenêtre
+    /// rétrécit d'abord (PAS de coupe immédiate) ; le deuxième tick
+    /// consécutif au-dessus du plafond -> auto-off, les lectures déjà
+    /// payées restent émises.
     #[test]
     fn t_partial_disable_on_slow_decode() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -347,20 +362,30 @@ mod tests {
         );
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         let out = sess.drain().unwrap();
-        // Le décodage payé est émis une dernière fois avant la coupure…
+        // Premier tick lent : pas encore coupé (la fenêtre tente de
+        // s'adapter), mais le décodage payé est bien émis.
         assert_eq!(
             out.len(),
             1,
-            "décodage trop lent -> émis une dernière fois puis stop"
+            "premier tick lent -> émis, PAS de coupe immédiate"
         );
         assert!(matches!(out[0], StreamUpdate::Partial { ref text } if text == "texte"));
-        // …et la session ne décode plus jamais.
+        assert!(
+            !sess.disabled(),
+            "une seule mesure lente ne coupe pas (la fenêtre s'adapte)"
+        );
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
+        let out = sess.drain().unwrap();
+        // Deuxième tick lent consécutif : le plafonnement est prouvé, la
+        // session se coupe — la lecture déjà payée reste émise une fois.
+        assert_eq!(out.len(), 1, "lecture du deuxième tick toujours émise");
         assert!(sess.is_disabled(), "session auto-désactivée (trait)");
         assert!(sess.disabled(), "session auto-désactivée (inhérente)");
-        assert_eq!(calls.load(Ordering::Relaxed), 1, "un seul décodage tenté");
+        assert_eq!(calls.load(Ordering::Relaxed), 2, "deux décodages tentés");
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         assert!(sess.drain().unwrap().is_empty(), "plus jamais après off");
-        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
     }
 
     /// Décodeur rapide : audio neuf requis, émission bornée à la fenêtre.

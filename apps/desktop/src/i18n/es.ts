@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "Atajo ya tomado: lo usa otra acción.",
   "hk.needModifier": "Incluye al menos un modificador (Ctrl, Alt, Shift o Win).",
   "hk.unsupported": "Tecla no admitida aquí: letra, dígito, F1–F24, Espacio, Tab, Entrada o `.",
-  "models.connect": "Usar",
+  "models.autoHint": "El núcleo elige el mejor modelo whisper presente en el disco.",
+  "models.noActivation": "Instalado, pero no activable en esta compilación (falta el SDK del motor) — el archivo permanece en el disco.",
+  "engines.fellFake": "Ningún modelo utilizable por ahora: el motor de demostración toma el relevo — descarga un modelo whisper abajo.",
 };

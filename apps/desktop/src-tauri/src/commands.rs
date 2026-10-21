@@ -497,6 +497,42 @@ pub struct EngineInfo {
     pub usable: bool,
 }
 
+/// Résolution du modèle whisper quand la config dit « auto » (ou vide) :
+/// le premier fichier du catalogue présent sur disque, dans l'ordre de
+/// préférence (base — bon équilibre — puis small, medium, large-v3-turbo,
+/// tiny), sinon le défaut du catalogue. Partagée par `engines_list` et
+/// `worker::model_path` : UNE seule vérité, le choix « auto » ne dépend
+/// jamais du compte qui l'interroge (l'incohérence du 21/10 — moteur
+/// « chargé » et table « non installé » — vient des résolutions jumelles).
+///
+/// Garde-fou : un id EXPLICITE de la config n'est honoré QUE s'il est du
+/// type whisper dans le catalogue. Un id nemo/parakeet (empoisonné jadis
+/// par l'ancienne auto-connexion sans garde, code 2 au journal) n'est
+/// JAMAIS confié au loader whisper — repli sur la résolution auto.
+pub(crate) fn resolve_whisper_model(cfg: &Config, models_dir: &std::path::Path) -> String {
+    let explicit = cfg.general.model.as_str();
+    let explicit_whisper = !explicit.is_empty()
+        && explicit != "auto"
+        && MODEL_CATALOG
+            .iter()
+            .any(|e| e.id == explicit && e.kind == "whisper");
+    if explicit_whisper {
+        return explicit.to_string();
+    }
+    for id in [
+        "ggml-base-q5_1.bin",
+        "ggml-small-q5_1.bin",
+        "ggml-medium-q5_0.bin",
+        "ggml-large-v3-turbo-q5_0.bin",
+        "ggml-tiny-q8_0.bin",
+    ] {
+        if models_dir.join(id).is_file() {
+            return id.to_string();
+        }
+    }
+    "ggml-base-q5_1.bin".to_string()
+}
+
 /// Liste des moteurs candidats. La sélection s'écrit via `config_set`
 /// (`general.engine`) et le worker reconstruit son bundle en live
 /// (« engine_stale », RF-20) — jamais de redémarrage requis.
@@ -505,15 +541,11 @@ pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
     let cfg = lock_or_recover(&shared.config).clone();
     let models_dir = Config::default_dir().join("models");
 
-    // whisper.cpp — modèle du réglage utilisateur, ou le défaut catalogue
-    // quand `model` vaut « auto » (même résolution que le worker).
+    // whisper.cpp — modèle du réglage utilisateur, ou le meilleur fichier
+    // présent quand `model` vaut « auto » (MÊME résolution que le worker).
     let whisper_compiled = cfg!(feature = "real-asr");
-    let whisper_model = if cfg.general.model.is_empty() || cfg.general.model == "auto" {
-        "ggml-base-q5_1.bin"
-    } else {
-        cfg.general.model.as_str()
-    };
-    let whisper_usable = whisper_compiled && models_dir.join(whisper_model).is_file();
+    let whisper_model = resolve_whisper_model(&cfg, &models_dir);
+    let whisper_usable = whisper_compiled && models_dir.join(&whisper_model).is_file();
 
     // Nemotron streaming — le SDK est compilé (feature `nemo-stream`) et
     // le GGUF doit être sur le disque.

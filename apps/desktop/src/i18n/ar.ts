@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "الاختصار مشغول بالفعل، فقد استُخدم في إجراء آخر.",
   "hk.needModifier": "أضف مُعدِّلاً واحداً على الأقل (Ctrl أو Alt أو Shift أو Win).",
   "hk.unsupported": "مفتاح غير مدعوم هنا: حرف، رقم، F1–F24، مسافة، Tab، Enter أو `.",
-  "models.connect": "استعمال",
+  "models.autoHint": "يختار النواة أفضل نموذج whisper متوفر على القرص.",
+  "models.noActivation": "مُثبَّت لكن لا يمكن تفعيله في هذا الإصدار (يلزم SDK للمحرك) — يبقى الملف على القرص.",
+  "engines.fellFake": "لا يوجد نموذج قابل للاستخدام حاليًا: يتولى محرك العرض التجريبي — نزّل نموذج whisper أدناه.",
 };

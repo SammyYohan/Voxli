@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "Kurzbefehl ist belegt — er wird von einer anderen Aktion benutzt.",
   "hk.needModifier": "Beziehen Sie mindestens einen Modifikator ein (Strg, Alt, Shift oder Win).",
   "hk.unsupported": "Taste hier nicht unterstützt: Buchstabe, Ziffer, F1–F24, Leertaste, Tab, Eingabe oder `.",
-  "models.connect": "Verwenden",
+  "models.autoHint": "Der Kern wählt das beste auf dem Datenträger vorhandene Whisper-Modell.",
+  "models.noActivation": "Installiert, aber in diesem Build nicht aktivierbar (Motor-SDK fehlt) — die Datei bleibt auf dem Datenträger.",
+  "engines.fellFake": "Zurzeit kein nutzbares Modell: das Demo-Modell übernimmt — laden Sie unten ein Whisper-Modell herunter.",
 };

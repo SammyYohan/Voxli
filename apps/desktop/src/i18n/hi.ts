@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "शॉर्टकट पहले से व्यस्त है। यह दूसरी क्रिया द्वारा प्रयुक्त हो रहा है।",
   "hk.needModifier": "कम से कम एक मॉडिफ़ायर जोड़ें (Ctrl, Alt, Shift या Win)।",
   "hk.unsupported": "यहाँ असमर्थित कुंजी: अक्षर, अंक, F1–F24, Space, Tab, Enter या `।",
-  "models.connect": "उपयोग करें",
+  "models.autoHint": "कोर डिस्क पर उपलब्ध सर्वश्रेष्ठ whisper मॉडल चुनता है।",
+  "models.noActivation": "स्थापित, पर इस बिल्ड में सक्रिय नहीं किया जा सकता (इंजन SDK चाहिए) — फ़ाइल डिस्क पर रहेगी।",
+  "engines.fellFake": "अभी कोई प्रयोग योग्य मॉडल नहीं: डेमो इंजन संभाल रहा है — नीचे से whisper मॉडल डाउनलोड करें।",
 };

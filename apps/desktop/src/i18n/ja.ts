@@ -211,5 +211,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "ショートカットは使用中です。別の操作がすでに使っています。",
   "hk.needModifier": "修飾キー (Ctrl・Alt・Shift・Win) を最低1つ含めてください。",
   "hk.unsupported": "ここでは未対応のキーです。英数字・F1〜F24・Space・Tab・Enter・` のみ。",
-  "models.connect": "使用する",
+  "models.autoHint": "コアがディスク上の最良の whisper モデルを選びます。",
+  "models.noActivation": "ダウンロード済みですが、このビルドでは有効化できません (エンジン SDK が必要)。ファイルはディスクに保持されます。",
+  "engines.fellFake": "現時点で利用可能なモデルがありません: デモエンジンに切り替わりました。下で whisper モデルをダウンロードしてください。",
 };

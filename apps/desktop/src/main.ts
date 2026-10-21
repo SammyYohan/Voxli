@@ -554,67 +554,162 @@ async function refreshLicense(): Promise<LicenseInfo> {
   return lic;
 }
 
+/** Activation d'un modèle whisper installé : `general.model` = id et
+ * `general.engine` = whisper — écriture live (RF-01), le worker
+ * reconstruit son bundle ; la table et les radios sont deux vues de la
+ * MÊME config (jamais deux vérités). */
+async function activateWhisperModel(id: string): Promise<void> {
+  if (config === null) return;
+  const changed =
+    config.general.model !== id || config.general.engine !== "whisper";
+  if (!changed) return void refreshModels();
+  config.general.model = id;
+  config.general.engine = "whisper";
+  try {
+    await invoke("config_set", { newConfig: config });
+  } catch (err) {
+    showNotice(String(err));
+  }
+  void refreshEngines();
+  void effectiveEngineLine();
+}
+
 async function refreshModels(): Promise<void> {
   const models: ModelInfo[] = await invoke("models_list");
   knownModels.splice(0, knownModels.length, ...models);
+
+  // Migration : un id de modèle non-whisper dans la config (empoisonné
+  // jadis par l'ancienne auto-connexion sans garde — moteur factice au
+  // démarrage) retourne à « auto », écrit UNE fois ; les tours suivants
+  // constatent une config déjà saine et ne réécrivent rien.
+  if (config !== null) {
+    const cfg = config;
+    if (cfg.general.model !== "auto") {
+      const info = models.find((m) => m.id === cfg.general.model);
+      if (info === undefined || info.kind !== "whisper") {
+        cfg.general.model = "auto";
+        cfg.general.engine = "auto";
+        try {
+          await invoke("config_set", { newConfig: cfg });
+        } catch (err) {
+          showNotice(String(err));
+        }
+      }
+    }
+  }
+
   const body = $id("models-body") as HTMLElement;
   body.replaceChildren();
+
+  // Sélection à la Handy : la LIGNE est le sélecteur. La première ligne
+  // n'est pas un modèle — c'est le choix « auto » (le noyau prend le
+  // meilleur modèle présent ; cf. `resolve_whisper_model`, une seule
+  // vérité worker/engines_list).
+  const selectedAuto =
+    config !== null &&
+    config.general.model === "auto" &&
+    config.general.engine === "auto";
+  const autoRow = document.createElement("tr");
+  autoRow.className = "selectable";
+  autoRow.tabIndex = 0;
+  autoRow.innerHTML =
+    `<td><b>${escapeHtml(t("engines.auto"))}</b><br />` +
+    `<span class="muted">${escapeHtml(t("models.autoHint"))}</span></td>` +
+    `<td>${selectedAuto ? "✓" : ""}</td><td></td><td></td>`;
+  autoRow.addEventListener("click", async () => {
+    if (config === null) return;
+    if (selectedAuto) return;
+    config.general.engine = "auto";
+    config.general.model = "auto";
+    try {
+      await invoke("config_set", { newConfig: config });
+    } catch (err) {
+      showNotice(String(err));
+    }
+    void refreshModels();
+    void refreshEngines();
+    void effectiveEngineLine();
+  });
+  body.appendChild(autoRow);
+
   for (const m of models) {
     const tr = document.createElement("tr");
     const footprint = m.sha256 ? `${m.sha256.slice(0, 16)}…` : "";
     const sizeTxt = m.sizeMb !== null ? ` ${t("models.sizeMb", { n: m.sizeMb })}` : "";
+    const selected =
+      config !== null &&
+      config.general.engine === "whisper" &&
+      config.general.model === m.id;
+    // La ligne EST le sélecteur (Handy-style) : ✓ dans la colonne État
+    // = le choix actif. Offlistes (nemo/parakeet) : non sélectionnables.
     tr.innerHTML =
       `<td>${escapeHtml(m.label)}<br /><span class="muted">` +
       `${escapeHtml(m.id)}${escapeHtml(sizeTxt)}` +
       `<br /><span class="license">${escapeHtml(m.license)}</span></span></td>` +
-      `<td>${m.installed ? `<b>${escapeHtml(t("models.installed"))}</b>` : escapeHtml(t("models.notInstalled"))}</td>` +
+      `<td>${selected ? "✓ " : ""}${
+        m.installed ? `<b>${escapeHtml(t("models.installed"))}</b>` : escapeHtml(t("models.notInstalled"))
+      }</td>` +
       `<td class="mono">${escapeHtml(footprint)}${m.verified ? ` <b title="${escapeHtml(t("models.verifiedBadge"))}">✓</b>` : ""}</td>`;
     const td = document.createElement("td");
     if (m.installed) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = t("models.remove");
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation(); // la ligne sélectionne, le bouton retire
         try {
           await invoke("models_remove", { id: m.id });
+          // Le modèle actif vient de partir : retour à « auto » écrit
+          // immédiatement (le noyau résout le meilleur whisper présent) —
+          // jamais de moteur muet sur une config pointant vers rien.
+          if (config !== null && config.general.model === m.id) {
+            config.general.model = "auto";
+            config.general.engine = "auto";
+            await invoke("config_set", { newConfig: config });
+            void refreshEngines();
+          }
           void refreshModels();
-          void refreshEngines();
         } catch (err) {
           showNotice(String(err));
         }
       });
       td.appendChild(btn);
-      // Utiliser : le modèle installé est instantanément branché au
-      // moteur (choix explicite, config écrite live comme le sélecteur
-      // radio d'engine — RF-01 ; seulement si ce n'est déjà lui).
-      if (m.kind === "whisper" && config !== null && config.general.model !== m.id) {
-        const cfg = config;
-        const use = document.createElement("button");
-        use.type = "button";
-        use.textContent = t("models.connect");
-        use.className = "secondary";
-        use.style.marginLeft = "8px";
-        use.addEventListener("click", async () => {
-          try {
-            cfg.general.model = m.id;
-            await invoke("config_set", { newConfig: cfg });
-          } catch (err) {
-            showNotice(String(err));
-          }
-          void refreshEngines();
-        });
-        td.appendChild(use);
-      }
     } else {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = t("models.download");
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation(); // la ligne télécharge, le bouton aussi —
+        // pas de double déclenchement sur le clic de ligne.
         void startDownload(m.id);
       });
       td.appendChild(btn);
     }
     tr.appendChild(td);
+
+    // La ligne EST le sélecteur (Handy-style) : survol cadré + clic.
+    // whisper installé = activation ; whisper absent = téléchargement ;
+    // nemo/parakeet = non sélectionnable (SDK requis dans un autre build)
+    // — l'incohérence du 21/10 : télécharger un moteur inactivable
+    // poussaient la config vers un modèle que le worker ne sait pas
+    // monter (repli factice silencieux… réglé par le garde ci-dessous).
+    if (m.kind !== "whisper") {
+      tr.title = t("models.noActivation");
+    } else {
+      // classes + clic ; `selected` est déjà calculé en haut de boucle.
+      tr.classList.add("selectable");
+      if (selected) tr.classList.add("selected");
+      tr.tabIndex = 0;
+      if (m.installed) {
+        tr.addEventListener("click", () => {
+          void activateWhisperModel(m.id);
+        });
+      } else {
+        tr.addEventListener("click", () => {
+          void startDownload(m.id);
+        });
+      }
+    }
     body.appendChild(tr);
   }
   // Règle Simple/Avancé : le catalogue détaillé (table des modèles) vit
@@ -690,7 +785,11 @@ async function setCompute(choice: string): Promise<void> {
 }
 
 /** Moteur effectivement monté (source : `state_get`, donc le worker) —
- * le réel, pas le choix ; ligne distincte quand il diffère de la sélection. */
+ * le réel, pas le choix ; ligne distincte quand il diffère de la sélection.
+ * Repaint AUSSI le badge d'état et le mot moteur : appelée au changement
+ * de langue d'interface pour que le dynamique suive le statique. */
+let lastEffectiveEngine: string | null = null;
+
 async function effectiveEngineLine(): Promise<void> {
   const line = document.getElementById("engine-effective");
   if (line === null) return;
@@ -700,6 +799,19 @@ async function effectiveEngineLine(): Promise<void> {
     const name = raw === `engine.${s.engine}` ? s.engine : raw;
     line.hidden = false;
     line.textContent = t("engines.effective", { engine: name });
+    // Badge + mot moteur : la même source que `state://changed`, sans
+    // attendre l'événement suivant (changement de langue notamment).
+    const badgeText = t(`state.${s.state}`);
+    ($id("badge") as HTMLElement).textContent =
+      badgeText === `state.${s.state}` ? s.state : badgeText;
+    ($id("engine") as HTMLElement).textContent = name;
+    // Transition → factice : avertissement UNE fois par transition
+    // (le repli noyau est déjà consigné côté journal ; ici l'UI dit
+    // pourquoi la dictée semble « fausse » et comment se soigner).
+    if (s.engine === "fake" && lastEffectiveEngine !== null && lastEffectiveEngine !== "fake") {
+      showNotice(t("engines.fellFake"));
+    }
+    lastEffectiveEngine = s.engine;
   } catch {
     // Lecture impossible : la ligne reste masquée (jamais de fausse info).
   }
@@ -997,6 +1109,13 @@ function wireEvents(): void {
   uiLangSel.addEventListener("change", () => {
     applyUiLanguage(uiLangSel.value);
     rebuildAsrLanguageLabels();
+    // Le textes construits APRÈS applyDom (boutons reconstruits, ligne
+    // moteur effectif, badge, puces vocabulaire) suivent la langue :
+    // sans ces repeints, des zones restaient dans la langue précédente
+    // (incohérence constatée le 21/10).
+    void refreshModels();
+    void effectiveEngineLine();
+    renderVocabChips();
   });
 
   // Calcul CPU/GPU : écriture immédiate (même sémantique que le moteur —
@@ -1158,20 +1277,26 @@ async function main(): Promise<void> {
       }
     } else {
       showNotice(t("notice.modelOk"));
-      // Connexion automatique : le modèle fraîchement téléchargé devient
-      // le modèle actif du moteur whisper (l'utilisateur vient de choisir
-      // ce fichier — pas d'écran de question supplémentaire ; la sélection
-      // reste modifiable à tout moment dans le catalogue). Écriture
-      // immédiate = même sémantique que le choix de moteur (RF-01), le
-      // worker reconstruit son bundle en live.
+      // Connexion automatique : UNIQUEMENT pour les modèles whisper
+      // (activables du build courant). Nemotron/Parakeet restent
+      // téléchargés mais ne JAMAIS être écrits dans la config — un modèle
+      // que le worker ne peut pas monter = repli factice silentieux
+      // (incohérence constatée le 21/10). La liste reste modifiable à
+      // tout moment dans le catalogue.
       const id = ev.payload.id;
-      if (config !== null && config.general.model !== id) {
+      const info = knownModels.find((m) => m.id === id);
+      if (config !== null && info !== undefined && info.kind === "whisper") {
         try {
           config.general.model = id;
+          config.general.engine = "whisper";
           await invoke("config_set", { newConfig: config });
+          void refreshEngines();
+          void effectiveEngineLine();
         } catch (err) {
           showNotice(String(err));
         }
+      } else if (config !== null && info !== undefined) {
+        showNotice(t("models.noActivation"));
       }
     }
     void refreshModels();

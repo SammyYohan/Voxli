@@ -211,5 +211,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "快捷键已被占用：另一项操作正在使用它。",
   "hk.needModifier": "至少包含一个修饰键 (Ctrl、Alt、Shift 或 Win)。",
   "hk.unsupported": "此处不支持的按键：字母、数字、F1–F24、空格、Tab、Enter 或 `。",
-  "models.connect": "使用",
+  "models.autoHint": "核心会自动选用磁盘上存在的最佳 whisper 模型。",
+  "models.noActivation": "已下载，但在此版本中无法启用（需要引擎 SDK）——文件保留在磁盘上。",
+  "engines.fellFake": "当前没有可用模型：演示引擎临时接管——请在下方下载 whisper 模型。",
 };

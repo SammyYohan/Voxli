@@ -395,6 +395,28 @@ table.list .wrap {
   word-break: break-word;
 }
 
+/* Sélection à la Handy : la LIGNE du catalogue est le sélecteur.
+   Survol cadré, ligne active soulignée par l'accent — le clic active
+   (whisper installé) ou lance le téléchargement (whisper absent). */
+table.list tbody tr.selectable {
+  cursor: pointer;
+}
+
+table.list tbody tr.selectable:hover,
+table.list tbody tr.selectable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+table.list tbody tr.selected {
+  background: var(--chip);
+}
+
+table.list tbody tr.selected td:first-child strong,
+table.list tbody tr.selected td:first-child b {
+  color: var(--accent);
+}
+
 /* Vumètre (RF-09) : local, passif, jamais enregistré. */
 .meter {
   height: 8px;

@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "Skrót jest zajęty — jest już używany przez inną akcję.",
   "hk.needModifier": "Dodaj co najmniej jeden modyfikator (Ctrl, Alt, Shift lub Win).",
   "hk.unsupported": "Klawisz tu nieobsługiwany: litera, cyfra, F1–F24, Spacja, Tab, Enter lub `.",
-  "models.connect": "Użyj",
+  "models.autoHint": "Rdzeń wybiera najlepszy model whisper obecny na dysku.",
+  "models.noActivation": "Zainstalowano, ale nie można aktywować w tej kompilacji (brakuje SDK silnika) — plik pozostaje na dysku.",
+  "engines.fellFake": "Na razie brak użytecznego modelu: przejmuje silnik demo — pobierz model whisper poniżej.",
 };

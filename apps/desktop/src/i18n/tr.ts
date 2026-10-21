@@ -232,5 +232,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "Kısayol dolu — başka bir eylem tarafından kullanılıyor.",
   "hk.needModifier": "En az bir değiştirici ekleyin (Ctrl, Alt, Shift veya Win).",
   "hk.unsupported": "Burada desteklenmeyen tuş: harf, rakam, F1–F24, Boşluk, Tab, Enter veya `.",
-  "models.connect": "Kullan",
+  "models.autoHint": "Çekirdek diskteki en iyi whisper modelini seçer.",
+  "models.noActivation": "İndirildi ancak bu derlemede etkinleştirilemez (motor SDK'sı gerekir) — dosya diskte kalır.",
+  "engines.fellFake": "Şu anda kullanılabilir model yok: demo motor devralıyor — aşağıdan bir whisper modeli indirin.",
 };

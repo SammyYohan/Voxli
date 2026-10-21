@@ -211,5 +211,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "단축키가 이미 사용 중입니다. 다른 동작이 사용하고 있습니다.",
   "hk.needModifier": "수정 키 (Ctrl, Alt, Shift 또는 Win)를 하나 이상 포함하세요.",
   "hk.unsupported": "여기서 지원되지 않는 키입니다. 영문자, 숫자, F1–F24, Space, Tab, Enter 또는 `만 가능합니다.",
-  "models.connect": "사용",
+  "models.autoHint": "코어가 디스크에 있는 최적의 whisper 모델을 선택합니다.",
+  "models.noActivation": "다운로드는 되었지만 이 빌드에서는 활성화할 수 없습니다 (엔진 SDK 필요) — 파일은 디스크에 유지됩니다.",
+  "engines.fellFake": "지금은 사용 가능한 모델이 없습니다: 데모 엔진이 대신 동작합니다 — 아래에서 whisper 모델을 다운로드하세요.",
 };

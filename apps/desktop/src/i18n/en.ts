@@ -236,5 +236,7 @@ export const dict: Record<string, string> = {
   "hk.conflict": "This shortcut is busy — it is already used by another action.",
   "hk.needModifier": "Include at least one modifier (Ctrl, Alt, Shift or Win).",
   "hk.unsupported": "Key not supported here: a letter, digit, F1–F24, Space, Tab, Enter or `.",
-  "models.connect": "Use",
+  "models.autoHint": "The core picks the best whisper model present on disk.",
+  "models.noActivation": "Downloaded, but not activatable in this build (engine SDK needed) — the file stays on disk.",
+  "engines.fellFake": "No usable model right now: the demo engine took over — download a whisper model below.",
 };

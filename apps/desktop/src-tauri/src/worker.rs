@@ -1081,12 +1081,9 @@ fn to_orchestrator_cfg(c: &Config, pro_bindings: bool) -> OrchestratorCfg {
 #[cfg(feature = "real-asr")]
 fn model_path(cfg: &Config) -> std::path::PathBuf {
     let dir = Config::default_dir().join("models");
-    let name = if cfg.general.model.is_empty() || cfg.general.model == "auto" {
-        "ggml-base-q5_1.bin"
-    } else {
-        cfg.general.model.as_str()
-    };
-    dir.join(name)
+    // « auto » = le meilleur whisper présent (MÊME résolution que
+    // `engines_list` — une seule vérité, cf. `resolve_whisper_model`).
+    dir.join(crate::commands::resolve_whisper_model(cfg, &dir))
 }
 
 /// Choix de calcul normalisé (`auto`|`duo`|`cpu`|`gpu`) : vide ou inconnu
