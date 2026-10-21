@@ -256,6 +256,76 @@ cargo test -p voxli-secure --features dpapi          # secrets Windows
 powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1   # modèle ggml
 ```
 
+#### Accélération GPU optionnelle (Vulkan — Intel/AMD/NVIDIA)
+
+Le build **nominal reste CPU-only** : le GPU est une opportunité (machine
+qui en possède), jamais une contrainte. Prérequis au build : le **SDK
+Vulkan** (l'outil `glslc` compile les shaders de ggml) ; à l'exécution,
+le pilote de la carte doit exposer `vulkan-1.dll` (natif partout).
+
+```powershell
+winget install --id LunarG.VulkanSDK -e --accept-source-agreements
+$env:Path += ";C:\VulkanSDK\<version>\Bin"        # glslc accessible
+
+# Répertoire cible COURT obligatoire : la sous-compilation des shaders
+# Vulkan (vulkan-shaders-gen) déclenche une erreur MSBuild MSB3501
+# « chemin introuvable » au-delà de ~240 caractères (limite Windows
+# MAX_PATH sur les tlogs MSBuild) — un cible-court contourne net.
+$env:CARGO_TARGET_DIR = "C:\t"                    # 180 caractères de moins
+
+cargo test -p voxli-asr --features whisper-gpu    # liaison Vulkan venue
+cargo build -p voxli-desktop --features "custom-protocol,gpu"
+```
+
+Le choix MOTEUR/MACHINE est laissé à l'utilisateur dans Réglages →
+Voix → « Calcul des transcriptions » : **Auto** (défaut du compilé —
+GPU quand un backend est embarqué et utilisable, repli CPU interne de
+ggml à l'échec d'initialisation), **CPU** (refus explicite — `use_gpu =
+false`, même sur un build GPU), **GPU** (attendu, l'écran montre
+l'état), **Duo** (deux contextes du même poids : les partiels d'affichage
+passent sur GPU *demandé*, le texte final reste sur CPU — repli
+transparent sur un seul contexte si le second refuse, journal explicite ;
+RF-22/RF-34). Chaque montage de moteur consigne `calcul:<choix>` au journal ;
+les latences réelles (`latency.stage=inference`) restent la preuve de
+l'usage (jamais de promesse non mesurée, RF-29). Variable
+d'environnement `VOXLI_COMPUTE=auto|cpu|gpu` pour tester sans changer la
+config (prioritaire sur elle).
+
+#### Partiels « vivants » (fenêtre adaptative — texte affiché pendant la prise)
+
+La pastille écrit le texte pendant la prise (`dictation://partial`), via un
+re-décodage fenêtré borné en coût — **la fenêtre s'adapte à la machine
+mesurée**, sans réglage ni variable d'environnement : départ 2 s,
+convergence vers ~1,5 s de décodage par tick, plancher 0,6 s, plafond 8 s
+(machine rapide = prise couverte en entier). Une machine trop lente pour
+tenir même le plancher coupe les partiels *en douceur* pour le reste de la
+session (comportement batch, journal explicite). Réglage avancé : valeur
+de départ via `VOXLI_PARTIAL_WINDOW_SEC` ; la mesure seule décide
+(`latency.stage=inference` + `partiels-coupés:…` au journal).
+
+#### Raccourcis : capture à l'appui
+
+Dans Réglages → Raccourcis, un champ cliqué écoute le clavier : on appuie
+sur les touches, la combinaison s'écrit (Ctrl/Alt/Shift/Win + lettre,
+chiffre, F1–F24, Espace, Tab, Entrée, `). Une touche hors liste blanche
+est expliquée (jamais muette), un doublon entre deux actions est marqué
+**« occupé »** en rouge et *n'est pas enregistré* — la même règle que le
+noyau (`validate_before_register`). Échap annule. Note : la combinaison
+d'un raccourci *actif* reste interceptée par le système tant qu'il est
+enregistré — la capture sert à choisir une combinaison libre.
+
+#### Catalogue élargi + connexion automatique
+
+La zone de téléchargement propose désormais, hors whisper *base* :
+**tiny** (43 Mo, machines modestes), **small**, **medium** (554 Mo) et
+**large-v3-turbo** (574 Mo, précision maximale, GPU conseillé) —
+toujours ggerganov/whisper.cpp, licence affichée avant tout téléchargement
+(P1-3). Un modèle fraîchement téléchargé est **branché automatiquement**
+au moteur (config écrite live, même sémantique que le choix de moteur) ;
+un modèle déjà installé affiche un bouton **« Utiliser »** pour y revenir
+sans re-télécharger. Nemotron/Parakeet restent listés et refusés proprement
+tant que leur SDK n'est pas installé (aucun faux « installé »).
+
 #### Nemotron 3.5 streaming (texte en direct dans la pastille)
 
 Moteur **Nemotron 3.5 ASR streaming 0.6B** (GGUF q8_0, ≈ 708 Mo, 40 langues,
@@ -377,8 +447,9 @@ paquet, communication) :
 
 ## 12. Multilingue & documents orientés utilisateurs
 
-- Langues du produit (Whisper 95 + auto, Parakeet 25, Nemotron 40, UI
-  `fr`/`en`) : [`docs/langues-supportees.md`](docs/langues-supportees.md).
+- Langues du produit (Whisper 95 + auto, Parakeet 25, Nemotron 40 ;
+  interface en 15 langues dont détection automatique du système) :
+  [`docs/langues-supportees.md`](docs/langues-supportees.md).
 - La vie privée dans Voxli, écrit pour l'utilisateur :
   [`docs/vie-privee.md`](docs/vie-privee.md).
 - Signaler une faille : [`SECURITY.md`](SECURITY.md). Contribuer :

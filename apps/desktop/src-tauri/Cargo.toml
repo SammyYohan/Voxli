@@ -15,6 +15,10 @@ tauri-plugin-global-shortcut = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# Ouverture de liens externes (uniquement les URLs de don, permissions
+# scopées dans capabilities/default.json) — aucune autre voie réseau.
+tauri-plugin-opener = "2"
+
 # Téléchargement de modèles + empreinte SHA-256 (RF-20) : UNE action
 # explicite de l'utilisateur, la seule voie réseau du produit (RF-36).
 ureq = "2"
@@ -36,6 +40,10 @@ voxli-win = { path = "../../../crates/voxli-win" }
 [features]
 default = []
 real-asr = ["voxli-asr/whisper"]
+# whisper.cpp avec backend GPU (Vulkan) — opt-in : SDK Vulkan requis AU
+# BUILD (glslc) ; à l'exécution le pilote doit exposer vulkan-1.dll. Le
+# choix auto/cpu/gpu est ensuite à la charge de l'utilisateur (réglages).
+gpu = ["real-asr", "voxli-asr/whisper-gpu"]
 parakeet-asr = ["voxli-asr/parakeet"]
 # Nemotron 3.5 streaming (SDK NeMo-Speech.cpp, ADR-06) — opt-in : la
 # compilation exige le SDK installé (build.rs de voxli-win lie et copie

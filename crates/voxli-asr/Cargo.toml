@@ -28,6 +28,12 @@ voxli-win = { path = "../voxli-win", optional = true }
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
+# Accélération GPU optionnelle du moteur whisper.cpp : compile ggml avec
+# le backend Vulkan (pilotes Intel/AMD/NVIDIA ; le contrôle CUDA suit le
+# même schéma). Le build nominal reste CPU-only : le GPU est une
+# OPPORTUNITÉ de plus sur les machines qui en possèdent, jamais une
+# contrainte (prérequis au build : SDK Vulkan/glslc, voir README § 6).
+whisper-gpu = ["whisper", "whisper-rs/vulkan"]
 parakeet = ["dep:sherpa-onnx"]
 remote = ["dep:ureq"]
 nemo-stream = ["dep:voxli-win", "voxli-win/nemo"]

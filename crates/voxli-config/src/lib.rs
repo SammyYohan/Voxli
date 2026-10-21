@@ -133,6 +133,12 @@ pub struct General {
     /// `language` ci-dessus (langue d'écoute ASR, RF-17). Toute valeur
     /// inconnue retombe sur `fr` côté frontend (jamais d'écran abscons).
     pub ui_language: String,
+    /// Choix de calcul des transcriptions (`auto`|`cpu`|`gpu`) — additif
+    /// v5 rétro-compatible (serde conteneur `default`) : toute valeur
+    /// inconnue/vide retombe sur `auto` côté noyau (RF-29). `auto` laisse
+    /// whisper.cpp utiliser un GPU quand le build en embarque un ; `cpu`
+    /// le refuse explicitement ; `gpu` l'exige du build.
+    pub compute: String,
     pub engine: EngineChoice,
     pub model: String,
     pub post_processing: PostProcessing,
@@ -144,6 +150,7 @@ impl Default for General {
         Self {
             language: "fr".into(),
             ui_language: "fr".into(),
+            compute: "auto".into(),
             engine: EngineChoice::default(),
             model: "auto".into(),
             post_processing: PostProcessing::default(),
@@ -497,11 +504,16 @@ fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> 
             }
             // 4 → 5 : la langue de l'interface est séparée de la langue
             // d'écoute (`uiLanguage` apparaît, défaut `fr`) ; `language`
-            // garde son unique rôle de langue d'inférence ASR.
+            // garde son unique rôle de langue d'inférence ASR. Le choix de
+            // calcul CPU/GPU (`compute`) est additif au même titre — tout
+            // ancien fichier existe, la valeur sûre est `auto`.
             4 => {
                 if let Some(general) = value.get_mut("general").and_then(|g| g.as_object_mut()) {
                     if !general.contains_key("uiLanguage") {
                         general.insert("uiLanguage".into(), serde_json::json!("fr"));
+                    }
+                    if !general.contains_key("compute") {
+                        general.insert("compute".into(), serde_json::json!("auto"));
                     }
                 }
             }

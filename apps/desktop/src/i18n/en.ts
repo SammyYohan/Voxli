@@ -1,0 +1,240 @@
+/** i18n Voxli v2 — référence ANGLAISE. Toute langue est une traduction de
+ * ce fichier ; une clé manquante chez une langue retombe sur `en`, puis
+ * `fr` (jamais d'écran abscons, RF-29). Traductions relues par des natifs
+ * quand disponible — corrections bienvenues.
+ */
+export const dict: Record<string, string> = {
+  // Squelette / mode simple-avancé
+  "app.tagline": "Voice dictation, 100% local. Your words never leave this machine — unless you explicitly ask for it.",
+  "mode.advanced": "Advanced mode — every setting",
+  "mode.theme": "Theme",
+  "theme.system": "follow the system",
+  "theme.light": "light",
+  "theme.dark": "dark",
+
+  // Onboarding 1-clic
+  "onboarding.title": "🚀 Welcome to Voxli!",
+  "onboarding.intro": "Ready for instant, smooth, 100% local voice dictation?",
+  "onboarding.desc": "To start right away, install the compact Whisper model in one click (57 MB, downloaded once, everything runs offline):",
+  "onboarding.download": "⚡ Download and enable Whisper (1 click)",
+
+  // État
+  "state.section": "Status",
+  "state.engineWord": "engine:",
+  "audio.meterTitle": "Microphone level — never sent, never recorded",
+  "state.idle": "idle",
+  "state.recording": "recording…",
+  "state.finalizing": "finalizing…",
+  "state.transcribing": "transcribing…",
+  "state.post-processing": "post-processing…",
+  "state.inserting": "inserting…",
+  "state.recovery": "error — retry possible",
+
+  // Général
+  "general.section": "General",
+  "general.languageLabel": "Dictation language (auto = the app detects it)",
+  "general.languageAuto": "Automatic detection (recommended)",
+  "general.uiLanguageLabel": "Interface language",
+  "general.uiSystem": "System language (auto-detected)",
+  "general.postLabel": "Text formatting",
+  "general.postNone": "none — raw text",
+  "general.postRules": "French rules (default)",
+  "general.save": "Save settings",
+  "general.saved": "saved — applied live",
+
+  // Raccourcis
+  "hk.section": "Shortcuts & triggering",
+  "hk.pushLabel": "Dictation",
+  "hk.modeLabel": "Trigger mode",
+  "hk.hold": "push and hold",
+  "hk.toggle": "toggle (one press = on/off)",
+  "hk.doublePushLock": "double press = locked",
+  "hk.pasteLabel": "Paste the last text",
+  "hk.showLabel": "Show the last text",
+  "hk.note": "Applied to the recording immediately (RF-01) — if another application already owns a shortcut, a message says so.",
+
+  // Vocabulaire
+  "vocab.section": "Dictionary & custom vocabulary",
+  "vocab.intro": "Teach Voxli your acronyms, proper names, companies or business jargon. These terms are injected into Whisper for surgical precision (Magic Formatting).",
+  "vocab.profileLabel": "Vocabulary profile:",
+  "vocab.profileDefault": "General (active everywhere)",
+  "vocab.profileCode": "“Code & Dev” profile",
+  "vocab.profileEmail": "“Emails & Messages” profile",
+  "vocab.wordPlaceholder": "Exact term (e.g. Voxli, CEO, SaaS)",
+  "vocab.variantsPlaceholder": "Spoken variants (optional, e.g. voxli, boxeee)",
+  "vocab.add": "+ Add",
+  "vocab.empty": "No custom word in this profile yet. Add proper names, acronyms or business terms.",
+  "vocab.deleteTitle": "Remove this term",
+  "vocab.exportCsv": "Export as CSV",
+  "vocab.importCsv": "Import a CSV file",
+
+  // Audio
+  "audio.section": "Audio settings",
+  "audio.deviceLabel": "Microphone",
+  "audio.deviceDefault": "System default microphone",
+  "audio.defaultSuffix": "(default)",
+  "audio.refresh": "Refresh list",
+  "audio.preRollLabel": "Head start before the press (pre-roll, ms)",
+  "audio.maxRecLabel": "Maximum recording length (s)",
+  "audio.vadLabel": "Voice detection",
+  "audio.vadLow": "permissive — catches far-away speech",
+  "audio.vadBalanced": "balanced (default)",
+  "audio.vadHigh": "strict — ignores noise",
+
+  // Modèles
+  "models.section": "Voice (recognition engine)",
+  "models.intro": "Downloading is <b>your explicit action</b>, here, and the <b>only</b> network connection Voxli opens from this screen. Every file is verified after reception; the proof stays in a local log.",
+  "models.colModel": "Model",
+  "models.colState": "Status",
+  "models.colCheck": "Integrity",
+  "models.colActions": "Actions",
+  "models.installed": "installed",
+  "models.notInstalled": "not installed",
+  "models.remove": "remove",
+  "models.download": "download",
+  "models.downloading": "downloading…",
+  "models.downloadingName": "Downloading {name}…",
+  "models.progress": "{name} — {n} MB / {n2} MB ({p}%)",
+  "models.progressUnknown": "{name} — {n} MB (size unknown)",
+  "models.cancel": "Cancel",
+  "models.cancelled": "Download cancelled — resumable at any time.",
+  "models.busy": "A download is already running.",
+  "models.mbDownloaded": "{n} MB downloaded",
+  "models.sizeMb": "— about {n} MB",
+  "models.verifiedBadge": "matches the published trusted reference (docs/11 §3)",
+
+  // Moteurs (sélection, écran Voix)
+  "engines.choose": "Dictation engine — the change applies immediately:",
+  "engines.auto": "Automatic (recommended)",
+  "engines.whisper": "whisper.cpp — local",
+  "engines.nemo": "Nemotron 3.5 streaming — real-time",
+  "engines.parakeet": "Parakeet TDT — local",
+  "engines.hintModel": "unavailable — install its model below",
+  "engines.hintSdk": "unavailable — SDK not included in this build",
+  "engines.effective": "Active engine: {engine}",
+
+  // Profils
+  "profiles.section": "Profiles & dictionaries",
+  "profiles.lockNotice": "Multiple profiles: a Pro feature. Without a licence only the default profile applies — your bindings stay recorded here.",
+  "profiles.codeAppsLabel": "“Code” profile — associated apps (comma-separated)",
+  "profiles.emailAppsLabel": "“Email” profile — associated apps",
+  "profiles.dictCodeSummary": "“Code” dictionary (one entry per line: target|variant1|variant2)",
+  "profiles.dictEmailSummary": "“Email” dictionary",
+  "profiles.exportFile": "Export to file",
+  "profiles.reimportFile": "Re-import from the chosen file",
+  "profiles.importCsvCfg": "Import this CSV into the configuration",
+  "profiles.note": "The dictionary replaces your variants (metallurgy → “metallurjie” becomes <i>metallurgy</i> again) even in “raw text” mode: it is your correction, not a product rewrite.",
+  "dict.imported": "Dictionary imported: {n} entry(ies).",
+
+  // Historique
+  "history.section": "History",
+  "history.keepLabel": "Keep transcripts",
+  "history.no": "no — nothing is kept (browser default)",
+  "history.yes": "yes — I want it, deletable at any time",
+  "history.whereLabel": "Where to keep",
+  "history.memory": "memory only (gone at shutdown)",
+  "history.disk": "encrypted disk (Windows key, DPAPI)",
+  "history.retentionLabel": "Retention (days)",
+  "history.purge": "Delete everything now",
+  "history.purged": "history purged",
+  "history.colDate": "Date",
+  "history.colEngine": "Engine",
+  "history.colText": "Text",
+  "history.delete": "delete",
+  "history.empty": "no entry",
+
+  // Licence
+  "license.section": "Licence",
+  "license.active": "Active licence — holder: {name}.",
+  "license.grace": "Licence expired — offline grace period: {days} day(s) of Pro features left, then back to the free edition.",
+  "license.free": "Free edition — everything local works; Pro features (encrypted history, multiple profiles) stay hidden.",
+  "license.noFeatures": "no Pro feature",
+  "license.importSummary": "Import a licence code",
+  "license.importNote": "Verification is local and offline (Ed25519 signature). Nothing is sent.",
+  "license.importAction": "Verify and import",
+  "license.imported": "licence imported and verified.",
+
+  // Vie privée
+  "privacy.simpleNote": "Fully local: nothing leaves this machine without your explicit consent. Details (consents, context reading) live in advanced mode.",
+  "privacy.section": "Privacy",
+  "privacy.strictLabel": "Strict local mode",
+  "privacy.strictOn": "on — nothing leaves this machine",
+  "privacy.strictOff": "off — I unlock it on consent",
+  "privacy.consentAsrLabel": "Consent: remote transcription (BYOK, P4)",
+  "privacy.never": "never (default)",
+  "privacy.grantedApiKey": "granted — only if I entered an API key",
+  "privacy.consentPostLabel": "Consent: remote post-processing",
+  "privacy.granted": "granted",
+  "privacy.contextLabel": "Context reading (RF-37)",
+  "privacy.contextNone": "no reading (default)",
+  "privacy.contextAppTitle": "app + title (not the content)",
+  "privacy.contextSelection": "app + title + selection",
+  "privacy.contextPreview": "Preview current context",
+  "privacy.contextEmpty": "no context read",
+  "privacy.note": "No remote service is active while both switches stay on “never” — even if a remote engine is compiled.",
+
+  // Diagnostic
+  "diag.section": "Diagnostics & data",
+  "diag.exportReport": "Export the diagnostic report",
+  "diag.exportData": "Export my data (configuration + dictionaries)",
+  "diag.downloadLink": "Download the file",
+  "diag.note": "By design the report contains no dictated character, no audio, no clipboard content. Read it back before sending anything.",
+
+  // Pied de page
+  "footer.text": "Voxli — 100% local. Advanced settings live in <code>%APPDATA%\\Voxli\\config.json</code>.",
+
+  // Dons (可见 mais discrets : pied de page permanent + encart périodique)
+    "donate.bannerTitle": "Voxli is free, local and ad-free. You can support its development:",
+  "donate.kofi": "Buy a coffee on Ko-fi",
+  "donate.paypal": "Donate via PayPal.me",
+  "donate.later": "Maybe later",
+  "donate.forever": "Don't ask again",
+
+  // Notifications dynamiques
+  "notice.modelStarted": "Whisper model download started (57 MB)...",
+  "notice.modelInterrupted": "Download interrupted ({reason}). You can try again: it will resume where it stopped.",
+  "notice.modelOk": "Model installed — picked up immediately.",
+  "notice.networkError": "network error",
+
+  // Fenêtre de secours
+  "rescue.title": "Rescue text",
+  "rescue.intro": "This text was just dictated: it could not be inserted into the target application. It stays on your machine, in Voxli's internal buffer — nothing else kept a trace of it.",
+  "rescue.retry": "Try again",
+  "rescue.pasteAgain": "Paste again",
+  "rescue.selectAll": "Select all",
+  "rescue.close": "Close",
+  "rescue.emptyHint": "No text waiting. If a transcription just failed, the audio is kept: press “Try again”.",
+
+  // Pastille
+  "pill.legend": "Dictation",
+
+  // Noms de touches (légende de survol)
+  "key.Space": "Space",
+  "key.Control": "Ctrl",
+  "key.Ctrl": "Ctrl",
+  "key.Shift": "Shift",
+  "key.Alt": "Alt",
+  "key.AltGr": "AltGr",
+  "key.Meta": "Win",
+  "key.Win": "Win",
+  "key.Enter": "Enter",
+  "key.Escape": "Esc",
+
+  // Libellés moteur
+  "engine.fake": "dummy engine (demo)",
+  "engine.whisper.cpp": "whisper.cpp — 100% local",
+  "engine.parakeet": "Parakeet — 100% local",
+  "engine.parakeet-onnx": "Parakeet — 100% local",
+  "engine.nemo": "Nemotron 3.5 — 100% local, live text",
+  "engines.calcLabel": "Transcription compute device",
+  "engines.calcAuto": "Automatic — GPU when faster (recommended)",
+  "engines.calcGpu": "GPU — Vulkan/CUDA",
+  "engines.calcCpu": "CPU — always available",
+  "engines.calcNote": "“Auto” uses a GPU when an accelerator is available and falls back to the CPU otherwise; the log records the choice and the real latency.",
+  "engines.calcDuo": "Duo — partial display on GPU, final text on CPU",
+  "hk.captureHint": "Click a field, then press the new shortcut keys on your keyboard (Escape cancels). Free keys are accepted instantly; taken ones are marked busy.",
+  "hk.conflict": "This shortcut is busy — it is already used by another action.",
+  "hk.needModifier": "Include at least one modifier (Ctrl, Alt, Shift or Win).",
+  "hk.unsupported": "Key not supported here: a letter, digit, F1–F24, Space, Tab, Enter or `.",
+  "models.connect": "Use",
+};

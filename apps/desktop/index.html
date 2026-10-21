@@ -34,20 +34,47 @@
       <div id="notice" class="notice" hidden></div>
     </header>
 
+    <!-- ============================== Don : encart périodique (RF-dons) ==
+         Discret par conception : il n'apparaît qu'à des paliers d'usage
+         JAMAIS pendant une dictée (la fenêtre réglages est fermée alors),
+         se ferme d'un clic, et la ligne de pied de page reste le rappel
+         permanent. Cf. main.ts (compteur `state://changed`). -->
+    <div id="donate-banner" class="donate-banner" hidden>
+      <p data-i18n="donate.bannerTitle">
+        Voxli est gratuit, local et sans publicité. Vous pouvez soutenir son
+        développement :
+      </p>
+      <div class="donate-actions">
+        <button id="btn-donate-kofi" type="button" class="btn-primary" data-i18n="donate.kofi">Offrir un café sur Ko-fi</button>
+        <button id="btn-donate-paypal" type="button" class="btn-primary" data-i18n="donate.paypal">Don via PayPal.me</button>
+        <button id="btn-donate-later" type="button" class="secondary" data-i18n="donate.later">Peut-être plus tard</button>
+        <button id="btn-donate-forever" type="button" class="secondary" data-i18n="donate.forever">Ne plus me le proposer</button>
+      </div>
+    </div>
+
     <!-- ================================================ Simple / Avancé -->
     <div id="mode-bar">
       <label>
         <input id="mode-avance" type="checkbox" />
         <span data-i18n="mode.advanced">Mode avancé — tous les réglages</span>
       </label>
-      <label class="mode-theme">
-        <span data-i18n="mode.theme">Thème</span>
-        <select id="ui-theme">
-          <option value="system" data-i18n="theme.system">celui du système</option>
-          <option value="light" data-i18n="theme.light">clair</option>
-          <option value="dark" data-i18n="theme.dark">sombre</option>
-        </select>
-      </label>
+      <div class="mode-bar-right">
+        <!-- Don : rappel PERMANENT en haut de page (bien visible sans gêner :
+             un discret lien cœur, à côté du thème). L'encart périodique
+             reste la deuxième chance de remarquer (compteur paliers). -->
+        <span class="donate-chip">
+          <a id="link-donate-kofi" class="donate-link" href="https://ko-fi.com/sammyyohan" role="button" title="Ko-fi">❤ Ko-fi</a>
+          <a id="link-donate-paypal" class="donate-link" href="https://paypal.me/sammyyohan" role="button" title="PayPal.me">❤ PayPal.me</a>
+        </span>
+        <label class="mode-theme">
+          <span data-i18n="mode.theme">Thème</span>
+          <select id="ui-theme">
+            <option value="system" data-i18n="theme.system">celui du système</option>
+            <option value="light" data-i18n="theme.light">clair</option>
+            <option value="dark" data-i18n="theme.dark">sombre</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <!-- ================================================ Onboarding 1-clic -->
@@ -85,9 +112,26 @@
       <h2 data-i18n="general.section">Général</h2>
       <div class="row">
         <label for="gen-ui-language" data-i18n="general.uiLanguageLabel">Langue de l'interface</label>
+        <!-- « system » = détection automatique de la langue du système ; les
+             15 langues sont listées sous leur NOM NATIF (une langue se
+             nomme chez elle — invariant, jamais traduit). -->
         <select id="gen-ui-language">
-          <option value="fr" data-i18n="general.uiLanguageFr">français</option>
-          <option value="en" data-i18n="general.uiLanguageEn">English</option>
+          <option value="system" data-i18n="general.uiSystem">Langue du système (détection automatique)</option>
+          <option value="fr">français</option>
+          <option value="en">English</option>
+          <option value="es">Español</option>
+          <option value="pt">Português</option>
+          <option value="de">Deutsch</option>
+          <option value="it">Italiano</option>
+          <option value="nl">Nederlands</option>
+          <option value="ru">Русский</option>
+          <option value="pl">Polski</option>
+          <option value="tr">Türkçe</option>
+          <option value="ar">العربية</option>
+          <option value="hi">हिन्दी</option>
+          <option value="zh">中文</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
         </select>
       </div>
       <div class="row">
@@ -207,9 +251,14 @@
     <!-- ================================================== raccourcis -->
     <section>
       <h2 data-i18n="hk.section">Raccourcis &amp; déclenchement</h2>
+      <p class="muted" data-i18n="hk.captureHint">
+        Cliquez dans un champ puis tapez directement les touches du nouveau
+        raccourci (Échap annule). Lisibles au fur et à mesure, validés si
+        libres, marqués « occupé » si déjà pris.
+      </p>
       <div class="row">
         <label for="hk-push" data-i18n="hk.pushLabel">Dictée</label>
-        <input id="hk-push" type="text" spellcheck="false" />
+        <input id="hk-push" type="text" spellcheck="false" readonly />
       </div>
       <div class="row advanced">
         <label for="hk-mode" data-i18n="hk.modeLabel">Mode de déclenchement</label>
@@ -221,12 +270,13 @@
       </div>
       <div class="row advanced">
         <label for="hk-paste" data-i18n="hk.pasteLabel">Coller le dernier texte</label>
-        <input id="hk-paste" type="text" spellcheck="false" />
+        <input id="hk-paste" type="text" spellcheck="false" readonly />
       </div>
       <div class="row advanced">
         <label for="hk-show" data-i18n="hk.showLabel">Montrer le dernier texte</label>
-        <input id="hk-show" type="text" spellcheck="false" />
+        <input id="hk-show" type="text" spellcheck="false" readonly />
       </div>
+      <p id="hk-conflict" class="muted" hidden></p>
       <p class="muted" data-i18n="hk.note">
         Appliqués immédiatement à l'enregistrement (RF-01) — si un raccourci est
         déjà pris par une autre application, un message le signale.
@@ -309,6 +359,22 @@
         <p class="muted" data-i18n="engines.choose">Moteur de dictée — le changement s'applique immédiatement :</p>
         <div id="engines-list"></div>
         <p id="engine-effective" class="muted" hidden></p>
+        <!-- Calcul CPU/GPU (additif v5) : visible au-dessus du catalogue
+             avancé — c'est un réglage de reconnaissance, pas un détail. -->
+        <div class="row">
+          <label for="calc-select" data-i18n="engines.calcLabel">Calcul des transcriptions</label>
+          <select id="calc-select">
+            <option value="auto" data-i18n="engines.calcAuto">Automatique — GPU si plus rapide (recommandé)</option>
+            <option value="duo" data-i18n="engines.calcDuo">Duo — partiels sur GPU, final sur CPU</option>
+            <option value="gpu" data-i18n="engines.calcGpu">GPU — Vulkan/CUDA</option>
+            <option value="cpu" data-i18n="engines.calcCpu">CPU — toujours disponible</option>
+          </select>
+        </div>
+        <p class="muted" id="calc-note" data-i18n="engines.calcNote">
+          « Auto » choisit le GPU quand un accélérateur est disponible et
+          retombe sur le CPU sinon ; le journal consigne le choix et la
+          latence réelle.
+        </p>
       </div>
       <!-- Catalogue détaillé : replié en mode Simple (classe `advanced`),
            mais la sélection du moteur au-dessus reste VISIBLE : c'est elle

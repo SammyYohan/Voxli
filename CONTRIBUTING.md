@@ -50,20 +50,29 @@ mentir sur ce qui marche.
   `catch_unwind` + retour explicite).
 - TypeScript : jamais de contenu utilisateur dans `innerHTML` — la
   table i18n est la seule chaîne innerHTML-able (commentaire
-  d'`i18n.ts`).
+  de `i18n/index.ts`).
 - Docs : les nouveaux documents suivent la numérotation `docs/NN-…` ;
   toute exigence cross-référence ses RF-NN existantes, n'invente pas de
   nouveaux référentiels.
 
 ## 4. Traductions (i18n)
 
-- Ajouter une langue = ajouter les clés manquantes de
-  `apps/desktop/src/i18n.ts` + une option de `#gen-ui-language`.
-- Une clé manquante est VISIBLE (elle s'affiche telle quelle) — c'est le
-  mécanisme assumé ; ne cache jamais un trou de traduction au nom d'une
-   érgonomie.
+- Ajouter une langue = créer `apps/desktop/src/i18n/{code}.ts` avec la
+  MÊME liste de clés que `en.ts`, l'exporter dans `i18n/index.ts`
+  (`DICTS`, `LOCALES`, `LANGS`), et ajouter une option native
+  du `#gen-ui-language` + une ligne aux docs. L'audit le vérifie :
+  `node scripts/audit-i18n.mjs` (clés + placeholders identiques).
+- `system` est une valeur de `uiLanguage` : détection de la langue du
+  système (préfixe BCP-47) ; le repli d'UNE CLÉ manquante est en chaîne
+  langue courante → `en` → `fr` → la clé elle-même (visible, jamais
+  silencieux) ; ne pas cacher un trou de traduction au nom d'une
+  ergonomie.
+- L'arabe pose automatiquement `dir="rtl"` (`<html dir>`) — ne pas coder
+  en dur la direction ailleurs.
 - La langue d'écoute ASR n'est PAS une langue d'interface : les listes
-  sont séparées (v5) ; ne les fusionne pas « par commodité ».
+  sont séparées (v5) ; ne les fusionne pas « par commodité ». Les
+  libellés de langue ASR sont rendus par `Intl.DisplayNames` (fonction
+  `rebuildAsrLanguageLabels`) — ne jamais traduire cette liste à la main.
 
 ## 5. Ce qui a toujours raison au conflit
 

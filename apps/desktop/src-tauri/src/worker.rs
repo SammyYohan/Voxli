@@ -1089,6 +1089,18 @@ fn model_path(cfg: &Config) -> std::path::PathBuf {
     dir.join(name)
 }
 
+/// Choix de calcul normalisé (`auto`|`duo`|`cpu`|`gpu`) : vide ou inconnu
+/// = `auto` — tout choix érroné retombe sur la valeur sûre (RF-29).
+#[cfg(feature = "real-asr")]
+fn normalize_compute(raw: String) -> String {
+    match raw.trim() {
+        "cpu" => "cpu".into(),
+        "gpu" => "gpu".into(),
+        "duo" => "duo".into(),
+        _ => "auto".into(),
+    }
+}
+
 /// Moteur monté : la voie batch — autorité du texte inséré — et, quand le
 /// moteur le permet, la fabrique de sessions streaming (affichage des
 /// partiels en direct, docs/05).
@@ -1225,25 +1237,73 @@ fn build_engine(cfg: &Config, logger: &Logger) -> EngineBundle {
     ) {
         let path = model_path(cfg);
         if path.is_file() {
-            match WhisperCppEngine::load(&path) {
+            // Choix de calcul (RF-optimal) : variable d'environnement en
+            // priorité (marchandage de test instantané), sinon la config ;
+            // toute valeur inconnue = `auto` (jamais d'écran abscons).
+            // `duo` : deux contextes séparés, rôles distincts — les
+            // partiels d'affichage passent sur GPU (demandé ; un build
+            // sans backend retombe simplement sur le même contexte que le
+            // batch), le texte final reste sur CPU (arbitre stable,
+            // RF-22). Les deux appareils travaillent alors réellement de
+            // front, chacun sur son flux (RF-34).
+            let compute = normalize_compute(
+                std::env::var("VOXLI_COMPUTE")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| cfg.general.compute.clone()),
+            );
+            let batch_choice = if compute == "duo" {
+                "cpu"
+            } else {
+                compute.as_str()
+            };
+            match WhisperCppEngine::load_with(&path, batch_choice) {
                 Ok(engine) => {
-                    // Un même moteur, deux rôles : voie batch (autorité du
-                    // texte inséré, tampon complet RF-22) et partiels
-                    // d'affichage (re-décodage fenêtré, jamais inséré —
-                    // RF-34 + amendement ADR-02).
+                    // Deux rôles : voie batch (autorité du texte inséré,
+                    // tampon complet RF-22) et partiels d'affichage
+                    // (re-décodage fenêtré, jamais inséré — RF-34 +
+                    // amendement ADR-02).
                     let engine = Arc::new(engine);
                     let batch: Arc<dyn Transcriptor> = engine.clone();
                     let model_id = path
                         .file_name()
                         .map(|f| f.to_string_lossy().into_owned())
                         .unwrap_or_default();
+                    if compute != "duo" {
+                        // Le DEMANDÉ est consigné avec le choix de calcul ;
+                        // le backend réellement utilisé se lit aux latences.
+                        logger.log(Event::DeviceEvent {
+                            kind: format!("calcul:{compute}"),
+                        });
+                    }
+                    // Contexte des partiels : en duo, un second chargement
+                    // du même poids destiné au GPU demandé ; échec → repli
+                    // transparent sur le contexte du batch (consigné).
+                    let partial_ctx: Arc<WhisperCppEngine> = if compute == "duo" {
+                        match WhisperCppEngine::load_with(&path, "gpu") {
+                            Ok(e) => {
+                                logger.log(Event::DeviceEvent {
+                                    kind: "calcul:duo (batch=cpu, partiels=gpu demandé)".into(),
+                                });
+                                Arc::new(e)
+                            }
+                            Err(err) => {
+                                logger.log(Event::DeviceEvent {
+                                    kind: format!("calcul:duo→cpu (contexte-gpu refusé: {err})"),
+                                });
+                                engine.clone()
+                            }
+                        }
+                    } else {
+                        engine.clone()
+                    };
                     logger.log(Event::EngineLoaded {
                         engine: "whisper.cpp".into(),
                         model_id,
                     });
                     return EngineBundle {
                         batch,
-                        streaming: Some(Arc::new(WhisperPartialStreamer::new(engine))),
+                        streaming: Some(Arc::new(WhisperPartialStreamer::new(partial_ctx))),
                     };
                 }
                 // Modèle absent ou illisible : repli visible, jamais silencieux.

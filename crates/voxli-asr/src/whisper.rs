@@ -4,6 +4,12 @@
 //! Le modèle est chargé depuis le disque ; son empreinte SHA-256 est vérifiée
 //! à l'installation (voxli-diagnostics consigne le chargement, jamais le
 //! contenu des dictées).
+//!
+//! Choix de calcul CPU/GPU (`load_with`) : un build sans backend accéléré
+//! reste CPU (valeur par défaut du compilé) ; un build avec backend
+//! (Vulkan/CUDA, feature opt-in `whisper-gpu`) utilise le GPU selon le
+//! choix — repli interne de ggml sur CPU si l'initialisation échoue
+//! (pilote absent/occupé), jamais d'échec muet.
 
 use std::path::Path;
 use std::time::Duration;
@@ -29,6 +35,10 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
 pub struct WhisperCppEngine {
     ctx: whisper_rs::WhisperContext,
     model_id: String,
+    /// Choix de calcul demandé au chargement (`auto`|`cpu`|`gpu`), gardé
+    /// pour l'observabilité (le journal du noyau consigne le DEMANDÉ ;
+    /// le backend réellement utilisé dépend du build et des pilotes).
+    compute: String,
 }
 
 // whisper_rs::WhisperContext est Send+Sync.
@@ -38,20 +48,49 @@ unsafe impl Sync for WhisperCppEngine {}
 impl WhisperCppEngine {
     /// Charge un modèle ggml (ex. `ggml-base-q5_1.bin`). Vérifie l'existence
     /// AVANT de contacter le moteur — aucun échec silencieux (RF-20).
+    /// Choix de calcul par défaut : `auto` (GPU quand le build en a un).
     pub fn load(model_path: &Path) -> Result<Self, AsrError> {
+        Self::load_with(model_path, "auto")
+    }
+
+    /// Charge avec un choix de calcul explicite :
+    /// - `cpu` : whisper.cpp ne MONTERA jamais de GPU, même si le build en
+    ///   embarque un (sémantique : le souhait explicite n'est pas contourné) ;
+    /// - `gpu` : accélérateur attendu — l'utilisateur a vu l'état du build ;
+    /// - `auto`/inconnu/vide : `use_gpu` reste la valeur par défaut du
+    ///   compilé (GPU quand un backend est embarqué, CPU sinon) — si
+    ///   l'initialisation GPU échoue (pilotes, machine occupée), ggml replie
+    ///   LUI-MÊME sur le CPU : jamais d'échec muet de sortie.
+    pub fn load_with(model_path: &Path, compute: &str) -> Result<Self, AsrError> {
         if !model_path.is_file() {
             return Err(AsrError::ModelMissing(model_path.display().to_string()));
         }
-        let ctx = whisper_rs::WhisperContext::new_with_params(
-            model_path,
-            whisper_rs::WhisperContextParameters::default(),
-        )
-        .map_err(|e| AsrError::ModelMissing(e.to_string()))?;
+        let mut params = whisper_rs::WhisperContextParameters::default();
+        if compute == "cpu" {
+            params.use_gpu = false;
+        }
+        let ctx = whisper_rs::WhisperContext::new_with_params(model_path, params)
+            .map_err(|e| AsrError::ModelMissing(e.to_string()))?;
         let model_id = model_path
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        Ok(Self { ctx, model_id })
+        let normalized = match compute {
+            "cpu" => "cpu".to_string(),
+            "gpu" => "gpu".to_string(),
+            _ => "auto".to_string(),
+        };
+        Ok(Self {
+            ctx,
+            model_id,
+            compute: normalized,
+        })
+    }
+
+    /// Choix de calcul DEMANDÉ au chargement (observabilité ; le réel
+    /// dépend du build et des pilotes — jamais affirmer sans mesure).
+    pub fn compute_choice(&self) -> &str {
+        &self.compute
     }
 
     /// Filtre les hallucinations de silence (RF-18) — retourne `None` si le

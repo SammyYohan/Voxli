@@ -69,6 +69,10 @@ fn main() {
     let logger_run = Arc::clone(&logger);
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Ouverture des liens de don (Ko-fi / PayPal.me) dans le navigateur
+        // système : les permissions de la capability sont SCOPÉES aux deux
+        // URLs exactes — aucune autre ouverture n'est permise.
+        .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let config_path = Config::default_path();
 

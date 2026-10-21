@@ -14,6 +14,25 @@ fn t_default_serializes_to_documented_schema() {
     assert!(raw.contains("\"consent\""));
     assert!(raw.contains("\"remoteAsr\": false"));
     assert!(raw.contains("\"uiLanguage\": \"fr\""));
+    assert!(raw.contains("\"compute\": \"auto\""));
+}
+
+/// Choix de calcul CPU/GPU/Duo (additif v5) : valeurs préservées, inconnue
+/// conservée telle quelle (le noyau la normalise en `auto` à l'usage,
+/// RF-29), aller-retour sérialisation intact.
+#[test]
+fn t_compute_round_trip_and_unknown() {
+    for v in ["cpu", "gpu", "duo"] {
+        let mut cfg = Config::default();
+        cfg.general.compute = v.into();
+        let raw = serde_json::to_string(&cfg).unwrap();
+        let back: Config = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back.general.compute, v);
+    }
+
+    let weird = r#"{ "schema": 5, "general": { "compute": "tpu" } }"#;
+    let cfg = Config::from_json(weird).unwrap();
+    assert_eq!(cfg.general.compute, "tpu");
 }
 
 /// v3 → v4 : mode de déclenchement implicite (`hold`, compatibilité P0) et
@@ -90,6 +109,8 @@ fn t_migration_from_schema_4() {
     // la valeur sûre (fr) tant que l'utilisateur n'a pas choisi.
     assert_eq!(cfg.general.language, "en");
     assert_eq!(cfg.general.ui_language, "fr");
+    // Choix de calcul additif v5 : valeur sûre « auto » sur fichier ancien.
+    assert_eq!(cfg.general.compute, "auto");
 
     // Un `uiLanguage` déjà présent n'est jamais écrasé par la migration.
     let already = r#"{

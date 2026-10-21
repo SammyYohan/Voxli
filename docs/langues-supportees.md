@@ -12,8 +12,9 @@
 
 Deux réglages DISTINCTS existent (schéma v5) :
 
-- **Langue de l'interface** (`uiLanguage`) : `fr` ou `en` — règle les
-  textes affichés, n'affecte en rien la reconnaissance.
+- **Langue de l'interface** (`uiLanguage`) : `system` (détection de la
+  langue du système) ou un code parmi 15 langues majeures — règle les
+  textes affichés, n'affecte en rien la reconnaissance (détails §3).
 - **Langue de dictée** (`language`) : `auto` (défaut, détection) ou un
   code de langue — règle l'INFÉRENCE linguistique de l'ASR.
 
@@ -68,7 +69,26 @@ Réglages → Voix, avec la licence affichée avant téléchargement.
 
 ## 3. Langues de l'INTERFACE (i18n)
 
-`fr` (défaut) et `en`. Tout autre valeur de `uiLanguage` retombe sur `fr`
-(repli lisible, jamais d'écran abscons). Contribuer à une langue
-supplémentaire = ajouter les clés dans `apps/desktop/src/i18n.ts` et une
-option au sélecteur — voir CONTRIBUTING.md.
+Depuis l'itération « interface multilingue » : `system` (défaut de
+présentation — la langue du système est détectée via `navigator.languages`
+par préfixe BCP-47 : `pt-BR → pt`, `zh-TW → zh`…) ou un code parmi les
+15 langues les plus parlées/utilisées :
+
+`fr` · `en` · `es` · `pt` · `de` · `it` · `nl` · `ru` · `pl` · `tr` ·
+`ar` · `hi` · `zh` · `ja` · `ko`
+
+- Le sélecteur de Réglages liste les langues sous leur NOM NATIF
+  (invariant : une langue se nomme chez elle).
+- Les dictionnaires vivent dans `apps/desktop/src/i18n/` (un fichier par
+  langue + `index.ts` pour le mécanisme). Repli EN CHAÎNE : langue
+  courante → `en` → `fr` → la clé elle-même (jamais d'écran abscons,
+  RF-29) ; une valeur de configuration inconnue retombe sur `fr`.
+- L'arabe active automatiquement `dir="rtl"` sur `<html>` (les trois
+  fenêtres ; les marges restent physiques — apparence acceptable).
+- Les libellés de langue de DICTÉE (Whisper, 95 langues) sont rendus par
+  `Intl.DisplayNames` dans la langue d'interface — plus de liste figée
+  en français ; les libellés statiques du HTML restent le repli.
+- Contribuer = ajouter `src/i18n/{code}.ts` (même liste de clés que
+  `en.ts`) + une option au sélecteur + une entrée dans `NATIVE` — voir
+  CONTRIBUTING.md. Les traductions non relues par des natifs portent la
+  mention « relecture native bienvenue » en tête de fichier.

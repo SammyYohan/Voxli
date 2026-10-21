@@ -1,11 +1,13 @@
 /** Interface de l'application — miroir TS du schéma v5 (camelCase) :
- * `uiLanguage` (langue d'affichage, fr|en) est distinct de `language`
- * (langue d'écoute ASR, RF-17). Textes via i18n.ts. */
+ * `uiLanguage` (langue d'affichage : « system » ou un code de i18n/) est
+ * distinct de `language` (langue d'écoute ASR, RF-17). Textes via i18n/. */
 interface ConfigJson {
   schema: number;
   general: {
     language: string;
     uiLanguage: string;
+    /** Additif v5 : « auto » | « cpu » | « gpu » (inconnu = auto côté noyau). */
+    compute: string;
     engine: string;
     model: string;
     postProcessing: string;
@@ -100,7 +102,83 @@ type Notice = { kind: string; message: string };
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { applyDom, applyUiLanguage, t, uiLanguage } from "./i18n";
+import { applyDom, applyUiLanguage, localeFor, t } from "./i18n";
+import { openUrl } from "@tauri-apps/plugin-opener";
+
+// ================================ Don (Ko-fi / PayPal.me) ==================
+// Discret par conception (RF-29 : visible, jamais intrusif) :
+// - rappel PERMANENT dans le pied de page (ligne donate-row) ;
+// - encart périodique : à des paliers d'usage (100/400/1000/3000 dictées)
+//   il s'affiche dans les RÉGLAGES — jamais pendant la dictée (la pastille
+//   est une autre fenêtre), fermable d'un clic, et « ne plus me le
+//   proposer » est définitif (état local, hors configuration).
+// Les liens s'ouvrent via le plugin opener, dont les permissions sont
+// limitées aux deux URLs (capabilities/default.json).
+const DONATE_KOFI = "https://ko-fi.com/sammyyohan";
+const DONATE_PAYPAL = "https://paypal.me/sammyyohan";
+const DONATE_MILESTONES = [100, 400, 1000, 3000];
+const DONATE_KEY_COUNT = "voxli.donate.count";
+const DONATE_KEY_MILESTONE = "voxli.donate.milestone";
+const DONATE_KEY_FOREVER = "voxli.donate.forever";
+const DONATE_KEY_PENDING = "voxli.donate.pending";
+
+function donateCount(): number {
+  const raw = Number.parseInt(localStorage.getItem(DONATE_KEY_COUNT) ?? "0", 10);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+/** Un enregistrement de plus. Si un palier est franchi pour la première
+ * fois, arme l'encart (réservé à la prochaine ouverture des réglages) et
+ * retourne true pour un montage immédiat si la fenêtre est déjà ouverte. */
+function donateTick(): boolean {
+  const count = donateCount() + 1;
+  localStorage.setItem(DONATE_KEY_COUNT, String(count));
+  if (localStorage.getItem(DONATE_KEY_FOREVER) === "1") return false;
+  const reached = DONATE_MILESTONES.filter((m) => count >= m).length;
+  const shown = Number.parseInt(localStorage.getItem(DONATE_KEY_MILESTONE) ?? "0", 10);
+  if (Number.isFinite(shown) && reached > shown) {
+    localStorage.setItem(DONATE_KEY_MILESTONE, String(reached));
+    localStorage.setItem(DONATE_KEY_PENDING, "1");
+    return true;
+  }
+  return false;
+}
+
+async function openDonate(url: string): Promise<void> {
+  try {
+    await openUrl(url);
+  } catch (err) {
+    // Jamais silencieux (RF-29) : l'URL reste lisible dans la notice,
+    // copiable même si l'ouverture système échoue.
+    showNotice(`${url} — ${String(err)}`);
+  }
+}
+
+function showDonateBanner(): void {
+  ($id("donate-banner") as HTMLElement).hidden = false;
+}
+
+function wireDonate(): void {
+  $id("btn-donate-kofi").addEventListener("click", () => void openDonate(DONATE_KOFI));
+  $id("btn-donate-paypal").addEventListener("click", () => void openDonate(DONATE_PAYPAL));
+  $id("link-donate-kofi").addEventListener("click", (e) => {
+    e.preventDefault();
+    void openDonate(DONATE_KOFI);
+  });
+  $id("link-donate-paypal").addEventListener("click", (e) => {
+    e.preventDefault();
+    void openDonate(DONATE_PAYPAL);
+  });
+  $id("btn-donate-later").addEventListener("click", () => {
+    ($id("donate-banner") as HTMLElement).hidden = true;
+  });
+  $id("btn-donate-forever").addEventListener("click", () => {
+    localStorage.setItem(DONATE_KEY_FOREVER, "1");
+    localStorage.removeItem(DONATE_KEY_PENDING);
+    ($id("donate-banner") as HTMLElement).hidden = true;
+  });
+}
+// ============================== fin don ====================================
 
 let config: ConfigJson | null = null;
 
@@ -170,6 +248,7 @@ function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
   ($id("hk-paste") as HTMLInputElement).value = cfg.hotkeys.pasteLastTranscript;
   ($id("hk-show") as HTMLInputElement).value = cfg.hotkeys.showLastTranscript;
   ($id("hk-mode") as HTMLSelectElement).value = cfg.hotkeys.mode;
+  refreshHotkeyConflicts();
   ($id("pre-roll") as HTMLInputElement).value = String(cfg.audio.preRollMs);
   ($id("max-rec") as HTMLInputElement).value = String(cfg.audio.maxRecordingSeconds);
   ($id("gen-post") as HTMLSelectElement).value = cfg.general.postProcessing;
@@ -195,8 +274,19 @@ function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
     langInput.appendChild(opt);
   }
   langInput.value = cfg.general.language;
-  ($id("gen-ui-language") as HTMLSelectElement).value =
-    cfg.general.uiLanguage === "en" ? "en" : "fr";
+  // La valeur brute de la config (« system » ou un code) est assignée
+  // telle quelle ; si elle n'est plus dans la liste, le sélecteur garde
+  // sa première option (« system », auto-réparant au prochain envoi).
+  const uiLangSel0 = $id("gen-ui-language") as HTMLSelectElement;
+  if ([...uiLangSel0.options].some((o) => o.value === cfg.general.uiLanguage)) {
+    uiLangSel0.value = cfg.general.uiLanguage;
+  }
+  // Choix de calcul (additif v5) : si la valeur stockée n'est plus dans la
+  // liste (config à la main), le sélecteur reste sur « auto » — sûr.
+  const calcSel0 = $id("calc-select") as HTMLSelectElement;
+  calcSel0.value = [...calcSel0.options].some((o) => o.value === cfg.general.compute)
+    ? cfg.general.compute
+    : "auto";
   // RF-39 : profils multiples = fonctionnalité Pro — avertissement clair.
   const lock = $id("profiles-lock");
   const pro =
@@ -211,12 +301,20 @@ function paintConfig(cfg: ConfigJson, lic: LicenseInfo): void {
 /** Poussée au noyau (RF-01 : live, réglages + pipeline). */
 async function sendConfig(): Promise<void> {
   if (config === null) return;
-  config.hotkeys.pushToTalk =
-    ($id("hk-push") as HTMLInputElement).value.trim() || config.hotkeys.pushToTalk;
-  config.hotkeys.pasteLastTranscript =
-    ($id("hk-paste") as HTMLInputElement).value.trim() || config.hotkeys.pasteLastTranscript;
-  config.hotkeys.showLastTranscript =
-    ($id("hk-show") as HTMLInputElement).value.trim() || config.hotkeys.showLastTranscript;
+  // Raccourcis : une combinaison en conflit (« occupé » visible) n'est
+  // PAS enregistrée — l'écran reste véridique ; le noyau applique la
+  // même règle (validate_before_register) et le champ corrigé redevient
+  // enregistrable (RF-01 : les raccourcis prennent à l'enregistrement).
+  const hkConflict = document.querySelector(".conflict") !== null;
+  if (hkConflict) showNotice(t("hk.conflict"));
+  if (!hkConflict) {
+    config.hotkeys.pushToTalk =
+      ($id("hk-push") as HTMLInputElement).value.trim() || config.hotkeys.pushToTalk;
+    config.hotkeys.pasteLastTranscript =
+      ($id("hk-paste") as HTMLInputElement).value.trim() || config.hotkeys.pasteLastTranscript;
+    config.hotkeys.showLastTranscript =
+      ($id("hk-show") as HTMLInputElement).value.trim() || config.hotkeys.showLastTranscript;
+  }
   config.hotkeys.mode = ($id("hk-mode") as HTMLSelectElement).value;
   const preRoll = Number(($id("pre-roll") as HTMLInputElement).value);
   if (Number.isFinite(preRoll)) config.audio.preRollMs = preRoll;
@@ -226,6 +324,9 @@ async function sendConfig(): Promise<void> {
   if (Number.isFinite(retention)) config.general.history.retentionDays = retention;
   config.general.language = ($id("gen-language") as HTMLSelectElement).value;
   config.general.uiLanguage = ($id("gen-ui-language") as HTMLSelectElement).value;
+  // Choix de calcul (additif v5) : miroir comme tous les autres, invalidé
+  // à `auto` côté noyau si jamais une valeur inattendue arrive.
+  config.general.compute = ($id("calc-select") as HTMLSelectElement).value;
   config.general.postProcessing = ($id("gen-post") as HTMLSelectElement).value;
   config.audio.vad.aggressiveness = ($id("vad-aggr") as HTMLSelectElement).value;
   config.audio.device = ($id("audio-device") as HTMLSelectElement).value;
@@ -254,6 +355,105 @@ function listOfApps(inputId: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/** Raccourcis : capture à la volée (Wispr-simple — on appuie, ça s'écrit).
+ * Jetons = whitelist stricte du noyau (`voxli-hotkeys`, `Key::parse`) :
+ * lettres, chiffres, F1..F24, Espace, Tab, Entrée, `. Rien d'autre n'est
+ * accepté, jamais d'échec muet à l'enregistrement côté noyau.
+ * Note : la combinaison d'un raccourci ACTUEL reste interceptée par le
+ * système tant qu'il est enregistré (comportement voulu du noyau) — la
+ * capture sert à choisir une combinaison LIBRE. */
+const HK_IDS = ["hk-push", "hk-paste", "hk-show"] as const;
+const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph"]);
+const NAMED_KEYS = new Map([
+  [" ", "Space"],
+  ["Enter", "Enter"],
+  ["Tab", "Tab"],
+  ["`", "Backquote"],
+]);
+
+function hotkeyToken(ev: KeyboardEvent): string | null {
+  const k = ev.key;
+  const named = NAMED_KEYS.get(k);
+  if (named !== undefined) return named;
+  if (k.length === 1 && /[a-z0-9]/i.test(k)) return k.toUpperCase();
+  const fn = /^F(\d{1,2})$/.exec(k);
+  if (fn !== null) {
+    const n = Number(fn[1]);
+    if (n >= 1 && n <= 24) return k;
+  }
+  return null;
+}
+
+/** Conflit : la même combinaison assignée à deux actions — marquée
+ * « occupé » et NON enregistrée (règle miroir de
+ * `validate_before_register`, la vérité reste celle du noyau). */
+function refreshHotkeyConflicts(): void {
+  const values = HK_IDS.map((id) => ($id(id) as HTMLInputElement).value.trim());
+  const conflicted = new Set<number>();
+  for (let i = 0; i < values.length; i += 1) {
+    if (values[i] === "") continue;
+    for (let j = i + 1; j < values.length; j += 1) {
+      if (values[i] === values[j]) {
+        conflicted.add(i);
+        conflicted.add(j);
+      }
+    }
+  }
+  HK_IDS.forEach((id, i) => {
+    ($id(id) as HTMLInputElement).classList.toggle("conflict", conflicted.has(i));
+  });
+  const line = document.getElementById("hk-conflict");
+  if (line !== null) line.hidden = conflicted.size === 0;
+}
+
+function wireHotkeyCapture(input: HTMLInputElement): void {
+  const before = input.value;
+  input.addEventListener("focus", () => {
+    input.dataset.capture = "1";
+  });
+  input.addEventListener("blur", () => {
+    delete input.dataset.capture;
+    if (input.value.trim() === "") input.value = before;
+    refreshHotkeyConflicts();
+  });
+  input.addEventListener("keydown", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.key === "Escape") {
+      input.value = before;
+      input.blur();
+      refreshHotkeyConflicts();
+      return;
+    }
+    const parts: string[] = [];
+    if (ev.ctrlKey) parts.push("Ctrl");
+    if (ev.altKey) parts.push("Alt");
+    if (ev.shiftKey) parts.push("Shift");
+    if (ev.metaKey) parts.push("Win");
+    const token = hotkeyToken(ev);
+    if (token === null) {
+      // Modificateurs seuls : la capture continue, l'affichage suit.
+      // Une touche réelle hors liste blanche (↓, Home, «, »…) n'écrit
+      // rien et l'explique — jamais d'échec muet.
+      if (parts.length === 0 && !MODIFIER_KEYS.has(ev.key)) {
+        showNotice(t("hk.unsupported"));
+      }
+      input.value = parts.length > 0 ? `${parts.join("+")}+` : "";
+      return;
+    }
+    if (parts.length === 0) {
+      // Touche seule sans modificateur : refus polis, jamais muet.
+      showNotice(t("hk.needModifier"));
+      input.value = before;
+      return;
+    }
+    parts.push(token);
+    input.value = parts.join("+");
+    refreshHotkeyConflicts();
+  });
+  input.addEventListener("input", refreshHotkeyConflicts);
 }
 
 /** Simple / Avancé : préférence locale à la fenêtre (localStorage) —
@@ -294,7 +494,7 @@ function escapeHtml(s: string): string {
 async function refreshHistory(): Promise<void> {
   try {
     const items: HistoryItem[] = await invoke("history_query", { n: 50 });
-    const locale = uiLanguage() === "en" ? "en-GB" : "fr-FR";
+    const locale = localeFor();
     const body = $id("history-body") as HTMLElement;
     body.replaceChildren();
     for (const it of items) {
@@ -370,9 +570,9 @@ async function refreshModels(): Promise<void> {
       `<td>${m.installed ? `<b>${escapeHtml(t("models.installed"))}</b>` : escapeHtml(t("models.notInstalled"))}</td>` +
       `<td class="mono">${escapeHtml(footprint)}${m.verified ? ` <b title="${escapeHtml(t("models.verifiedBadge"))}">✓</b>` : ""}</td>`;
     const td = document.createElement("td");
-    const btn = document.createElement("button");
-    btn.type = "button";
     if (m.installed) {
+      const btn = document.createElement("button");
+      btn.type = "button";
       btn.textContent = t("models.remove");
       btn.addEventListener("click", async () => {
         try {
@@ -383,13 +583,37 @@ async function refreshModels(): Promise<void> {
           showNotice(String(err));
         }
       });
+      td.appendChild(btn);
+      // Utiliser : le modèle installé est instantanément branché au
+      // moteur (choix explicite, config écrite live comme le sélecteur
+      // radio d'engine — RF-01 ; seulement si ce n'est déjà lui).
+      if (m.kind === "whisper" && config !== null && config.general.model !== m.id) {
+        const cfg = config;
+        const use = document.createElement("button");
+        use.type = "button";
+        use.textContent = t("models.connect");
+        use.className = "secondary";
+        use.style.marginLeft = "8px";
+        use.addEventListener("click", async () => {
+          try {
+            cfg.general.model = m.id;
+            await invoke("config_set", { newConfig: cfg });
+          } catch (err) {
+            showNotice(String(err));
+          }
+          void refreshEngines();
+        });
+        td.appendChild(use);
+      }
     } else {
+      const btn = document.createElement("button");
+      btn.type = "button";
       btn.textContent = t("models.download");
       btn.addEventListener("click", async () => {
         void startDownload(m.id);
       });
+      td.appendChild(btn);
     }
-    td.appendChild(btn);
     tr.appendChild(td);
     body.appendChild(tr);
   }
@@ -454,6 +678,15 @@ async function setEngine(id: string): Promise<void> {
   } catch (err) {
     showNotice(String(err));
   }
+}
+
+/** Choix de calcul (CPU/GPU, additif v5) : la même sémantique que le
+ * moteur — écrit via sendConfig (miroir complet), le noyau reconstruit
+ * son bundle à chaud ; le journal consigne « calcul:… » (le demandé) à
+ * chaque montage de moteur. */
+async function setCompute(choice: string): Promise<void> {
+  if (config === null || config.general.compute === choice) return;
+  await sendConfig();
 }
 
 /** Moteur effectivement monté (source : `state_get`, donc le worker) —
@@ -609,6 +842,12 @@ async function importDict(profile: string, csv: string): Promise<void> {
 }
 
 function wireEvents(): void {
+  // Capture à la volée des raccourcis (cf. wireHotkeyCapture) + marquage
+  // « occupé » immédiat en cas de doublon.
+  for (const id of HK_IDS) {
+    wireHotkeyCapture($id(id) as HTMLInputElement);
+  }
+
   // Simple / Avancé (préférence de présentation, hors configuration) :
   // « mode-avance » plie/délie tout ce qui est marqué classe « advanced ».
   const modeBox = $id("mode-avance") as HTMLInputElement;
@@ -753,10 +992,18 @@ function wireEvents(): void {
 
   // Langue de l'interface (v5) : application immédiate des textes ; la
   // valeur n'est persistée qu'à « Enregistrer » (= cohérence des autres
-  // réglages, RF-01).
+  // réglages, RF-01). Les libellés de langue ASR suivent la langue.
   const uiLangSel = $id("gen-ui-language") as HTMLSelectElement;
   uiLangSel.addEventListener("change", () => {
     applyUiLanguage(uiLangSel.value);
+    rebuildAsrLanguageLabels();
+  });
+
+  // Calcul CPU/GPU : écriture immédiate (même sémantique que le moteur —
+  // le bundle du noyau est reconstruit à chaud).
+  $id("calc-select").addEventListener("change", () => {
+    const choice = ($id("calc-select") as HTMLSelectElement).value;
+    void setCompute(choice);
   });
 
   // Onboarding 1-clic : téléchargement immédiat du modèle Whisper base
@@ -770,6 +1017,29 @@ function wireEvents(): void {
   $id("btn-model-cancel").addEventListener("click", () => {
     void invoke("models_download_cancel");
   });
+
+  // Don : boutons de l'encart + cœurs de la barre du haut.
+  wireDonate();
+}
+
+/** Libellés de langue de dictée : au lieu d'une liste figée en français,
+ * les noms sont rendus par Intl.DisplayNames dans la LANGUE DE L'INTERFACE
+ * (de → « allemand » / « Deutsch » / « ドイツ語 »). Simplification réelle :
+ * la liste des valeurs ASR n'est JAMAIS touchée (aucun réglage n'est
+ * perdu) ; si la locale est inconnue, les libellés statiques restent. */
+function rebuildAsrLanguageLabels(): void {
+  const sel = document.getElementById("gen-language") as HTMLSelectElement | null;
+  if (sel === null) return;
+  try {
+    const names = new Intl.DisplayNames([localeFor()], { type: "language" });
+    for (const opt of Array.from(sel.options)) {
+      if (opt.value === "") continue; // « auto » : déjà traduit via data-i18n
+      const label = names.of(opt.value);
+      if (label !== undefined && label !== opt.value) opt.textContent = label;
+    }
+  } catch {
+    // Locale non supportée par le moteur : libellés statiques conservés.
+  }
 }
 
 async function main(): Promise<void> {
@@ -782,10 +1052,19 @@ async function main(): Promise<void> {
   // Langue d'affichage (v5) avant tout peinture de texte dynamique.
   applyUiLanguage(config.general.uiLanguage);
   applyDom();
+  rebuildAsrLanguageLabels();
   const lic = await refreshLicense();
   paintConfig(config, lic);
   wireEvents();
   applyUiMode();
+
+  // Encart don réservé à l'ouverture des réglages : si un palier a été
+  // franchi hors fenêtre ouverte, il attend ici — jamais au fil d'une
+  // dictée.
+  if (localStorage.getItem(DONATE_KEY_PENDING) === "1") {
+    localStorage.removeItem(DONATE_KEY_PENDING);
+    showDonateBanner();
+  }
 
   const state = await invoke<StateInfo>("state_get");
   ($id("badge") as HTMLElement).textContent =
@@ -799,8 +1078,16 @@ async function main(): Promise<void> {
   void refreshHistory();
 
   // Événements (docs/05 §3 + additions documentées).
+  let lastDonateState = "idle";
   void listen("state://changed", async (ev) => {
     const payload = ev.payload as { state: string };
+    // Compteur don : un passage en « recording » (anti-doublon via le
+    // dernier état vu) = une prise de parole de l'utilisateur. L'encart
+    // éventuel se peint dans CETTE fenêtre : jamais dans la dictée.
+    if (payload.state === "recording" && lastDonateState !== "recording") {
+      if (donateTick()) showDonateBanner();
+    }
+    lastDonateState = payload.state;
     const badgeText = t(`state.${payload.state}`);
     ($id("badge") as HTMLElement).textContent =
       badgeText === `state.${payload.state}` ? payload.state : badgeText;
@@ -853,7 +1140,7 @@ async function main(): Promise<void> {
             });
     },
   );
-  void listen<{ id: string; ok?: boolean; reason?: string }>("models://done", (ev) => {
+  void listen<{ id: string; ok?: boolean; reason?: string }>("models://done", async (ev) => {
     downloadingId = null;
     ($id("btn-model-cancel") as HTMLElement).hidden = true;
     ($id("model-progress") as HTMLElement).hidden = true;
@@ -871,6 +1158,21 @@ async function main(): Promise<void> {
       }
     } else {
       showNotice(t("notice.modelOk"));
+      // Connexion automatique : le modèle fraîchement téléchargé devient
+      // le modèle actif du moteur whisper (l'utilisateur vient de choisir
+      // ce fichier — pas d'écran de question supplémentaire ; la sélection
+      // reste modifiable à tout moment dans le catalogue). Écriture
+      // immédiate = même sémantique que le choix de moteur (RF-01), le
+      // worker reconstruit son bundle en live.
+      const id = ev.payload.id;
+      if (config !== null && config.general.model !== id) {
+        try {
+          config.general.model = id;
+          await invoke("config_set", { newConfig: config });
+        } catch (err) {
+          showNotice(String(err));
+        }
+      }
     }
     void refreshModels();
     void refreshEngines();
