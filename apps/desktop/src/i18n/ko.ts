@@ -159,7 +159,7 @@ export const dict: Record<string, string> = {
 
   "footer.text": "Voxli — 100% 로컬. 고급 설정은 <code>%APPDATA%\\Voxli\\config.json</code>에 있습니다.",
 
-    "donate.bannerTitle": "Voxli는 무료이며, 로컬로 작동하고, 광고도 없습니다. 개발을 지원하실 수 있습니다:",
+  "donate.bannerTitle": "Voxli는 무료이며, 로컬로 작동하고, 광고도 없습니다. 개발을 지원하실 수 있습니다:",
   "donate.kofi": "Ko-fi에서 커피 한 잔 선물하기",
   "donate.paypal": "PayPal.me로 후원하기",
   "donate.later": "나중에 하기",

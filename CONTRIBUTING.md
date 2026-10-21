@@ -61,7 +61,10 @@ mentir sur ce qui marche.
   MÊME liste de clés que `en.ts`, l'exporter dans `i18n/index.ts`
   (`DICTS`, `LOCALES`, `LANGS`), et ajouter une option native
   du `#gen-ui-language` + une ligne aux docs. L'audit le vérifie :
-  `node scripts/audit-i18n.mjs` (clés + placeholders identiques).
+  `node scripts/audit-i18n.mjs` (clés + placeholders identiques ET
+  références : chaque `data-i18n*` des trois fenêtres et chaque
+  `t("…")` littéral du TS doit exister dans `en.ts` — une clé
+  fabriquée est signalée « pendante »).
 - `system` est une valeur de `uiLanguage` : détection de la langue du
   système (préfixe BCP-47) ; le repli d'UNE CLÉ manquante est en chaîne
   langue courante → `en` → `fr` → la clé elle-même (visible, jamais

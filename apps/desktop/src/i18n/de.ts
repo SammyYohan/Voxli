@@ -175,7 +175,7 @@ export const dict: Record<string, string> = {
   "footer.text": "Voxli — 100 % lokal. Erweiterte Einstellungen liegen in <code>%APPDATA%\\Voxli\\config.json</code>.",
 
   // Dons (可见 mais discrets : pied de page permanent + encart périodique)
-    "donate.bannerTitle": "Voxli ist gratis, lokal und werbefrei. Sie können die Entwicklung unterstützen:",
+  "donate.bannerTitle": "Voxli ist gratis, lokal und werbefrei. Sie können die Entwicklung unterstützen:",
   "donate.kofi": "Einen Kaffee auf Ko-fi ausgeben",
   "donate.paypal": "Spenden über PayPal.me",
   "donate.later": "Vielleicht später",

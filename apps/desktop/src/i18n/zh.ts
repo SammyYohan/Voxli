@@ -159,7 +159,7 @@ export const dict: Record<string, string> = {
 
   "footer.text": "Voxli — 100% 本地。高级设置位于 <code>%APPDATA%\\Voxli\\config.json</code>。",
 
-    "donate.bannerTitle": "Voxli 免费、本地、无广告。你可以支持它的开发：",
+  "donate.bannerTitle": "Voxli 免费、本地、无广告。你可以支持它的开发：",
   "donate.kofi": "在 Ko-fi 请我喝杯咖啡",
   "donate.paypal": "通过 PayPal.me 捐赠",
   "donate.later": "以后再说",

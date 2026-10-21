@@ -443,7 +443,11 @@ M5 (publication) : [`docs/09-feuille-de-route.md`](docs/09-feuille-de-route.md).
 
 Fondée sur les hypothèses de docs/01 §8, sans en inventer de nouvelles :
 [`docs/10-strategie-monetaire.md`](docs/10-strategie-monetaire.md).
-**Pas de FUNDING.yml** tant que les destinations ne sont pas vérifiées.
+**Soutenir le développement** (mêmes liens que dans l'application — cœurs
+permanents en haut de page et encart périodique, jamais pendant une
+dictée) : [Ko-fi](https://ko-fi.com/sammyyohan) ·
+[PayPal.me](https://paypal.me/sammyyohan).
+Pas de FUNDING.yml tant que les destinations ne sont pas vérifiées.
 
 ## 11. Release
 
