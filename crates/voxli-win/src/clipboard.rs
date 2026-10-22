@@ -1,13 +1,12 @@
-//! Presse-papiers : sauvegarde multi-format, écriture, restauration différée,
-//! hygiène de l'historique Windows (RF-30).
+//! Clipboard: multi-format save, write, deferred restore, Windows
+//! clipboard history hygiene (RF-30).
 //!
-//! Points de conformité RF-30 :
-//! (a) le contenu d'origine est restauré, formats riches compris ;
-//! (b) la dictée n'entre pas dans l'historique du presse-papiers ni la
-//!     synchronisation cloud (formats d'exclusion Windows) ;
-//! (c) une copie utilisateur pendant la fenêtre de maintien est conservée ;
-//! (d) un presse-papiers verrouillé est géré par réessais (pas d'échec
-//!     silencieux).
+//! RF-30 compliance points:
+//! (a) the original content is restored, rich formats included;
+//! (b) the dictation never enters the clipboard history nor the cloud
+//!     sync (Windows exclusion formats);
+//! (c) a user copy during the hold window is preserved;
+//! (d) a locked clipboard is handled with retries (no silent failure).
 
 use std::mem::size_of;
 use std::time::Duration;
@@ -38,29 +37,29 @@ pub enum ClipboardError {
     RestoreFailed,
 }
 
-/// Format copié (identifiant + octets bruts) — la sémantique des formats
-/// riches est celle de Windows, on ne les interprète pas.
+/// Saved format (identifier + raw bytes) — the semantics of the rich
+/// formats is Windows' own; we do not interpret them.
 #[derive(Clone, Debug)]
 pub struct SavedFormat {
     pub format: u32,
     pub data: Vec<u8>,
 }
 
-/// Photographie du presse-papiers avant insertion (RF-30a).
+/// Snapshot of the clipboard before insertion (RF-30a).
 #[derive(Clone, Debug, Default)]
 pub struct SavedClipboard {
     pub formats: Vec<SavedFormat>,
 }
 
 impl SavedClipboard {
-    // (Aucun « fingerprint » calculé ici : la seule empreinte utilisée est
-    // `read_text_fingerprint`, qui hache le TEXTE posé et pas les octets
-    // d'allocation — deux fonctions qui divergent en serait une source de
-    // désaccord RF-30c.)
+    // (No "fingerprint" computed here: the only fingerprint used is
+    // `read_text_fingerprint`, which hashes the pasted TEXT, not the raw
+    // allocation bytes — two diverging helpers would be a source of
+    // RF-30c disagreement.)
 }
 
-/// Ouvre le presse-papiers avec réessais (RF-30d : presse-papiers verrouillé
-/// par un tiers).
+/// Opens the clipboard with retries (RF-30d: clipboard locked by a
+/// third party).
 fn open_with_retry(attempts: u32) -> Result<(), ClipboardError> {
     for _ in 0..attempts {
         unsafe {
@@ -73,9 +72,13 @@ fn open_with_retry(attempts: u32) -> Result<(), ClipboardError> {
     Err(ClipboardError::Locked)
 }
 
-/// Sauvegarde tous les formats actuels. Formats texte connus copiés tels
-/// quels ; les formats GDI (bitmaps) sont ignorés (jamais produits par une
-/// dictée, la restauration du texte reste l'exigence RF-30).
+/// Saves the formats that can be copied through global-memory semantics:
+/// text (CF_TEXT/OEM/UNICODE), DIB/DIBV5 (bitmap content — Windows
+/// usually synthesizes CF_DIB for bitmap clips) and the registered rich
+/// formats (HTML/RTF). Handle-class formats (CF_BITMAP and friends)
+/// cannot be captured this way — documented limitation; when nothing was
+/// captured, `restore` leaves the clipboard AS IS instead of emptying it
+/// (RF-30a: nothing is lost, not even replaced by emptiness).
 pub fn save() -> Result<SavedClipboard, ClipboardError> {
     open_with_retry(10)?;
     let saved = unsafe {
@@ -88,12 +91,18 @@ pub fn save() -> Result<SavedClipboard, ClipboardError> {
                 if format == 0 {
                     break;
                 }
-                // Formats texte (13) et personnalisés enregistrés seulement.
-                let is_text = format == CF_UNICODETEXT.0 as u32
+                // Global-memory formats ONLY: text (1/7/13), DIB (8),
+                // DIBV5 (17 — bitmap coverage via the same Global
+                // semantics) and registered rich formats (HTML/RTF).
+                // CF_BITMAP (2) is a GDI *handle* class: it cannot pass
+                // through GlobalLock — documented limitation.
+                let is_copyable = format == CF_UNICODETEXT.0 as u32
                     || format == 1 /* CF_TEXT */
                     || format == 7 /* CF_OEMTEXT */
+                    || format == 8 /* CF_DIB */
+                    || format == 17 /* CF_DIBV5 */
                     || is_registered_rich_format(format);
-                if !is_text {
+                if !is_copyable {
                     continue;
                 }
                 let handle = GetClipboardData(format).map_err(|_| ClipboardError::ReadFailed)?;
@@ -126,19 +135,19 @@ fn is_registered_rich_format(format: u32) -> bool {
     })
 }
 
-/// Écrit du texte Unicode + formats d'exclusion d'historique/cloud (RF-30b).
-/// Les formats `ExcludeClipboardContentFromMonitorProcessing`,
-/// `CanIncludeInClipboardHistory` et `CanUploadToCloudClipboard` sont prévus
-/// par Windows précisément pour ce scénario (contenu éphémère, jamais dans
-/// l'historique `Win+V`).
+/// Writes Unicode text + history/cloud exclusion formats (RF-30b).
+/// The `ExcludeClipboardContentFromMonitorProcessing`,
+/// `CanIncludeInClipboardHistory` and `CanUploadToCloudClipboard` formats
+/// are provided by Windows precisely for this scenario (ephemeral
+/// content, never in the `Win+V` history).
 pub fn set_text_excluding_history(text: &str) -> Result<(), ClipboardError> {
     open_with_retry(10)?;
     let result = unsafe {
         let inner = (|| -> Result<(), ClipboardError> {
             let _ = EmptyClipboard();
-            // Formats d'éxclusion — posés AVANT le texte : en cas d'échec
-            // ici, le presse-papiers reste sans contenu (jamais un texte
-            // publié sans ses drapeaux d'hygiène RF-30b).
+            // Exclusion formats — set BEFORE the text: on failure
+            // here, the clipboard is left with no content (never publish
+            // a text without its RF-30b hygiene flags).
             set_exclusion_flag("ExcludeClipboardContentFromMonitorProcessing")?;
             set_exclusion_flag("CanIncludeInClipboardHistory")?;
             set_exclusion_flag("CanUploadToCloudClipboard")?;
@@ -156,9 +165,9 @@ pub fn set_text_excluding_history(text: &str) -> Result<(), ClipboardError> {
             }
             std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr as *mut u16, wide.len());
             let _ = GlobalUnlock(hglobal);
-            // Le système adopte le bloc EN cas de succès ; en cas d'échec,
-            // LE bloc est nôtre : `GlobalFree` obligatoire (sinon fuite
-            // mémoire à chaque paste).
+            // On success the system takes over the block; on failure,
+            // THE block is ours: `GlobalFree` is mandatory (otherwise a
+            // memory leak on every paste).
             SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hglobal.0))).map_err(|_| {
                 let _ = GlobalFree(Some(hglobal));
                 ClipboardError::SetFailed
@@ -186,7 +195,7 @@ unsafe fn set_exclusion_flag(name: &str) -> Result<(), ClipboardError> {
     }
     std::ptr::write_bytes(ptr as *mut u8, 0, size_of::<u32>());
     let _ = GlobalUnlock(hglobal);
-    // Même règle : échec → le bloc reste nôtre → libération immédiate.
+    // Same rule: failure → the block stays ours → immediate free.
     SetClipboardData(format, Some(HANDLE(hglobal.0))).map_err(|_| {
         let _ = GlobalFree(Some(hglobal));
         ClipboardError::SetFailed
@@ -194,15 +203,14 @@ unsafe fn set_exclusion_flag(name: &str) -> Result<(), ClipboardError> {
     Ok(())
 }
 
-/// Restaure une photographie (RF-30a). Si `guard_fingerprint` est fourni et
-/// que le contenu actuel diffère de celui que NOUS avons posé, la
-/// restauration est annulée : la copie concurrente de l'utilisateur est
-/// conservée (RF-30c).
+/// Restores a snapshot (RF-30a). If `guard_fingerprint` is provided and the
+/// current content differs from what WE pasted, the restoration is
+/// cancelled: the user's concurrent copy is preserved (RF-30c).
 pub fn restore(saved: &SavedClipboard, our_fingerprint: Option<u64>) -> Result<(), ClipboardError> {
     if let Some(fp) = our_fingerprint {
         if let Ok(current) = read_text_fingerprint() {
             if current != fp {
-                // L'utilisateur a copié autre chose pendant le maintien.
+                // The user copied something else during the hold.
                 return Ok(());
             }
         }
@@ -211,12 +219,20 @@ pub fn restore(saved: &SavedClipboard, our_fingerprint: Option<u64>) -> Result<(
 
     unsafe {
         let inner = (|| -> Result<(), ClipboardError> {
+            // Nothing recoverable was saved (e.g. a bitmap-only clip on
+            // an earlier build, or an initially empty clipboard): do NOT
+            // wipe the clipboard — leaving the transcription we pasted
+            // in place beats an empty clipboard (RF-30a: nothing is
+            // lost, not even replaced by emptiness).
+            if saved.formats.is_empty() {
+                return Ok(());
+            }
             let _ = EmptyClipboard();
-            // Per-format tolérant : un format qui échoue (alloc/lock/set)
-            // libère son bloc et n'abandonne pas les autres — la
-            // restauration partielle reste meilleure qu'une perte totale
-            // du contenu d'origine (RF-30a), le presse-papiers étant
-            // déjà verrouillé à NOUS (empreinte vérifiée plus haut).
+            // Tolerant per format: a failing format (alloc/lock/set)
+            // frees its block without abandoning the others — partial
+            // restoration is still better than a total loss of the
+            // original content (RF-30a), the clipboard being already
+            // held by US (fingerprint verified above).
             let mut failures = 0usize;
             for f in &saved.formats {
                 let hglobal = match GlobalAlloc(GMEM_MOVEABLE, f.data.len().max(1)) {
@@ -249,7 +265,7 @@ pub fn restore(saved: &SavedClipboard, our_fingerprint: Option<u64>) -> Result<(
     }
 }
 
-/// Empreinte du presse-papiers actuel (texte), pour la détection RF-30c.
+/// Fingerprint of the current clipboard (text), for RF-30c detection.
 pub fn read_text_fingerprint() -> Result<u64, ClipboardError> {
     let text = read_text()?;
     Ok(text.as_bytes().iter().fold(0xcbf29ce484222325u64, |h, b| {
@@ -268,8 +284,13 @@ pub fn read_text() -> Result<String, ClipboardError> {
             if ptr.is_null() {
                 return Err(ClipboardError::ReadFailed);
             }
+            // Bounded scan: never walk past the allocation on a
+            // malformed CF_UNICODETEXT (no NUL terminator inside the
+            // buffer).
+            let count =
+                windows::Win32::System::Memory::GlobalSize(hglobal) / std::mem::size_of::<u16>();
             let mut len = 0usize;
-            while *(ptr as *const u16).add(len) != 0 {
+            while len < count && *(ptr as *const u16).add(len) != 0 {
                 len += 1;
             }
             let wide = std::slice::from_raw_parts(ptr as *const u16, len);
@@ -282,22 +303,22 @@ pub fn read_text() -> Result<String, ClipboardError> {
     result
 }
 
-/// Transaction complète utilisée par le niveau 2 de la cascade : sauvegarde →
-/// écriture → frappe Ctrl+V (effectuée par l'appelant) → restauration
-/// différée sur un thread dédié (RF-30 : maintien pour les applications
-/// lentes, temporisation par profil).
+/// Complete transaction used by level 2 of the cascade: save →
+/// write → Ctrl+V keystroke (performed by the caller) → deferred
+/// restoration on a dedicated thread (RF-30: hold for slow applications,
+/// timeout per profile).
 pub struct ClipboardGuard;
 
 impl ClipboardGuard {
-    /// Écrit le texte et programme la restauration après `hold_ms`.
-    /// Retourne l'empreinte du contenu posé (pour la vérification RF-30c).
+    /// Writes the text and schedules the restoration after `hold_ms`.
+    /// Returns the fingerprint of the pasted content (for the RF-30c check).
     pub fn paste_with_restore(text: &str, hold_ms: u32) -> Result<u64, ClipboardError> {
         let saved = save()?;
         set_text_excluding_history(text)?;
         let fp = read_text_fingerprint().ok();
-        // Restauration différée : un thread dédié attend la fenêtre de
-        // maintien (les applications lentes à lire le presse-papiers —
-        // Outlook, RDP — exigent ce maintien, docs/01 §1.1).
+        // Deferred restoration: a dedicated thread waits out the hold
+        // window (applications slow to read the clipboard —
+        // Outlook, RDP — require this hold, docs/01 §1.1).
         let to_restore = saved;
         let fp_for_restore = fp;
         std::thread::spawn(move || {

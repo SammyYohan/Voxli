@@ -13,6 +13,6 @@ rusqlite = { version = "0.32", optional = true, features = ["bundled"] }
 
 [features]
 sqlite = ["dep:rusqlite"]
-# Historique disque chiffré au compte Windows (RF-33, P2) — champ par champ
-# via DPAPI ; requiert SQLite et l'API Windows.
+# On-disk history encrypted to the Windows account (RF-33, P2) — field by
+# field through DPAPI; requires SQLite and the Windows API.
 secure-disk = ["sqlite", "dep:voxli-secure", "voxli-secure/dpapi"]

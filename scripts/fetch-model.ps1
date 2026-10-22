@@ -1,12 +1,12 @@
-﻿# Téléchargement du modèle whisper.cpp pour le moteur ASR réel (opt-in).
+﻿# Download of the whisper.cpp model for the real ASR engine (opt-in).
 #
-# RF-36 / ADR-08 : aucune connexion réseau par l'application elle-même.
-# Le téléchargement est **une action explicite de l'utilisateur** (ce script),
-# jamais un comportement du produit installé. Après coup, Voxli fonctionne
-#strictement hors ligne.
+# RF-36 / ADR-08: no network connection from the application itself.
+# The download is **an explicit user action** (this script),
+# never a behavior of the installed product. Afterwards, Voxli runs
+# strictly offline.
 #
-# Exécuter : powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1
-#   -Model ggml-base-q5_1.bin   (ou tiny / small ...)
+# Run: powershell -ExecutionPolicy Bypass -File scripts/fetch-model.ps1
+#   -Model ggml-base-q5_1.bin   (or tiny / small ...)
 
 param(
     [string] $Model = 'ggml-base-q5_1.bin',

@@ -1,35 +1,35 @@
-﻿//! Clé publique Ed25519 embarquée (ADR-08).
+﻿//! Embedded Ed25519 public key (ADR-08).
 //!
-//! La clé **privée** de signature n'existe jamais dans le dépôt ni dans
-//! l'artefact (test S3) : elle vit hors dépôt, dans `.keys/` (ignoré par
-//! git), générée une fois par `cargo run -p voxli-license --bin issue-license`.
+//! The signing **private** key never exists in the repository or in the
+//! artifact (test S3): it lives outside the repo, in `.keys/` (git-ignored),
+//! generated once by `cargo run -p voxli-license --bin issue-license`.
 //!
-//! Cycle de vie prévu pour la mise en production :
-//! 1. générer une paire de clés dédiée sur une machine de confiance ;
-//! 2. remplacer `EMBEDDED_PUBLIC_KEY_HEX` ci-dessous par la clé publique ;
-//! 3. conserver la clé privée hors dépôt (coffre-fort / HSM).
+//! Planned go-to-production lifecycle:
+//! 1. generate a dedicated key pair on a trusted machine;
+//! 2. replace `EMBEDDED_PUBLIC_KEY_HEX` below with the public key;
+//! 3. keep the private key outside the repo (safe / HSM).
 
 use ed25519_dalek::{VerifyingKey, PUBLIC_KEY_LENGTH};
 
-/// Fonctionnalités achetables (RF-38/RF-39) : liste fermée, alignée sur
-/// `voxli_core::Feature` (égalité vérifiée par le test).
+/// Purchasable features (RF-38/RF-39): a closed list, aligned on
+/// `voxli_core::Feature` (equality checked by a test).
 pub const PURCHASABLE_FEATURES: &[&str] =
     &["history-on-disk", "cloud-post-processing", "extra-profiles"];
 
-/// Clé publique de vérification (hex, 64 caractères) de la paire **de
-/// développement** générée en phase de test. Zéros = aucune clé embarquée.
-/// Cycle production : remplacer par une paire dédiée dont la clé privée
-/// reste hors dépôt (cf. en-tête du module).
+/// Public verification key (hex, 64 characters) of the **development**
+/// pair generated during the test phase. Zeros = no embedded key.
+/// Production cycle: replace with a dedicated pair whose private key
+/// stays out of the repo (cf. module header).
 pub const EMBEDDED_PUBLIC_KEY_HEX: &str =
     "6666ea43c28087bb2a36a0b4ea3437dbbe6b188a0ebb3dbfbf9de30dc1a932e4";
 
-/// Identifiant produit vérifié à l'import — un blob d'un autre produit est
-/// refusé (RF-38).
+/// Product identifier verified at redemption — a blob from another product
+/// is refused (RF-38).
 pub const PRODUCT: &str = "voxli-desktop";
 
-/// Parse la clé publique embarquée. `None` si la constante est à zéros
-/// (binaire de développement sans clé) : toute importation de licence sera
-/// alors refusée avec un message explicite — jamais de validation silencieuse.
+/// Parses the embedded public key. `None` if the constant is zeros
+/// (development binary without a key): every license redemption will then
+/// be refused with an explicit message — never silent validation.
 pub fn embedded_public_key() -> Option<VerifyingKey> {
     let bytes = hex_decode_32(EMBEDDED_PUBLIC_KEY_HEX)?;
     if bytes == [0u8; PUBLIC_KEY_LENGTH] {
@@ -58,8 +58,8 @@ mod tests {
 
     #[test]
     fn t_embedded_key_length_and_shape() {
-        // La constante doit TOUJOURS être un hex de 64 caractères ou des
-        // zéros — un binaire livré avec une clé tronquée est une panne.
+        // The constant must ALWAYS be a 64-character hex string or
+        // zeros — a shipped binary with a truncated key is a failure.
         assert_eq!(EMBEDDED_PUBLIC_KEY_HEX.len(), PUBLIC_KEY_LENGTH * 2);
         let parsed = hex_decode_32(EMBEDDED_PUBLIC_KEY_HEX);
         assert!(parsed.is_some(), "hex embarqué valide");
@@ -67,9 +67,9 @@ mod tests {
 
     #[test]
     fn t_zero_key_is_not_embedded() {
-        // En phase de test : si une paire de développement réelle a été
-        // générée, la constante n'est plus nulle — ce test la détecte.
-        // Il exactifie l'invariant : zéro ⇒ `None`.
+        // During the test phase: if a real development pair has been
+        // generated, the constant is no longer zeros — this test detects
+        // it. It makes the invariant precise: zero ⇒ `None`.
         if EMBEDDED_PUBLIC_KEY_HEX.starts_with("0000") {
             assert!(embedded_public_key().is_none());
         } else {
@@ -79,9 +79,9 @@ mod tests {
 
     #[test]
     fn t_purchasable_features_match_core() {
-        // Égalité exacte (liste fermée) avec l'enum `Feature` du noyau : une
-        // chaîne achetable qui ne correspond à aucune `Feature`, ou une
-        // `Feature` qui ne serait pas achetable, est un échec de cohérence.
+        // Exact equality (closed list) with the kernel's `Feature` enum:
+        // a purchasable string matching no `Feature`, or a `Feature` that
+        // is not purchasable, is a consistency failure.
         let mut expected: Vec<&str> = [
             voxli_core::Feature::HistoryOnDisk,
             voxli_core::Feature::CloudPostProcessing,

@@ -1,14 +1,14 @@
-//! Capture WASAPI en mode partagé via `cpal` (ADR-04).
+//! Shared-mode WASAPI capture via `cpal` (ADR-04).
 //!
-//! - le flux d'entrée est **continu** : un anneau de pré-roll tourne en
-//!   permanence ; `start` marque le début du segment (pré-rempli du
-//!   pré-roll), `stop` en restitue l'audio converti (RF-06) ;
-//! - le callback n'alloue pas, ne prend pas de verrou long et ne touche
-//!   jamais au webview (RF-07, ADR-12) : les tampons sont pré-réservés,
-//!   le verrou de segment est court ;
-//! - le format natif du périphérique est traité comme inconnu (RF-13) et
-//!   converti en mono 16 kHz f32 à l'arrêt (RF-12) ;
-//! - les métriques (trames, discontinuités) exposent RF-07.
+//! - the input stream is **continuous**: a pre-roll ring is fed at all
+//!   times; `start` marks the beginning of a segment (pre-filled with the
+//!   pre-roll), `stop` returns the converted audio (RF-06);
+//! - the callback does not allocate, does not take a long lock and never
+//!   touches the webview (RF-07, ADR-12): buffers are pre-reserved and the
+//!   segment lock is short;
+//! - the device's native format is treated as unknown (RF-13) and converted
+//!   to mono 16 kHz f32 at stop (RF-12);
+//! - metrics (frames, discontinuities) expose RF-07.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,44 +21,44 @@ use crate::convert::to_mono_16k;
 
 const RING_SECONDS: f32 = 2.0;
 
-/// Observateur de tranches natives pour le streaming (addition documentée,
-/// docs/05) : appelé depuis le chemin temps réel avec une tranche **mono**
-/// au débit natif du périphérique, uniquement pendant une prise active
-/// (`active` présent). Le mixage s'effectue dans un tampon préalloué :
-/// aucune allocation ajoutée au chemin chaud (RF-07).
+/// Native-chunk observer for streaming (documented addition, docs/05):
+/// called from the real-time path with a **mono** chunk at the device's
+/// native rate, only while a capture is active (`active` present). Mixing
+/// happens into a preallocated buffer: no allocation is added to the hot
+/// path (RF-07).
 pub type CaptureTap = Arc<dyn Fn(&[f32], u32) + Send + Sync>;
 
-/// État partagé entre le callback temps réel et le contrôleur.
+/// State shared between the real-time callback and the controller.
 struct Shared {
-    /// Anneau de pré-roll (toujours alimenté pendant le flux actif).
+    /// Pre-roll ring (fed continuously while the stream is active).
     ring: Vec<f32>,
     ring_pos: usize,
     ring_len: usize,
-    /// Segment en cours (pré-réservé à `start` : aucune allocation ensuite).
+    /// Ongoing segment (pre-reserved at `start`: no allocation afterwards).
     active: Option<Vec<f32>>,
-    /// Vumètre vivant : amplitude récente, décroissance exp. par
-    /// échantillon (`meter_decay`) — attaque instantanée, vidange douce.
-    /// (Compat amené : jusqu'au 18/10/2026 c'était un crête à VIE — la
-    /// jauge restait montée pendant toute la prise, aucun mouvement.)
-    /// Accès sous `Mutex` (pas d'atomique dans le chemin temps réel).
+    /// Living level meter: recent amplitude with per-sample exponential
+    /// decay (`meter_decay`) — instant attack, smooth release.
+    /// (Compatibility history: until 2026-10-18 this was a peak held
+    /// FOREVER — the gauge stayed up for the whole capture, no movement.)
+    /// Accessed under `Mutex` (no atomics in the real-time path).
     meter: f32,
-    /// Facteur de vidange PAR ÉCHANTILLON : exp(-1 / (relâchement × rate)).
-    /// Pré-calculé à la construction (une seule exp, rien dans le callback).
+    /// Release factor PER SAMPLE: exp(-1 / (release × rate)).
+    /// Pre-computed at construction (a single `exp`, nothing in the callback).
     meter_decay: f32,
     frames: AtomicU64,
     discontinuities: AtomicU64,
     lost: AtomicBool,
-    /// Robinet streaming (optionnel) : appelé pendant une prise active,
-    /// avec une tranche mono au débit `rate` (docs/05, addition).
+    /// Streaming tap (optional): called while a capture is active, with a
+    /// mono chunk at rate `rate` (docs/05 addition).
     tap: Option<CaptureTap>,
-    /// Tampon de mixage préalloué du robinet (aucune allocation ensuite ;
-    /// croissance possible une fois si un celib très grand apparaît).
+    /// Preallocated tap mixing buffer (no allocation afterwards; a single
+    /// documented growth may occur if a very large chunk ever appears).
     tap_scratch: Vec<f32>,
-    /// Tampon de conversion préalloué des tranches I16/U8 (P1-6 audit :
-    /// l'ancien code allouait un `Vec` PAR TRANCHE dans le chemin temps
-    /// réel, en contradiction avec RF-07). Même schéma que `tap_scratch`.
+    /// Preallocated conversion buffer for I16/U8 chunks (P1-6 audit: the
+    /// old code allocated a `Vec` PER CHUNK in the real-time path,
+    /// contradicting RF-07). Same scheme as `tap_scratch`.
     conv_scratch: Vec<f32>,
-    /// Nombre de canaux natifs (mixage du robinet) et débit natif.
+    /// Native channel count (tap mixing) and native rate.
     channels: usize,
     rate: u32,
 }
@@ -71,10 +71,10 @@ impl Shared {
         rate: u32,
         tap: Option<CaptureTap>,
     ) -> Self {
-        // `_segment_cap` : la capacité de segment est pré-réservée à `start`
-        // (le callback ne peut pas allouer, on la fixe au moment du besoin).
-        // Vidange du vumètre : visons ~180 ms de relâchement (la jauge
-        // tombe de ~90 % en 0,4 s) — facteur par échantillon pré-calculé.
+        // `_segment_cap`: the segment capacity is pre-reserved at `start`
+        // (the callback cannot allocate, so we size it when needed).
+        // Meter decay: aim for a ~180 ms release (the gauge drops ~90 % in
+        // 0.4 s) — per-sample factor pre-computed.
         let sec = 0.180_f32;
         let meter_decay = if rate > 0 {
             (-1.0 / (sec * rate as f32)).exp()
@@ -99,39 +99,38 @@ impl Shared {
         }
     }
 
-    /// Chemin du callback : aucune allocation.
+    /// Real-time callback path: no allocation.
     fn push(&mut self, data: &[f32]) {
         for &s in data {
-            // Vumètre vivant : attaque instantanée (une parole forte monte
-            // tout de suite), vidange exponentielle (le silence la rend
-            // douce au zéro). Deux multiplications-comparaisons par
-            // échantillon, aucune allocation.
+            // Living level meter: instant attack (a loud word jumps the
+            // gauge right away), exponential release (silence brings it
+            // smoothly back to zero). Two multiplies and a compare per
+            // sample, no allocation.
             self.meter *= self.meter_decay;
             let a = s.abs();
             if a > self.meter {
                 self.meter = a;
             }
-            let mono = s; // mixdown effectué au stop (canal unique du flux)
-                          // Anneau
+            let mono = s; // raw per-sample: mixdown happens at stop (via to_mono_16k)
+                          // Ring
             self.ring[self.ring_pos] = mono;
             self.ring_pos = (self.ring_pos + 1) % self.ring.len();
             self.ring_len = (self.ring_len + 1).min(self.ring.len());
             // Segment
             if let Some(seg) = self.active.as_mut() {
                 if seg.len() < seg.capacity() {
-                    // push direct sans allocation (capacité pré-réservée)
+                    // direct push, no allocation (pre-reserved capacity)
                     seg.push(mono);
                 } else {
-                    // durée maximale atteinte : on cesse d'accumuler
-                    // (l'orchestrateur aura déjà déclenché RF-11 côté logique)
+                    // max duration reached: stop accumulating
+                    // (RF-11 is already enforced on the orchestrator's logic side)
                 }
             }
         }
-        // Robinet streaming : uniquement pendant une prise, mixage moyen
-        // des canaux dans le tampon préalloué (aucune allocation du
-        // chemin calme ; un débordement du tampon de 8192 échantillons
-        // par tranche ferait – rarement – une croissance unique,
-        // documentée).
+        // Streaming tap: only while a capture is active, mean channel mix
+        // into the preallocated buffer (no allocation from the calm path;
+        // an overflow beyond the 8192-sample buffer would — rarely — cause
+        // a single documented growth).
         if self.active.is_some() {
             if let Some(tap) = &self.tap {
                 self.tap_scratch.clear();
@@ -151,9 +150,9 @@ impl Shared {
         self.frames.fetch_add(data.len() as u64, Ordering::Relaxed);
     }
 
-    /// Conversion + ajout d'une tranche I16 (P1-6 audit : aucune
-    /// allocation au-delà de la première tranche — scratch préalloué,
-    /// `mem::take` évite l'imprunt simultané du tampon et de `self`).
+    /// Conversion + push of an I16 chunk (P1-6 audit: no allocation after
+    /// the first chunk — preallocated scratch; `mem::take` avoids
+    /// borrowing the buffer and `self` at the same time).
     fn push_i16(&mut self, data: &[i16]) {
         self.conv_scratch
             .extend(data.iter().map(|&s| s as f32 / 32768.0));
@@ -162,7 +161,7 @@ impl Shared {
         self.conv_scratch = scratch;
     }
 
-    /// Conversion + ajout d'une tranche U8 (même schéma que `push_i16`).
+    /// Conversion + push of a U8 chunk (same scheme as `push_i16`).
     fn push_u8(&mut self, data: &[u8]) {
         self.conv_scratch
             .extend(data.iter().map(|&s| (s as f32 - 128.0) / 128.0));
@@ -193,28 +192,28 @@ pub struct CpalCapture {
     pre_roll_ms: u32,
 }
 
-// cpal::Stream n'est pas Send sur toutes les plateformes ; le contrôleur vit
-// sur le thread qui a créé le flux (ADR-12 : thread temps réel dédié).
+// cpal::Stream is not Send on every platform; the controller lives on the
+// thread that created the stream (ADR-12: dedicated real-time thread).
 unsafe impl Send for CpalCapture {}
 
 impl CpalCapture {
-    /// Ouvre le micro par défaut et lit sa configuration native. Aucun flux
-    /// démarré avant `start`.
+    /// Opens the default microphone and reads out its native configuration.
+    /// No stream is started before `start`.
     pub fn new() -> Result<Self, CaptureError> {
         Self::new_with_device("default")
     }
 
-    /// RF-08 : ouvre un périphérique nommé, ou le micro par défaut quand
-    /// `selector` est vide/`default`. Le sélecteur est **l'identifiant
-    /// cpal stable** (`DeviceId`, sérialisable entre les sessions) ; à
-    /// titre de tolérance un nom exact est accepté. Le nom réel ouvert est
-    /// consultable via `device_name`.
+    /// RF-08: opens a named device, or the default microphone when
+    /// `selector` is empty/`default`. The selector is the **stable cpal
+    /// identifier** (`DeviceId`, serializable across sessions); as a
+    /// fallback an exact name is also accepted. The name actually opened
+    /// can be read via `device_name`.
     pub fn new_with_device(selector: &str) -> Result<Self, CaptureError> {
         Self::new_with_tap(selector, None)
     }
 
-    /// Variante avec robinet streaming : chaque callback actif alimente
-    /// `tap` d'une tranche mono au débit natif (docs/05, addition).
+    /// Variant with a streaming tap: every active callback feeds `tap`
+    /// with a mono chunk at the native rate (docs/05 addition).
     pub fn new_with_tap(selector: &str, tap: Option<CaptureTap>) -> Result<Self, CaptureError> {
         let host = cpal::default_host();
         let wanted = selector.trim().is_empty() || selector.eq_ignore_ascii_case("default");
@@ -228,7 +227,7 @@ impl CpalCapture {
             match by_id {
                 Some(d) => d,
                 None => {
-                    // Tolérance : correspondance par nom exact.
+                    // Fallback: matching by exact name.
                     host.input_devices()
                         .ok()
                         .and_then(|mut ds| {
@@ -246,7 +245,7 @@ impl CpalCapture {
             .default_input_config()
             .map_err(|_| CaptureError::UnsupportedFormat)?;
         let config: cpal::StreamConfig = supported.into();
-        let max_seconds = 1800u64; // plafond de sécurité RF-11
+        let max_seconds = 1800u64; // RF-11 safety cap
         let ring_cap =
             (RING_SECONDS * config.sample_rate as f32) as usize * config.channels as usize;
         let segment_cap =
@@ -269,7 +268,7 @@ impl CpalCapture {
         })
     }
 
-    /// Identifiant stable du périphérique ouvert (réglages RF-08).
+    /// Stable identifier of the opened device (RF-08 settings).
     pub fn device_id(&self) -> Result<String, CaptureError> {
         self.device
             .id()
@@ -277,7 +276,7 @@ impl CpalCapture {
             .map_err(|_| CaptureError::NoDevice)
     }
 
-    /// Nom du périphérique ouvert (journalisation, réglages RF-08).
+    /// Name of the opened device (logging, RF-08 settings).
     pub fn device_name(&self) -> String {
         self.device
             .description()
@@ -304,10 +303,16 @@ impl CpalCapture {
         let err_cb = {
             let shared = Arc::clone(&shared);
             move |err: cpal::Error| {
-                // Pas d'allocation dans le chemin d'erreur chaud : compteur.
+                // Heuristic by design: cpal gives no stable device-lost
+                // kind, so the message is matched (`to_string()` does
+                // allocate — accepted on an *error* path, never the hot
+                // audio path). Every error bumps `discontinuities`;
+                // "device"/"lost" additionally raises `lost`, the
+                // worker's recovery signal (RF-34).
                 if let Ok(s) = shared.try_lock() {
                     s.discontinuities.fetch_add(1, Ordering::Relaxed);
-                    if err.to_string().contains("device") {
+                    let msg = err.to_string().to_ascii_lowercase();
+                    if msg.contains("device") || msg.contains("lost") {
                         s.lost.store(true, Ordering::Relaxed);
                     }
                 }
@@ -358,7 +363,7 @@ impl Capture for CpalCapture {
             stream.play().map_err(|_| CaptureError::StreamStart)?;
             self.stream = Some(stream);
         }
-        // Marque le début du segment, pré-rempli du pré-roll (RF-06).
+        // Marks the start of the segment, pre-filled with the pre-roll (RF-06).
         let mut shared = self.shared.lock().map_err(|_| CaptureError::StreamStart)?;
         let want = (pre_roll_ms as f32 / 1000.0 * self.config.sample_rate as f32) as usize
             * self.config.channels as usize;
@@ -375,8 +380,8 @@ impl Capture for CpalCapture {
         let seg = shared.active.take().ok_or(CaptureError::NotStarted)?;
         let lost = shared.lost.load(Ordering::Relaxed);
         drop(shared);
-        // Le flux continue de tourner (l'anneau reste alimenté) : on le
-        // garde pour la prochaine prise ; arrêt propre au Drop / à l'app quit.
+        // The stream keeps running (the ring stays fed): we keep it for the
+        // next capture; clean shutdown happens on Drop / app quit.
         let channels = self.config.channels as usize;
         let in_rate = self.config.sample_rate;
         if lost {
@@ -384,18 +389,18 @@ impl Capture for CpalCapture {
         }
         let mono = to_mono_16k(&seg, channels, in_rate);
         if mono.is_empty() {
-            // P2-3 (audit) : « vide » n'est pas « micro perdu » — le
-            // périphérique est vivant (`lost` == false), l'état est
-            // distinct au journal (code 7, RF-34).
+            // P2-3 (audit): "empty" is not "microphone lost" — the
+            // device is alive (`lost` == false) and the state is
+            // distinct in the log (code 7, RF-34).
             return Err(CaptureError::NoData);
         }
         Ok(AudioBuffer::new(mono, SAMPLE_RATE_HZ))
     }
 
     fn level(&self) -> Level {
-        // Vumètre vivant : amplitude récente (décroissance exp. continue
-        // dans le callback time réel) — la jauge de la pastille se remplit
-        // avec la voix et se vide au silence.
+        // Living level meter: recent amplitude (continuous exponential
+        // decay in the real-time callback) — the pill's gauge fills with
+        // voice and drains during silence.
         self.shared.lock().map(|s| s.meter).unwrap_or(0.0).min(1.0)
     }
 
@@ -409,26 +414,26 @@ impl Capture for CpalCapture {
 
 impl Drop for CpalCapture {
     fn drop(&mut self) {
-        self.stream = None; // arrête le flux
+        self.stream = None; // stop the stream
     }
 }
 
-/// Périphérique d'entrée visible dans les réglages (RF-08).
+/// Input device shown in the settings (RF-08).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InputDevice {
-    /// Identifiant cpal stable (`DeviceId`) — persiste dans la
-    /// configuration et rouvre le même micro entre les sessions.
+    /// Stable cpal identifier (`DeviceId`) — persisted in the
+    /// configuration and reopens the same microphone across sessions.
     pub id: String,
-    /// Nom lisible (description du pilote).
+    /// Human-readable name (driver description).
     pub name: String,
-    /// `true` si c'est le micro par défaut du système au moment de la
-    /// consultation (information instantanée, pas un suivi en continu).
+    /// `true` if it is the system default microphone at the time of the
+    /// query (instantaneous information, not continuous tracking).
     pub is_default: bool,
 }
 
-/// Énumération des micros (RF-08) : liste dans l'ordre du système, avec
-/// marquage du micro par défaut. Une liste vide n'est pas une erreur : une
-/// machine sans micro n'est pas une panne.
+/// Microphone enumeration (RF-08): listed in system order, with the
+/// default microphone flagged. An empty list is not an error: a machine
+/// without a microphone is not a failure.
 pub fn list_input_devices() -> Vec<InputDevice> {
     let host = cpal::default_host();
     let default = host.default_input_device();
@@ -462,15 +467,16 @@ pub fn list_input_devices() -> Vec<InputDevice> {
 mod tests {
     use super::*;
 
-    /// Régression du vumètre vivant (18/10/2026) : l'ancienne sémantique
-    /// retenait une crête à vie (`to_bits().max()`) — la jauge montait et
-    /// ne redescendait jamais pendant la prise. Ici : attaque rapide sur
-    /// la parole, vidange au silence (dans le plan testé à 10 kHz).
+    /// Regression test for the living level meter (2026-10-18): the old
+    /// semantics held a lifetime peak (`to_bits().max()`) — the gauge went
+    /// up and never came back down during a capture. Here: fast attack on
+    /// speech, release during silence (in the 10 kHz configuration being
+    /// tested).
     #[test]
     fn vumetre_attaque_et_se_vide_au_silence() {
-        // ring_cap modeste : rien que le vumètre est testé ici.
+        // Modest ring_cap: only the level meter is tested here.
         let mut shared = Shared::new(64, 0, 1, 10_000, None);
-        // 0,3 s de parole « forte » (0,5 d'amplitude constante).
+        // 0.3 s of "loud" speech (constant 0.5 amplitude).
         let loud = vec![0.5_f32; 3_000];
         shared.push(&loud);
         assert!(
@@ -478,8 +484,8 @@ mod tests {
             "attaque attendue, meter={}",
             shared.meter
         );
-        // 0,6 s de silence : le niveau doit tomber quasi au zéro
-        // (exp(-0,6/0,18) ≈ 3,6 %) — un crête à vie resterait à 0,5.
+        // 0.6 s of silence: the level must drop to near zero
+        // (exp(-0.6/0.18) ≈ 3.6 %) — a lifetime peak would stay at 0.5.
         let silence = vec![0.0_f32; 6_000];
         shared.push(&silence);
         assert!(

@@ -1,19 +1,19 @@
-//! Partiels d'affichage pour les moteurs **batch offline** (whisper.cpp,
+//! Display partials for the **batch offline** engines (whisper.cpp,
 //! feature `whisper`).
 //!
-//! Principe : pendant la prise, un re-décodage **fenêtré** (dernières
-//! secondes du tampon cumulé) est déclenché à intervalle borné et émis par
-//! la voie streaming habituelle (`StreamUpdate::Partial`,
-//! `dictation://partial`) — affichage seul, **jamais inséré ni journalisé**
-//! (RF-34 + amendement ADR-02). Le texte définitif continue de venir de la
-//! voie batch sur le tampon complet, qui reste l'autorité (docs/05 §3.1,
-//! exception 3).
+//! Principle: during capture, a **windowed** re-decode (the last seconds
+//! of the cumulative buffer) is triggered at a bounded interval and
+//! emitted over the usual streaming channel (`StreamUpdate::Partial`,
+//! `dictation://partial`) — display only, **never inserted nor logged**
+//! (RF-34 + ADR-02 amendment). The final text keeps coming from the
+//! batch channel over the full buffer, which remains the authority
+//! (docs/05 §3.1, exception 3).
 //!
-//! Auto-désactivation : si un re-décodage dépasse le plafond (voir
-//! [`max_decode_ms_from_env`]), les partiels s'arrêtent pour le reste de
-//! la session (machine lente) — dégradation en douceur : l'utilisateur
-//! retrouve le comportement batch sans coupure ni message d'erreur ;
-//! la coupure reste toutefois consignée au journal par le pilote.
+//! Self-disabling: if a re-decode exceeds the ceiling (see
+//! [`max_decode_ms_from_env`]), partials stop for the rest of the
+//! session (slow machine) — graceful degradation: the user gets back
+//! the batch behavior without a break or an error message; the shutdown
+//! is still logged in the journal by the driver.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -23,32 +23,33 @@ use voxli_core::{AsrError, AudioBuffer, TranscribeOptions, Transcriptor, SAMPLE_
 use crate::streaming::{StreamUpdate, StreamingEngine, StreamingSession};
 use crate::whisper::WhisperCppEngine;
 
-/// Fenêtre glissante décodée pour les partiels : le re-décodage ne porte que
-/// sur les dernières secondes du tampon. **Adaptative (production)** : la
-/// fenêtre de départ est courte (2 s) et suit la machine — trop lente,
-/// elle rétrécit jusqu'à [`MIN_WINDOW_SAMPLES`] (0,6 s) ; suffisamment
-/// rapide, elle regrossit, plafonnée à 8 s = [`PARTIAL_WINDOW_SAMPLES`].
-/// Réglage avancé possible par la variable d'environnement
-/// `VOXLI_PARTIAL_WINDOW_SEC` (valeur de départ).
+/// Sliding window decoded for the partials: the re-decode only covers the
+/// last seconds of the buffer. **Adaptive (production)**: the starting
+/// window is short (2 s) and follows the machine — too slow, it shrinks
+/// down to [`MIN_WINDOW_SAMPLES`] (0.6 s); fast enough, it grows back,
+/// capped at 8 s = [`PARTIAL_WINDOW_SAMPLES`]. Advanced setting possible
+/// via the environment variable `VOXLI_PARTIAL_WINDOW_SEC` (starting
+/// value).
 pub const PARTIAL_WINDOW_SAMPLES: usize = (SAMPLE_RATE_HZ as usize / 10) * 80; // 8 s
-/// Plancher de fenêtre (0,6 s) : sous cette longueur le re-décodage n'a
-/// plus de contexte utile (mots tronqués), l'auto-coupure prend le relais.
-pub const MIN_WINDOW_SAMPLES: usize = SAMPLE_RATE_HZ as usize * 3 / 5; // 0,6 s
-/// Cible de durée d'un re-décodage partiel : le point d'équilibre entre
-/// affichage vivant et CPU raisonnable ; la fenêtre converge vers elle.
+/// Window floor (0.6 s): below this length the re-decode no longer has
+/// useful context (truncated words), the auto-shutdown takes over.
+pub const MIN_WINDOW_SAMPLES: usize = SAMPLE_RATE_HZ as usize * 3 / 5; // 0.6 s
+/// Target duration of a partial re-decode: the equilibrium point between
+/// live display and reasonable CPU; the window converges toward it.
 const TARGET_DECODE_MS: u128 = 1_500;
-/// Audio neuf minimal (échantillons) entre deux re-décodages (1,2 s).
+/// Minimal new audio (samples) between two re-decodes (1.2 s).
 pub const MIN_NEW_SAMPLES: usize = (SAMPLE_RATE_HZ as usize / 10) * 12;
-/// Intervalle minimal entre deux re-décodages (écrêtage du débit CPU).
+/// Minimal interval between two re-decodes (CPU throughput clamping).
 pub const MIN_INTERVAL_MS: u128 = 1_500;
-/// Un re-décodage plus long que ce plafond désactive les partiels de la
-/// session (machine lente) : la finalisation batch prend le relais.
+/// A re-decode longer than this ceiling disables the session's partials
+/// (slow machine): batch finalization takes over.
 pub const MAX_DECODE_MS: u128 = 2_500;
 
-/// Plafond de durée d'un re-décodage partiel : 2 500 ms par défaut, réglable
-/// par la variable d'environnement `VOXLI_PARTIAL_MAX_DECODE_MS` (réglage
-/// avancé, comme `VOXLI_PARTIAL_WINDOW_SEC` ; la configuration produit n'y
-/// touche pas) — borné 250..120 000. Lu à l'ouverture de chaque session.
+/// Ceiling duration of a partial re-decode: 2,500 ms by default, settable
+/// through the environment variable `VOXLI_PARTIAL_MAX_DECODE_MS` (advanced
+/// setting, like `VOXLI_PARTIAL_WINDOW_SEC`; the production configuration
+/// never touches it) — bounded 250..120,000. Read at the opening of every
+/// session.
 fn max_decode_ms_from_env() -> u128 {
     let ms: u128 = std::env::var("VOXLI_PARTIAL_MAX_DECODE_MS")
         .ok()
@@ -56,15 +57,15 @@ fn max_decode_ms_from_env() -> u128 {
         .unwrap_or(MAX_DECODE_MS);
     ms.clamp(250, 120_000)
 }
-/// Garde-fou mémoire du tampon partiel : 60 s d'audio canon 16 kHz.
+/// Memory guard for the partial buffer: 60 s of canonical 16 kHz audio.
 const MAX_BUFFER_SAMPLES: usize = (SAMPLE_RATE_HZ as usize) * 60;
 
-/// Durée (s) de la fenêtre de départ des partiels : 2 s par défaut,
-/// réglable par la variable d'environnement `VOXLI_PARTIAL_WINDOW_SEC`
-/// (réglage avancé, la configuration produit v5 n'y touche pas) —
-/// bornée 0,6..8 ; la fenêtre s'ajuste ensuite seule à la machine
-/// (`adapt_window`), les tests ne passent pas par ici (ils resserrent
-/// via `with_thresholds` et gardent une fenêtre constante).
+/// Duration (s) of the partial starting window: 2 s by default, settable
+/// through the environment variable `VOXLI_PARTIAL_WINDOW_SEC` (advanced
+/// setting, the v5 production configuration never touches it) —
+/// bounded 0.6..8; afterwards the window adjusts itself to the machine
+/// (`adapt_window`), tests do not go through here (they tighten via
+/// `with_thresholds` and keep a constant window).
 fn window_samples_from_env() -> usize {
     let sec: f64 = std::env::var("VOXLI_PARTIAL_WINDOW_SEC")
         .ok()
@@ -74,10 +75,10 @@ fn window_samples_from_env() -> usize {
     (SAMPLE_RATE_HZ as f64 * clamped) as usize
 }
 
-/// Fabrique de sessions partiels au-dessus de `WhisperCppEngine`.
+/// Factory of partial sessions on top of `WhisperCppEngine`.
 ///
-/// Le tampon complet reste chez l'orchestrateur (RF-22) ; la session n'y
-/// réplique que la fenêtre utile au re-décodage d'affichage.
+/// The full buffer stays with the orchestrator (RF-22); the session only
+/// replicates the window needed for the display re-decode.
 pub struct WhisperPartialStreamer {
     engine: Arc<WhisperCppEngine>,
 }
@@ -101,7 +102,7 @@ impl StreamingEngine for WhisperPartialStreamer {
                 language: language.clone(),
                 initial_prompt: None,
                 verbatim,
-                threads: None, // défaut moteur (cf. RF-17 corrigé)
+                threads: None, // engine default (cf. corrected RF-17)
             };
             decode_window(&engine, audio, &opts)
         };
@@ -109,48 +110,48 @@ impl StreamingEngine for WhisperPartialStreamer {
     }
 }
 
-/// Décodage d'une fenêtre via le moteur partagé (chemin moteur réel ; les
-/// tests injectent leur propre décodeur dans `PartialSession`).
+/// Window decoding through the shared engine (real engine path; the
+/// tests inject their own decoder into `PartialSession`).
 fn decode_window(
     engine: &Arc<WhisperCppEngine>,
     audio: &AudioBuffer,
     opts: &TranscribeOptions,
 ) -> Result<String, AsrError> {
     engine.transcribe(audio, opts).map(|t| {
-        // Hallucination de silence (RF-18) : pas de partiel du tout.
+        // Silence hallucination (RF-18): no partial at all.
         WhisperCppEngine::filter_hallucination(&t.text).unwrap_or_default()
     })
 }
 
-/// État de session partiels, découplé du moteur : `decode` est injecté
-/// (moteur réel ou double factice de test).
+/// Partial-session state, decoupled from the engine: `decode` is injected
+/// (real engine or test fake double).
 pub struct PartialSession<D>
 where
     D: FnMut(&AudioBuffer) -> Result<String, AsrError>,
 {
     decode: D,
     buffer: Vec<f32>,
-    /// Longueur de tampon déjà couverte par un décodage (audio neuf = delta).
+    /// Buffer length already covered by a decode (new audio = delta).
     decoded_until: usize,
     last_decode_at: Option<Instant>,
-    /// Dernier texte partiel décodé (source d'affichage du snapshot) —
-    /// voir `snapshot()` ci-dessous.
+    /// Last decoded partial text (the snapshot's display source) —
+    /// see `snapshot()` below.
     last_text: String,
-    /// Plafond de durée d'un décodage (production : [`MAX_DECODE_MS`]).
+    /// Decode duration ceiling (production: [`MAX_DECODE_MS`]).
     max_decode_ms: u128,
-    /// Intervalle minimal entre décodages (production : [`MIN_INTERVAL_MS`]).
+    /// Minimal interval between decodes (production: [`MIN_INTERVAL_MS`]).
     min_interval_ms: u128,
-    /// Audio neuf minimal avant un re-décodage (production : 1,2 s).
+    /// Minimal new audio before a re-decode (production: 1.2 s).
     min_new_samples: usize,
-    /// Longueur de la fenêtre re-décodée (production : départ 2 s via env,
-    /// ajustée ensuite par `adapt_window` ; tests : constante exacte).
+    /// Length of the re-decoded window (production: starts at 2 s via env,
+    /// then adjusted by `adapt_window`; tests: exact constant).
     window_samples: usize,
-    /// Ajustement automatique de la fenêtre à la machine mesurée
-    /// (production uniquement — les tests restent hermétiques).
+    /// Automatic adjustment of the window to the measured machine
+    /// (production only — tests stay hermetic).
     adaptive: bool,
-    /// Ticks consécutifs au-dessus du plafond : la coupe (machine lente)
-    /// n'arrive qu'au deuxième — la fenêtre rétrécit d'abord, on ne coupe
-    /// pas sur une première mesure qui l'adaptation peut suffire.
+    /// Consecutive ticks above the ceiling: the cut (slow machine)
+    /// happens only on the second — the window shrinks first; we never
+    /// cut on a first measurement that adaptation alone may fix.
     slow_streak: u8,
     disabled: bool,
 }
@@ -176,7 +177,7 @@ where
         }
     }
 
-    /// Constructeur complet pour les tests (seuils resserrés).
+    /// Full constructor for the tests (tightened thresholds).
     #[cfg(test)]
     fn with_thresholds(
         decode: D,
@@ -200,13 +201,13 @@ where
         }
     }
 
-    /// Ajustement de la fenêtre à la machine mesurée — appelé après chaque
-    /// re-décodage : au-dessus de la cible ([`TARGET_DECODE_MS`]), la
-    /// fenêtre rétrécit proportionnellement (plancher
-    /// [`MIN_WINDOW_SAMPLES`]) ; nettement en dessous, elle regrossit
-    /// (plafond [`PARTIAL_WINDOW_SAMPLES`]). L'objectif : un affichage qui
-    /// s'écrit en direct sur les machines qui le peuvent, sans jamais
-    /// étouffer les machines lentes — la mesure décide, pas une hypothèse.
+    /// Window adjustment to the measured machine — called after every
+    /// re-decode: above the target ([`TARGET_DECODE_MS`]), the window
+    /// shrinks proportionally (floor [`MIN_WINDOW_SAMPLES`]); clearly
+    /// below, it grows back (ceiling [`PARTIAL_WINDOW_SAMPLES`]).
+    /// The goal: a display that writes live on the machines that can
+    /// afford it, without ever choking the slow machines — the
+    /// measurement decides, not an assumption.
     fn adapt_window(&mut self, took_ms: u128) {
         if !self.adaptive {
             return;
@@ -214,14 +215,14 @@ where
         let target = TARGET_DECODE_MS as f64;
         let took = took_ms.max(1) as f64;
         if took > target {
-            // Trop lent : convergence directe vers la fenêtre qui devrait
-            // tenir la cible, amortie à 85 % pour éviter l'oscillation.
+            // Too slow: direct convergence toward the window that should
+            // meet the target, damped at 85% to avoid oscillation.
             let scale = (target / took).min(0.9) * 0.85;
             let next = self.window_samples as f64 * scale;
             self.window_samples = (next as usize).clamp(MIN_WINDOW_SAMPLES, PARTIAL_WINDOW_SAMPLES);
         } else if target / took > 2.0 {
-            // Largement sous la cible : la machine a de la marge, la
-            // fenêtre (et donc le contexte affiché) regrossit.
+            // Well below the target: the machine has headroom, the
+            // window (and thus the displayed context) grows back.
             let next = self.window_samples as f64 * 1.3;
             self.window_samples = (next as usize).clamp(MIN_WINDOW_SAMPLES, PARTIAL_WINDOW_SAMPLES);
         }
@@ -240,9 +241,9 @@ where
         if rate == SAMPLE_RATE_HZ {
             self.buffer.extend_from_slice(samples);
         } else {
-            // Resample linéaire vers le canon 16 kHz (le moteur batch n'y
-            // accepte QUE 16 kHz — RF-12). Chemin secondaire : le robinet
-            // de capture alimente déjà en 16 kHz.
+            // Linear resampling to the canonical 16 kHz (the batch
+            // engine accepts ONLY 16 kHz — RF-12). Secondary path: the
+            // capture faucet already delivers 16 kHz.
             let ratio = SAMPLE_RATE_HZ as f64 / rate as f64;
             if ratio.is_finite() && ratio > 0.0 {
                 let out_len = (samples.len() as f64 * ratio).ceil() as usize;
@@ -257,7 +258,7 @@ where
                 }
             }
         }
-        // Garde-fou mémoire : au-delà de 60 s cumulés, tronquer le début.
+        // Memory guard: beyond 60 s cumulative, truncate the beginning.
         if self.buffer.len() > MAX_BUFFER_SAMPLES {
             let drop = self.buffer.len() - MAX_BUFFER_SAMPLES;
             self.buffer.drain(..drop);
@@ -279,8 +280,8 @@ where
                 return Ok(Vec::new());
             }
         }
-        // Fenêtre : uniquement la fin du tampon (coût CPU borné par tick,
-        // durée réglable — voir `window_samples_from_env`).
+        // Window: only the tail of the buffer (CPU cost bounded per tick,
+        // settable duration — see `window_samples_from_env`).
         let window_len = self.window_samples.min(self.buffer.len());
         let start = self.buffer.len() - window_len;
         let window = AudioBuffer::new(self.buffer[start..].to_vec(), SAMPLE_RATE_HZ);
@@ -289,17 +290,17 @@ where
         let took_ms = t0.elapsed().as_millis();
         self.decoded_until = self.buffer.len();
         self.last_decode_at = Some(Instant::now());
-        // La fenêtre s'ajuste d'abord à la mesure (production) ; la coupe
-        // éventuelle s'applique ensuite et stoppe tout engagement futur.
+        // The window first adapts to the measurement (production); any
+        // cut then applies and stops all future commitments.
         self.adapt_window(took_ms);
         if took_ms > self.max_decode_ms {
-            // Machine trop lente : PAS de coupe à la première mesure — la
-            // fenêtre vient de rétrécir (`adapt_window`), le coût peut
-            // suffire au tick suivant. DEUX ticks consécutifs au-dessus du
-            // plafond prouvent le plafonnement : les partiels s'arrêtent
-            // alors pour le reste de la session — le décodage DÉJÀ PAYÉ
-            // reste affiché (lecture non jetée), les ticks suivants
-            // s'abstiennent (le pilote consigne la coupure une fois).
+            // Machine too slow: NO cut on the first measurement — the
+            // window just shrank (`adapt_window`), the cost may
+            // suffice on the next tick. TWO consecutive ticks above
+            // the ceiling prove the capping: partials then stop for
+            // the rest of the session — the ALREADY-PAID decode
+            // stays displayed (the read is not discarded), the
+            // following ticks abstain (the driver logs the cut once).
             self.slow_streak = self.slow_streak.saturating_add(1);
             if self.slow_streak >= 2 {
                 self.disabled = true;
@@ -319,16 +320,16 @@ where
     }
 
     fn finish(&mut self) -> Result<String, AsrError> {
-        // Le texte définitif vient exclusivement de la voie batch (tampon
-        // complet) : `take_result` garde son défaut `None`.
+        // The final text comes exclusively from the batch channel (full
+        // buffer): `take_result` keeps its default `None`.
         Ok(String::new())
     }
 
     fn snapshot(&self) -> String {
-        // Le consommateur (`worker.rs`, emit `dictation://partial`) lit le
-        // snapshot comme source d'affichage : renvoyer le dernier re-déco-
-        // dage. Le texte définitif reste la voie batch, sans seconde vérité
-        // (RF-34 : affichage seul, jamais inséré ni journalisé).
+        // The consumer (`worker.rs`, emits `dictation://partial`) reads the
+        // snapshot as the display source: return the last re-decode. The
+        // final text remains the batch channel, no second truth
+        // (RF-34: display only, never inserted nor logged).
         self.last_text.clone()
     }
 }
@@ -339,12 +340,12 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    const US: usize = SAMPLE_RATE_HZ as usize / 10; // 100 ms d'audio
+    const US: usize = SAMPLE_RATE_HZ as usize / 10; // 100 ms of audio
 
-    /// Décodeur lent : le premier décodage passé le plafond -> la fenêtre
-    /// rétrécit d'abord (PAS de coupe immédiate) ; le deuxième tick
-    /// consécutif au-dessus du plafond -> auto-off, les lectures déjà
-    /// payées restent émises.
+    /// Slow decoder: the first decode past the ceiling -> the window
+    /// shrinks first (NO immediate cut); the second consecutive tick
+    /// above the ceiling -> auto-off, the already-paid reads stay
+    /// emitted.
     #[test]
     fn t_partial_disable_on_slow_decode() {
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -356,14 +357,14 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(5));
                 Ok("texte".to_string())
             },
-            1, // max_decode_ms très bas (test)
-            0, // pas de throttle
-            0, // pas de minimum d'audio neuf
+            1, // very low max_decode_ms (test)
+            0, // no throttle
+            0, // no new-audio minimum
         );
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         let out = sess.drain().unwrap();
-        // Premier tick lent : pas encore coupé (la fenêtre tente de
-        // s'adapter), mais le décodage payé est bien émis.
+        // First slow tick: not cut yet (the window tries to adapt), but
+        // the paid decode is indeed emitted.
         assert_eq!(
             out.len(),
             1,
@@ -377,8 +378,8 @@ mod tests {
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         sess.push(&[0.0; US], SAMPLE_RATE_HZ).unwrap();
         let out = sess.drain().unwrap();
-        // Deuxième tick lent consécutif : le plafonnement est prouvé, la
-        // session se coupe — la lecture déjà payée reste émise une fois.
+        // Second consecutive slow tick: the capping is proven, the
+        // session cuts itself — the already-paid read stays emitted once.
         assert_eq!(out.len(), 1, "lecture du deuxième tick toujours émise");
         assert!(sess.is_disabled(), "session auto-désactivée (trait)");
         assert!(sess.disabled(), "session auto-désactivée (inhérente)");
@@ -388,7 +389,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::Relaxed), 2);
     }
 
-    /// Décodeur rapide : audio neuf requis, émission bornée à la fenêtre.
+    /// Fast decoder: new audio required, emission bounded to the window.
     #[test]
     fn t_partial_requires_new_audio_window_bounded() {
         let seen: Mutex<Vec<usize>> = Mutex::new(Vec::new());
@@ -398,21 +399,21 @@ mod tests {
                 lense.lock().unwrap().push(audio.samples.len());
                 Ok("partiel-eco".to_string())
             },
-            u128::MAX, // jamais trop lent
-            0,         // pas de throttle
-            10 * US,   // 1 s d'audio neuf minimum
+            u128::MAX, // never too slow
+            0,         // no throttle
+            10 * US,   // 1 s of new audio minimum
         );
-        // 0,5 s d'audio neuf : sous le seuil -> rien.
+        // 0.5 s of new audio: below the threshold -> nothing.
         sess.push(&[0.0; 5 * US], SAMPLE_RATE_HZ).unwrap();
         assert!(sess.drain().unwrap().is_empty());
-        // Total 1,1 s : un partiel est émis.
+        // Total 1.1 s: a partial is emitted.
         sess.push(&[0.0; 6 * US], SAMPLE_RATE_HZ).unwrap();
         let out = sess.drain().unwrap();
         assert_eq!(out.len(), 1);
         assert!(matches!(out[0], StreamUpdate::Partial { ref text } if text.contains("partiel")));
-        // Sans audio neuf : pas de re-décodage.
+        // Without new audio: no re-decode.
         assert!(sess.drain().unwrap().is_empty());
-        // La fenêtre finale (tampon > 8 s) ne décode que les 8 dernières s.
+        // The final window (buffer > 8 s) decodes only the last 8 s.
         sess.push(&[0.0; 70 * US], SAMPLE_RATE_HZ).unwrap();
         assert_eq!(sess.drain().unwrap().len(), 1);
         for len in seen.lock().unwrap().iter() {
@@ -423,39 +424,39 @@ mod tests {
             PARTIAL_WINDOW_SAMPLES,
             "appel final = fenêtre exacte de 8 s"
         );
-        // Snapshot : le dernier partiel décodé (le vrai texte d'affichage).
+        // Snapshot: the last decoded partial (the real display text).
         assert_eq!(sess.snapshot(), "partiel-eco");
         assert_eq!(sess.finish().unwrap(), "");
     }
 
-    /// Ajustement de fenêtre (production) : lent → rétrécit jusqu'au
-    /// plancher ; rapide → regrossit jusqu'au plafond ; hermétique (aucune
-    /// horloge réelle en jeu, la mesure est fournie).
+    /// Window adjustment (production): slow → shrinks down to the
+    /// floor; fast → grows back up to the ceiling; hermetic (no real
+    /// clock in play, the measurement is provided).
     #[test]
     fn t_adapt_window_shrinks_and_grows() {
         let mut sess =
             PartialSession::with_thresholds(|_: &AudioBuffer| Ok(String::new()), u128::MAX, 0, 0);
         sess.adaptive = true;
-        // Décodage 6× la cible (9 s mesurés) depuis une fenêtre de 8 s :
-        // convergence sous la cible…
+        // Decode at 6× the target (9 s measured) from an 8 s window:
+        // converging below the target…
         sess.window_samples = PARTIAL_WINDOW_SAMPLES;
         sess.adapt_window(6 * TARGET_DECODE_MS);
-        // …la fenêtre a nettement rétréci mais ne va jamais sous le plancher.
+        // …the window clearly shrank but never goes below the floor.
         assert!(sess.window_samples < PARTIAL_WINDOW_SAMPLES);
         assert!(sess.window_samples >= MIN_WINDOW_SAMPLES);
-        // Si même le plancher dépasse la cible (machine très lente), la
-        // fenêtre restera au plancher, puis la coupe prendra le relais.
+        // If even the floor exceeds the target (very slow machine), the
+        // window stays at the floor, then the cut takes over.
         sess.window_samples = MIN_WINDOW_SAMPLES;
         sess.adapt_window(20 * TARGET_DECODE_MS);
         assert_eq!(sess.window_samples, MIN_WINDOW_SAMPLES);
-        // Décodage très rapide : la fenêtre regrossit, sans dépasser 8 s.
+        // Very fast decode: the window grows back, never beyond 8 s.
         sess.window_samples = MIN_WINDOW_SAMPLES;
         sess.adapt_window(TARGET_DECODE_MS / 10);
         assert!(sess.window_samples > MIN_WINDOW_SAMPLES);
         sess.window_samples = PARTIAL_WINDOW_SAMPLES;
         sess.adapt_window(TARGET_DECODE_MS / 10);
         assert_eq!(sess.window_samples, PARTIAL_WINDOW_SAMPLES);
-        // Herméticité des tests : `with_thresholds` n'ajuste jamais.
+        // Test hermeticity: `with_thresholds` never adjusts.
         let mut fixe =
             PartialSession::with_thresholds(|_: &AudioBuffer| Ok(String::new()), u128::MAX, 0, 0);
         fixe.window_samples = PARTIAL_WINDOW_SAMPLES;

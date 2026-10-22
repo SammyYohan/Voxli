@@ -1,23 +1,23 @@
-//! Commandes IPC — surface webview ⇄ noyau (docs/05 §3).
+//! IPC commands — webview ⇄ core surface (docs/05 §3).
 //!
-//! Principe : le webview **observe** et **configure**. Il ne voit jamais
-//! l'audio ; il ne déclenche aucune insertion de texte arbitraire.
+//! Principle: the webview only **observes** and **configures**. It never
+//! sees audio; it triggers no arbitrary text insertion.
 //!
-//! Commandes (table IPC, mise à jour docs/05 §3) :
-//! - P0 : `configGet` / `configSet` / `stateGet` / `rescueLast` /
+//! Commands (IPC table, updated per docs/05 §3):
+//! - P0: `configGet` / `configSet` / `stateGet` / `rescueLast` /
 //!   `rescuePasteAgain` / `rescueRetry` / `rescueClose` / `cancelDictation` /
-//!   `diagnosticsExport` ;
-//! - P1 : `devicesList` (RF-08), `modelsList` / `modelsDownload` /
+//!   `diagnosticsExport`;
+//! - P1: `devicesList` (RF-08), `modelsList` / `modelsDownload` /
 //!   `modelsDownloadCancel` / `modelsRemove` (RF-20), `historyQuery` /
 //!   `historyDelete` / `historyPurge` (RF-33), `licenseImport` /
 //!   `licenseStatus` (RF-38), `dataExport`, `dictionariesImport` /
-//!   `dictionariesExport` (RF-23), `dictionaryPreview` (RF-37) ;
-//! - événements additionnels documentés dans la table : `notice://notice`,
+//!   `dictionariesExport` (RF-23), `dictionaryPreview` (RF-37);
+//! - extra events documented in the table: `notice://notice`,
 //!   `meter://level`, `models://progress`, `state://changed` (worker.rs).
 //!
-//! Garde T-34 : aucune commande ne renvoie de texte dicté, sauf les deux
-//! exceptions documentées (fenêtre de secours RF-31, export de données
-//! chiffré RF-33 — c'est une action explicite de l'utilisateur).
+//! Guard T-34: no command returns dictated text, except the two
+//! documented exceptions (RF-31 rescue window, RF-33 encrypted data export
+//! — that is an explicit user action).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,37 +34,37 @@ use voxli_license::Entitlement as LicenseEntitlement;
 use crate::strings;
 use crate::worker::WorkerMsg;
 
-/// État partagé : thread principal ⇄ webview ⇄ thread pipeline. Tout champ est
-/// `Send + Sync` ; les accès passent par `Mutex` avec récupération du poison
-/// (jamais de panique sur un verrou empoisonné).
+/// Shared state: main thread ⇄ webview ⇄ pipeline thread. Every field is
+/// `Send + Sync`; access goes through `Mutex` with poison recovery
+/// (never panic on a poisoned lock).
 pub struct UiShared {
-    /// File d'entrée du thread pipeline (événements de dictée).
+    /// Pipeline thread input queue (dictation events).
     pub tx: Sender<WorkerMsg>,
-    /// Configuration durablement en mémoire ; le disque en est le miroir.
+    /// Durable configuration held in memory; the disk is its mirror.
     pub config: Mutex<Config>,
     pub config_path: PathBuf,
-    /// Journal partagé : thread pipeline + commandes.
+    /// Shared logger: pipeline thread + commands.
     pub logger: Arc<Logger>,
-    /// Tampon « texte de secours » affiché dans la fenêtre RF-31 ; exception
-    /// documentée : miroir du tampon interne de l'orchestrateur (RF-22).
+    /// "Rescue text" buffer shown in the RF-31 window; documented
+    /// exception: mirror of the orchestrator's internal buffer (RF-22).
     pub last: Mutex<Option<String>>,
-    /// Nom d'état courant (machine à états docs/04 §3), jamais de contenu.
+    /// Current state name (state machine docs/04 §3), never content.
     pub state: Mutex<String>,
-    /// Identifiant du moteur chargé (métadonnée, RF-34).
+    /// Loaded engine id (metadata, RF-34).
     pub engine: Mutex<String>,
-    /// Licence vérifiée (RF-38) : rien de durable côté mémoire sans la
-    /// signature Ed25519. Rechargée au démarrage, mise à jour par import.
+    /// Verified license (RF-38): nothing durable in memory without the
+    /// Ed25519 signature. Reloaded at startup, updated by import.
     pub license: Mutex<LicenseInfo>,
-    /// Store d'historique (RF-33) : partagé entre le worker (écriture à la
-    /// fin de session) et les commandes IPC (lecture/suppression).
+    /// History store (RF-33): shared between the worker (write at the
+    /// end of a session) and the IPC commands (read/delete).
     pub history: Mutex<Option<Box<dyn voxli_storage::HistoryStore>>>,
-    /// Téléchargement de modèle en cours (un seul à la fois, RF-20).
+    /// Model download in progress (a single one at a time, RF-20).
     pub download_busy: Mutex<bool>,
     pub download_cancel: Arc<AtomicBool>,
 }
 
-/// État de licence vu par l'UI (RF-38/RF-39) — jamais des clés, jamais
-/// aucun secret : titulaire + fonctions + expiration.
+/// License state as seen by the UI (RF-38/RF-39) — never keys, never
+/// any secret: holder + features + expiration.
 #[derive(Clone, Debug, Serialize)]
 pub struct LicenseInfo {
     /// `free` | `active` | `grace` | `expired`.
@@ -72,7 +72,7 @@ pub struct LicenseInfo {
     pub licensee: String,
     pub features: Vec<String>,
     pub expires: Option<String>,
-    /// Date de péremption en secondes (affichage « jours restants »).
+    /// Expiration date in seconds (drives the "days remaining" display).
     pub expires_at_secs: Option<u64>,
 }
 
@@ -88,15 +88,15 @@ impl LicenseInfo {
     }
 }
 
-/// Helper d'accès antipanique au contenu d'un mutex.
+/// Panic-free helper to access a mutex's contents.
 pub(crate) fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-// ------------------------------------------------------------ licence ----
+// ------------------------------------------------------------ license ----
 
-/// Vérifie le fichier de licence (`license.txt`) contre la clé publique
-/// embarquée ; période de grâce hors ligne 30 jours (RF-38/ADR-08).
+/// Verifies the license file (`license.txt`) against the embedded public
+/// key; offline grace period of 30 days (RF-38/ADR-08).
 pub fn license_from_file(path: &std::path::Path) -> LicenseInfo {
     let Some(key) = voxli_license::embedded_public_key() else {
         return LicenseInfo::free();
@@ -129,8 +129,8 @@ fn license_info_from(ent: LicenseEntitlement) -> LicenseInfo {
             features.push(f.as_str().to_string());
         }
     }
-    // `verify` accepte une licence périmée dans la fenêtre de grâce (RF-38) :
-    // on le signale — « grace », pas « active ».
+    // `verify` accepts an expired license within the grace window (RF-38):
+    // flag it — "grace", not "active".
     let now = now_secs();
     let state = match ent.expires_at_secs() {
         Some(e) if e <= now => "grace".to_string(),
@@ -148,7 +148,7 @@ fn license_info_from(ent: LicenseEntitlement) -> LicenseInfo {
 #[derive(Serialize)]
 pub struct LicenseStatus {
     pub license: LicenseInfo,
-    /// Chemin du fichier attendu (aide à l'import manuel).
+    /// Expected file path (helps manual import).
     pub path: String,
 }
 
@@ -164,9 +164,9 @@ fn license_path() -> PathBuf {
     Config::default_dir().join("license.txt")
 }
 
-/// Importe un blob de licence signé (texte complet, collé ou fichier).
-/// La vérification est locale, hors ligne, Ed25519 (ADR-08) ; le blob est
-/// persisté **seulement si valide**.
+/// Imports a signed license blob (full text, pasted or picked file).
+/// Verification is local, offline, Ed25519 (ADR-08); the blob is
+/// persisted **only if valid**.
 #[tauri::command]
 pub fn license_import(shared: State<'_, UiShared>, blob: String) -> Result<LicenseInfo, String> {
     let Some(key) = voxli_license::embedded_public_key() else {
@@ -187,9 +187,9 @@ pub fn license_import(shared: State<'_, UiShared>, blob: String) -> Result<Licen
     std::fs::write(license_path(), blob.trim())
         .map_err(|e| format!("{} : {e}", strings::ERR_WRITE))?;
     *lock_or_recover(&shared.license) = info.clone();
-    // Les droits prennent effet **immédiatement** : le worker relit la
-    // licence à chaque reconstruction — on lui envoie le signal, sans
-    // recharger le moteur (`engine_stale` le voit inchangé).
+    // Entitlements take effect **immediately**: the worker re-reads the
+    // license on every rebuild — send it the signal, without reloading
+    // the engine (it sees `engine_stale` unchanged).
     let _ = shared.tx.send(WorkerMsg::ConfigChanged(Box::new(
         lock_or_recover(&shared.config).clone(),
     )));
@@ -203,11 +203,11 @@ pub fn config_get(shared: State<'_, UiShared>) -> Config {
     lock_or_recover(&shared.config).clone()
 }
 
-/// Écriture de configuration : validation complète côté noyau, confiance
-/// nulle envers le webview. RF-01 : les raccourcis sont **re-registrés à
-/// chaud** (échec d'enregistrement consigné au journal, jamais de panique) ;
-/// le thread pipeline reçoit `ConfigChanged` et reconstruit son orchestrateur
-/// (tampon RF-22 préservé) — la modification est live, sans redémarrage.
+/// Configuration write: full validation on the core side, zero trust in
+/// the webview. RF-01: hotkeys are **re-registered hot** (registration
+/// failure logged, never panic); the pipeline thread receives
+/// `ConfigChanged` and rebuilds its orchestrator (RF-22 buffer preserved)
+/// — the change is live, no restart required.
 #[tauri::command]
 pub fn config_set(
     app: AppHandle<Wry>,
@@ -215,8 +215,8 @@ pub fn config_set(
     new_config: Config,
 ) -> Result<(), String> {
     let normalized = new_config.normalized();
-    // Palette de raccourcis : validation syntaxique + conflits internes
-    // (deux raccourcis identiques sont interdits).
+    // Hotkey palette: syntactic validation + internal conflicts
+    // (two identical hotkeys are forbidden).
     let combos = [
         normalized.hotkeys.push_to_talk.clone(),
         normalized.hotkeys.paste_last_transcript.clone(),
@@ -235,9 +235,9 @@ pub fn config_set(
             }
         }
     }
-    // P2 (audit) : le nom de modèle reste un NOM SIMPLE du dossier
-    // `%APPDATA%\Voxli\models` — le webview ne peut pas faire lire au
-    // moteur un fichier hors du dossier de données.
+    // P2 (audit): the model name remains a PLAIN name within the
+    // `%APPDATA%\Voxli\models` folder — the webview cannot make the
+    // engine read a file outside the data folder.
     if !normalized.general.model.is_empty()
         && normalized.general.model != "auto"
         && !is_safe_model_name(&normalized.general.model)
@@ -252,24 +252,24 @@ pub fn config_set(
         .map_err(|e| format!("{} : {e}", strings::ERR_CONFIG_SAVE))?;
     *lock_or_recover(&shared.config) = normalized.clone();
 
-    // RF-01 : re-registration des raccourcis globaux côté thread principal
-    // (les commandes tauri s'exécutent dessus — plugin global-shortcut OK).
+    // RF-01: re-registration of global hotkeys on the main thread
+    // (tauri commands run there — global-shortcut plugin OK).
     crate::re_register_shortcuts(&app, &normalized);
 
-    // Le pipeline re-construit orchestrateur, moteur, capture, historique.
+    // The pipeline re-builds orchestrator, engine, capture, history.
     let _ = shared
         .tx
         .send(WorkerMsg::ConfigChanged(Box::new(normalized)));
     Ok(())
 }
 
-// ------------------------------------------------------------- état ----
+// ------------------------------------------------------------- state ----
 
 #[derive(Serialize)]
 pub struct StateInfo {
-    /// Nom d'état de la machine à états (docs/04 §3).
+    /// State-machine state name (docs/04 §3).
     pub state: String,
-    /// Identifiant du moteur chargé (métadonnée RF-34).
+    /// Loaded engine id (metadata RF-34).
     pub engine: String,
 }
 
@@ -281,11 +281,11 @@ pub fn state_get(shared: State<'_, UiShared>) -> StateInfo {
     }
 }
 
-// ------------------------------------------------- périphériques RF-08 ---
+// --------------------------------------------------- devices RF-08 ---
 
 #[derive(Serialize)]
 pub struct DeviceInfo {
-    /// Identifiant cpal stable (persiste dans `audio.device`).
+    /// Stable cpal id (persisted in `audio.device`).
     pub id: String,
     pub name: String,
     #[serde(rename = "isDefault")]
@@ -304,50 +304,49 @@ pub fn devices_list() -> Vec<DeviceInfo> {
         .collect()
 }
 
-// ------------------------------------------------------- modèles RF-20 ---
+// ------------------------------------------------------ models RF-20 ---
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
-    /// "whisper" | "nemo" (kinds du catalogue actuel).
+    /// "whisper" | "nemo" (kinds of the current catalog).
     pub kind: String,
-    /// Taille estimée (Mo) — indicative.
+    /// Estimated size (MB) — indicative.
     #[serde(rename = "sizeMb")]
     pub size_mb: Option<u64>,
-    /// Licence du modèle téléchargé — affichée AVANT toute action.
+    /// License of the downloaded model — displayed BEFORE any action.
     pub license: String,
     pub installed: bool,
     #[serde(rename = "sizeBytes")]
     pub size_bytes: Option<u64>,
     pub sha256: Option<String>,
-    /// Vrai si l'empreinte du manifeste ÉGAL la référence de confiance du
-    /// catalogue (P1-3) : jamais vrai tant que `expected_sha256` reste
-    /// `None` (aucun digest publié → rien n'est prétendu vérifié).
+    /// True if the manifest digest EQUALS the catalog's trusted reference
+    /// (P1-3): always false while `expected_sha256` stays `None` (no
+    /// published digest → nothing is claimed verified).
     pub verified: bool,
 }
 
-/// Catalogue : la provenance et la licence sont visibles dans l'interface
-/// avant tout téléchargement (attribution CC-BY-4.0 / OpenMDW,
-/// THIRD-PARTY-LICENSES.md).
+/// Catalog: provenance and license are visible in the UI before any
+/// download (attribution CC-BY-4.0 / OpenMDW, THIRD-PARTY-LICENSES.md).
 struct ModelEntry {
     id: &'static str,
     label: &'static str,
-    /// "whisper" | "nemo". (Parakeet retiré du catalogue le 22/10 — le
-    /// build distribué ne compile pas sherpa-onnx et ne peut donc pas
-    /// l'activer ; l'entrée et sa ligne de licence reviennent ensemble
-    /// dès qu'un build `parakeet-asr` est produit.)
+    /// "whisper" | "nemo". (Parakeet removed from the catalog on 22/10 —
+    /// the distributed build does not compile sherpa-onnx and therefore
+    /// cannot enable it; the entry and its license line come back
+    /// together as soon as a `parakeet-asr` build is produced.)
     kind: &'static str,
-    /// Taille estimée (Mo) — indicative.
+    /// Estimated size (MB) — indicative.
     size_mb: Option<u64>,
-    /// Licence du modèle téléchargé — affichée AVANT toute action.
+    /// License of the downloaded model — displayed BEFORE any action.
     license: &'static str,
-    /// Empreinte SHA-256 hex (minuscule) issue d'une source de CONFIANCE :
-    /// manifeste de release signé par le mainteneur, puis comparée
-    /// post-téléchargement. **Rien n'est inventé ici** — tant qu'aucune
-    /// révision humaine n'a apporté le digest (procédure docs/11-checklist-
-    /// release.md §3), la valeur reste `None` : l'empreinte calculée est
-    /// consignée seule, avec `verified: false` (P1-3, docs/08-audit).
+    /// SHA-256 hex digest (lowercase) from a TRUSTED source: release
+    /// manifest signed by the maintainer, then compared post-download.
+    /// **Nothing is invented here** — until a human review brings the
+    /// digest in (procedure docs/11-checklist-release.md §3), the value
+    /// stays `None`: the computed digest is logged alone, with
+    /// `verified: false` (P1-3, docs/08-audit).
     expected_sha256: Option<&'static str>,
 }
 
@@ -408,8 +407,8 @@ pub fn models_list() -> Vec<ModelInfo> {
                 }
                 _ => path.is_file(),
             };
-            // Taille : pour Parakeet, somme réelle des fichiers du dossier
-            // (la taille d'un répertoire NTFS ne vaut rien) — P2, audit §3.
+            // Size: for Parakeet, the real sum of the folder's files
+            // (an NTFS directory entry size is worthless) — P2, audit §3.
             let size_bytes = if installed && kind == "parakeet" {
                 Some(dir_size_bytes(&models_dir.join(id)))
             } else if installed {
@@ -417,8 +416,8 @@ pub fn models_list() -> Vec<ModelInfo> {
             } else {
                 None
             };
-            // Statut vérifié (P1-3) : comparaison effective au niveau de la
-            // liste aussi — l'utilisateur voit la correspondance réelle.
+            // Verified status (P1-3): actual comparison at the list
+            // level too — the user sees the real match.
             let digest = hash_of_manifest(id);
             let verified = match (&entry.expected_sha256, digest.as_deref()) {
                 (Some(expected), Some(actual)) => expected.eq_ignore_ascii_case(actual),
@@ -439,7 +438,7 @@ pub fn models_list() -> Vec<ModelInfo> {
         .collect()
 }
 
-/// Somme récursive des tailles de fichiers d'un dossier (0 si inexistant).
+/// Recursive sum of a folder's file sizes (0 if nonexistent).
 fn dir_size_bytes(dir: &std::path::Path) -> u64 {
     let mut total = 0u64;
     if let Ok(entries) = std::fs::read_dir(dir) {
@@ -455,32 +454,33 @@ fn dir_size_bytes(dir: &std::path::Path) -> u64 {
     total
 }
 
-/// État déclaré d'un moteur pour l'écran « Voix » : compilé dans CE build
-/// (feature) et réellement utilisable sur CETTE machine (modèle présent
-/// sur le disque). Aucune promesse sans vérification.
+/// Declared engine status for the "Voix" screen: compiled into THIS
+/// build (feature) and actually usable on THIS machine (model present
+/// on disk). No promise without verification.
 #[derive(Serialize)]
 pub struct EngineInfo {
-    /// Identifiant config — valeurs de `general.engine` (serde lowercase).
+    /// Config id — values of `general.engine` (serde lowercase).
     pub id: String,
-    /// La feature moteur est compilée dans ce build.
+    /// The engine feature is compiled into this build.
     pub compiled: bool,
-    /// Compilé ET prêt à dicter ici (modèle installé) — sinon grisé à l'UI.
+    /// Compiled AND ready to dictate here (model installed) — else
+    /// greyed out in the UI.
     pub usable: bool,
 }
 
-/// Résolution du modèle whisper quand la config dit « auto » (ou vide) :
-/// le premier modèle présent sur disque, dans l'ordre de préférence
-/// (base — bon équilibre — puis turbo, et enfin les ids des versions
-/// antérieures restés sur le disque — jamais ignorés), sinon le défaut
-/// du catalogue. Partagée par `engines_list` et
-/// `worker::model_path` : UNE seule vérité, le choix « auto » ne dépend
-/// jamais du compte qui l'interroge (l'incohérence du 21/10 — moteur
-/// « chargé » et table « non installé » — vient des résolutions jumelles).
+/// Resolves the whisper model when the config says "auto" (or empty):
+/// the first model present on disk, in this preference order — base
+/// (best default), small, medium, large-v3-turbo, tiny (ids kept
+/// verbatim from earlier distributions so on-disk leftovers are never
+/// ignored), else the catalog default (base). Shared by `engines_list`
+/// and `worker::model_path`: ONE source of truth, the "auto" choice
+/// never depends on who asks (the 21/10 inconsistency — engine
+/// "loaded" but table "not installed" — came from the twin resolutions).
 ///
-/// Garde-fou : un id EXPLICITE de la config n'est honoré QUE s'il est du
-/// type whisper dans le catalogue. Un id nemo/parakeet (empoisonné jadis
-/// par l'ancienne auto-connexion sans garde, code 2 au journal) n'est
-/// JAMAIS confié au loader whisper — repli sur la résolution auto.
+/// Guard: an EXPLICIT config id is honored ONLY if it is a whisper-kind
+/// entry of the catalog. A nemo/parakeet id (poisoned in the past by
+/// the old guard-less auto-plug, code 2 in the journal) is NEVER handed
+/// to the whisper loader — falls back to the auto resolution.
 pub(crate) fn resolve_whisper_model(cfg: &Config, models_dir: &std::path::Path) -> String {
     let explicit = cfg.general.model.as_str();
     let explicit_whisper = !explicit.is_empty()
@@ -505,33 +505,33 @@ pub(crate) fn resolve_whisper_model(cfg: &Config, models_dir: &std::path::Path) 
     "ggml-base-q5_1.bin".to_string()
 }
 
-/// Liste des moteurs candidats. La sélection s'écrit via `config_set`
-/// (`general.engine`) et le worker reconstruit son bundle en live
-/// (« engine_stale », RF-20) — jamais de redémarrage requis.
+/// Candidate engine list. Selection is written via `config_set`
+/// (`general.engine`) and the worker rebuilds its bundle live
+/// ("engine_stale", RF-20) — a restart is never required.
 #[tauri::command]
 pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
     let cfg = lock_or_recover(&shared.config).clone();
     let models_dir = Config::default_dir().join("models");
 
-    // whisper.cpp — modèle du réglage utilisateur, ou le meilleur fichier
-    // présent quand `model` vaut « auto » (MÊME résolution que le worker).
+    // whisper.cpp — the model from the user setting, or the best file
+    // present when `model` is "auto" (SAME resolution as the worker).
     let whisper_compiled = cfg!(feature = "real-asr");
     let whisper_model = resolve_whisper_model(&cfg, &models_dir);
     let whisper_usable = whisper_compiled && models_dir.join(&whisper_model).is_file();
 
-    // Nemotron streaming — le SDK est compilé (feature `nemo-stream`) et
-    // le GGUF doit être sur le disque.
+    // Nemotron streaming — the SDK must be compiled (feature
+    // `nemo-stream`) and the GGUF must be on disk.
     let nemo_compiled = cfg!(feature = "nemo-stream");
     let nemo_usable = nemo_compiled
         && models_dir
             .join("nemotron-3.5-asr-streaming-0.6b.q8_0.gguf")
             .is_file();
 
-    // « auto » résout toujours vers quelque chose (factice en bout de
-    // chaîne, jamais muet) : utilisable par construction.
-    // Parakeet absent de la liste : le catalogue ne le propose plus
-    // (retrait 22/10 — sherpa-onnx non compilé dans le build distribué,
-    // lire ModelEntry et THIRD-PARTY-LICENSES.md §1).
+    // "auto" always resolves to something (synthetic at the end of the
+    // chain, never mute): usable by construction.
+    // Parakeet absent from the list: the catalog no longer offers it
+    // (removed 22/10 — sherpa-onnx not compiled in the distributed
+    // build, see ModelEntry and THIRD-PARTY-LICENSES.md §1).
     vec![
         EngineInfo {
             id: "auto".into(),
@@ -565,9 +565,9 @@ pub fn models_remove(id: String, shared: State<'_, UiShared>) -> Result<(), Stri
     } else {
         Ok(())
     };
-    // Le retrait modifie le moteur effectif au prochain rebuild (RF-15) —
-    // il doit se voir au journal, sinon la disparition d'un modèle reste
-    // indémontrable (constat UX du 19/10 : modèle disparu sans trace).
+    // Removal changes the effective engine at the next rebuild (RF-15) —
+    // it must be visible in the journal, else a model's disappearance
+    // stays undemonstrable (UX finding of 19/10: model gone, no trace).
     match &ok {
         Ok(()) => shared.logger.log(Event::DeviceEvent {
             kind: format!("modèle-retiré:{id}"),
@@ -585,11 +585,10 @@ pub fn models_download_cancel(shared: State<'_, UiShared>) -> Result<(), String>
     Ok(())
 }
 
-/// Téléchargement d'un modèle du catalogue : UNE action explicite de
-/// l'utilisateur (RF-36), un seul à la fois, reprise `Range` supportée,
-/// SHA-256 calculé et consigné dans `manifests.json` (RF-20). La connexion
-/// est la SEULE voie réseau de Voxli — uniquement depuis cet écran, jamais
-/// au démarrage ni en tâche de fond.
+/// Downloads one catalog model: ONE explicit user action (RF-36), one at
+/// a time, `Range` resume supported, SHA-256 computed and logged into
+/// `manifests.json` (RF-20). The connection is Voxli's ONLY network
+/// path — only from this screen, never at startup nor in the background.
 #[tauri::command]
 pub fn models_download(
     app: AppHandle<Wry>,
@@ -617,9 +616,10 @@ pub fn models_download(
     let spawned = std::thread::Builder::new()
         .name("voxli-model-download".into())
         .spawn(move || {
-            // P1-4 (audit) : même un panic du thread doit libérer le verrou
-            // `download_busy` — sans remise, tout autre téléchargement
-            // serait refusé « déjà en cours » jusqu'à redémarrage.
+            // P1-4 (audit): even a thread panic must release the
+            // `download_busy` lock — without the reset, every further
+            // download would be refused as "already in progress" until
+            // a restart.
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 download_model_thread(&handle, &id_owned, &url, kind, expected, &cancel)
             }));
@@ -635,18 +635,18 @@ pub fn models_download(
                 }
             };
             if let Some(reason) = reason {
-                // Raison consignée au journal (RF-34 : métadonnées de
-                // réseau, jamais de contenu dicté) — l'échec silencieux
-                // du premier jet rendait le diagnostic impossible.
+                // Reason logged (RF-34: network metadata, never
+                // dictated content) — the first draft's silent failure
+                // made diagnosis impossible.
                 handle.state::<UiShared>().logger.log(Event::DeviceEvent {
                     kind: format!(
                         "téléchargement-échec:{}",
                         reason.chars().take(96).collect::<String>()
                     ),
                 });
-                // Le succès est émis par le thread ; un échec (annulation,
-                // réseau, extraction) doit lui aussi clore la progression
-                // côté interface — jamais de barre bloquée.
+                // Success is emitted by the thread; a failure (cancel,
+                // network, extraction) must also close the progress
+                // on the UI side — never a stuck bar.
                 let _ = handle.emit(
                     "models://done",
                     serde_json::json!({ "id": id_owned, "ok": false, "reason": reason }),
@@ -656,9 +656,9 @@ pub fn models_download(
             *lock_or_recover(&shared.download_busy) = false;
         });
     if let Err(e) = spawned {
-        // P1-4 (audit) : le spawn a échoué AVANT d'exécuter le thread — le
-        // verrou posé plus haut n'aurait jamais été libéré. On le remet et
-        // on remonte l'erreur à l'interface.
+        // P1-4 (audit): the spawn failed BEFORE the thread ran — the
+        // lock taken above would never have been released. Release it
+        // and surface the error to the UI.
         *lock_or_recover(&shared.download_busy) = false;
         return Err(format!("{} : {e}", strings::ERR_WORKER));
     }
@@ -690,10 +690,11 @@ fn download_model_thread(
     let shared = app.state::<UiShared>();
     let models_dir = Config::default_dir().join("models");
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
-    // Partiel unique sous `{id}.part` pour tous les formats : un préfixe
-    // contigu du flux serveur, il permet de reprendre sans tout re-télé-
-    // charger. Le nom fantaisiste `.part.bz2` du premier jet est nettoyé
-    // (fichier orphelin constaté en test réel, 192 Mo sans utilité).
+    // Single partial under `{id}.part` for all formats: a contiguous
+    // prefix of the server stream, it allows a resume without re-down-
+    // loading everything. The fanciful `.part.bz2` name of the first
+    // draft is cleaned up (orphan file seen in real testing, 192 MB of
+    // no use).
     let tmp = models_dir.join(format!("{id}.part"));
     let legacy = models_dir.join(format!("{id}.part.bz2"));
     if legacy.is_file() {
@@ -703,28 +704,27 @@ fn download_model_thread(
         kind: "téléchargement-démarré".into(),
     });
 
-    // Échéance par INACTIVITÉ (30 s sans octet), pas de plafond global : un
-    // téléchargement long sur ligne lente doit pouvoir finir (RF-20), une
-    // connexion morte doit échouer tôt et reprendre ensuite (le délai
-    // global de 600 s du premier jet coupait les téléchargements
-    // volumineux).
+    // Deadline by INACTIVITY (30 s without a byte), not a global cap: a
+    // long download on a slow line must be able to finish (RF-20); a
+    // dead connection must fail early and resume later (the first
+    // draft's global 600 s timeout cut large downloads short).
     let agent: ureq::Agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(20))
         .timeout_read(std::time::Duration::from_secs(30))
         .build();
 
-    // Reprise AUTOMATIQUE (audit UX 19/10 : une connexion réinitialisée à
-    // mi-transfert faisait échouer le téléchargement — l'utilisateur devait
-    // re-cliquer, parfois en boucle, sans jamais finir). Chaque essai
-    // reprend au `.part` déjà présent (plage `Range`) ; les erreurs réseau
-    // réessayent avec un backoff croissant dans la limite de
-    // MAX_TENTATIVES ; l'annulation reste immédiate à chaque instant.
+    // AUTOMATIC resume (UX audit 19/10: a connection reset mid-transfer
+    // failed the download — the user had to click again, sometimes in a
+    // loop, never finishing). Each attempt resumes from the existing
+    // `.part` (`Range` header); network errors retry with growing
+    // backoff up to MAX_TENTATIVES; cancellation remains instant at all
+    // times.
     const MAX_TENTATIVES: u32 = 8;
     let mut attempt: u32 = 0;
     loop {
         attempt += 1;
         if attempt > 1 {
-            // Backoff annulable : 1, 2, 4, 8, 15, 30 puis 60 s.
+            // Cancelable backoff: 1, 2, 4, 8, 15, 30 then 60 s.
             let wait = [1u64, 2, 4, 8, 15, 30, 60][((attempt - 2) as usize).min(6)];
             shared.logger.log(Event::DeviceEvent {
                 kind: format!("téléchargement-reprise-auto:essai={attempt},attente={wait}s"),
@@ -765,21 +765,21 @@ fn download_model_thread(
     finalize_download(app, id, kind, expected, false)
 }
 
-/// Issue d'une tentative de transfert (voir `download_model_thread`).
+/// Outcome of one transfer attempt (see `download_model_thread`).
 enum Attempt {
-    /// Flux serveur consommé intégralement : prêt pour la restitution.
+    /// Server stream fully consumed: ready for finalization.
     Complete,
-    /// Le `.part` est déjà au complet : le serveur refuse la plage (416).
+    /// The `.part` is already complete: the server refuses the range (416).
     AlreadyComplete,
-    /// Erreur réseau : le `.part` est conservé, un nouvel essai reprendra.
+    /// Network error: the `.part` is kept, the next attempt will resume.
     Retryable(String),
-    /// Erreur fatale (annulation, disque) : abandon immédiat.
+    /// Fatal error (cancel, disk): immediate abort.
     Fatal(String),
 }
 
-/// UN essai de transfert : connexion avec plage `Range` posée à la taille
-/// du `.part` courant, écriture par blocs, progression émise. Aucune
-/// reprise ici — c'est le rôle de la boucle appelante.
+/// ONE transfer attempt: connection with a `Range` set at the current
+/// `.part` size, chunked writes, progress emitted. No resume here —
+/// that is the caller loop's job.
 fn transfer_attempt(
     app: &AppHandle<Wry>,
     id: &str,
@@ -790,10 +790,10 @@ fn transfer_attempt(
 ) -> Attempt {
     let shared = app.state::<UiShared>();
     let start_from = std::fs::metadata(tmp).map(|m| m.len()).unwrap_or(0);
-    // P2 (audit) : un `.part` déjà complet répond 416 (plage hors contenu)
-    // — ce n'est PAS un échec réseau : le fichier entier est déjà légitime-
-    // ment là. Passer directement à la restitution ; sinon le fichier
-    // partiel complet ne finissait jamais (« réseau : 416 » en boucle).
+    // P2 (audit): an already-complete `.part` gets a 416 (range beyond
+    // content) — this is NOT a network failure: the whole file is already
+    // legitimately there. Jump straight to finalization; otherwise the
+    // fully received partial never finished ("network: 416" in a loop).
     let resp = match agent
         .get(url)
         .set("Range", &format!("bytes={start_from}-"))
@@ -808,10 +808,10 @@ fn transfer_attempt(
         }
         Err(e) => return Attempt::Retryable(format!("réseau : {e}")),
     };
-    // Code du serveur : 206 = l'amorce de plage est accordée (reprise);
-    // 200 = contenu ENTIER envoyé sans tenir compte de la plage — repartir
-    // de zéro IMPÉRATIVEMENT, sinon le fichier serait corrompu (préfixe
-    // conservé + flux complet). Sans ce test, aucune reprise n'était sûre.
+    // Server code: 206 = the range request is granted (resume); 200 =
+    // the ENTIRE content was sent regardless of the range — restart from
+    // zero MANDATORILY, else the file would be corrupted (kept prefix +
+    // full stream). Without this test, no resume was safe.
     let content_len = resp
         .header("content-length")
         .and_then(|v| v.parse::<u64>().ok())
@@ -871,10 +871,10 @@ fn transfer_attempt(
     }
 }
 
-/// Restitution finale commune (après un téléchargement OU après un 416 de
-/// reprise complète) : extraction d'archive validée, renommage, empreinte
-/// en flux, confrontation à la référence de confiance, manifeste, signal
-/// au worker — le moteur se recharge sans redémarrage (RF-15).
+/// Shared finalization (after a download OR after a full-resume 416):
+/// validated archive extraction, renaming, streamed digest, match against
+/// the trusted reference, manifest, signal to the worker — the engine
+/// reloads without a restart (RF-15).
 fn finalize_download(
     app: &AppHandle<Wry>,
     id: &str,
@@ -889,13 +889,13 @@ fn finalize_download(
     let tmp = models_dir.join(format!("{id}.part"));
 
     if is_archive {
-        // P1-5 (audit) : les ENTRÉES de l'archive sont validées AVANT
-        // extraction — un membre absolu ou « ../ » ne doit jamais sortir du
-        // dossier cible, quelle que soit la politique du tar système.
+        // P1-5 (audit): the ARCHIVE ENTRIES are validated BEFORE
+        // extraction — an absolute member or "../" must never escape the
+        // target folder, whatever the system tar's policy is.
         validate_archive_members(&tmp)?;
-        // Le répertoire cible doit exister AVANT `tar -C` : l'oubli du
-        // premier jet faisait échouer toute extraction (défaut constaté
-        // en test réel, l'archive complète restait inexploitable).
+        // The target directory must exist BEFORE `tar -C`: the first
+        // draft's omission made every extraction fail (defect observed
+        // in real testing; the complete archive stayed unusable).
         std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
         let out_str = dest.display().to_string();
         let input = tmp.display().to_string();
@@ -903,11 +903,11 @@ fn finalize_download(
             .args(["-xjf", &input, "-C", &out_str])
             .status()
             .map_err(|e| format!("extraction : {e}"))?;
-        // Le partiel/archivé n'est supprimé que si l'extraction a réussi :
-        // en cas d'échec, les octets déjà reçus restent réutilisables
-        // (RF-20). EXCEPTION : si le fichier était déjà complet (reprise
-        // 416), une archive cassée ré-échouerait à l'identique en boucle —
-        // on supprime le fichier pour repartir d'un téléchargement sain.
+        // The partial/archived file is removed only if extraction
+        // succeeded: on failure, the already-received bytes stay
+        // reusable (RF-20). EXCEPTION: if the file was already complete
+        // (416 resume), a broken archive would fail identically in a
+        // loop — delete it to restart from a clean download.
         if !status.success() {
             if resumed_complete {
                 let _ = std::fs::remove_file(&tmp);
@@ -915,9 +915,9 @@ fn finalize_download(
             return Err("extraction de l'archive impossible (tar requis)".to_string());
         }
         let _ = std::fs::remove_file(&tmp);
-        // L'archive contient un dossier du même nom : ramener les fichiers
-        // au niveau du dossier choisi (dest). Correction silencieuse si
-        // déjà au bon format.
+        // The archive contains a folder of the same name: bring the
+        // files back up to the chosen folder (dest). Silent fix if
+        // already in the right shape.
         if !dest.join("tokens.txt").is_file() {
             if let Ok(entries) = std::fs::read_dir(&dest) {
                 for e in entries.flatten() {
@@ -942,25 +942,25 @@ fn finalize_download(
                 }
             }
         }
-        // P1-5 (audit, barrière post-extraction) : l'arbre extrait doit
-        // rester canoniquement sous `dest` — attrape ce que les noms
-        // seuls ne voient pas (liens symboliques, encodages exotiques).
+        // P1-5 (audit, post-extraction barrier): the extracted tree must
+        // stay canonically under `dest` — catches what names alone do
+        // not see (symlinks, exotic encodings).
         ensure_tree_within(&dest)?;
     } else {
         std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
     }
 
-    // Empreinte EN FLUX (P1-2 audit : jamais le modèle entier en RAM) —
-    // digeste de dossier déterministe pour Parakeet (P1-1 audit : ne
-    // JAMAIS lire un répertoire comme un fichier), fichier sinon.
+    // Digest computed IN STREAM (P1-2 audit: never the whole model in
+    // RAM) — deterministic folder digest for Parakeet (P1-1 audit: NEVER
+    // read a directory as a file), file otherwise.
     let sha = if is_archive {
         directory_digest(&dest)?
     } else {
         streamed_sha256(&dest)?
     };
-    // P1-3 (audit) : confrontation à la référence de confiance quand elle
-    // existe ; une incohérence est une panne bloquante (fichier effacé),
-    // pas un avertissement noyé dans les logs.
+    // P1-3 (audit): match against the trusted reference when it exists;
+    // a mismatch is a blocking failure (file deleted), not a warning
+    // buried in the logs.
     let verified = match expected {
         Some(expected) => {
             if !sha.eq_ignore_ascii_case(expected) {
@@ -983,10 +983,10 @@ fn finalize_download(
             true
         }
         None => {
-            // Aucun digest de confiance publié pour ce modèle ; l'empreinte
-            // calculée reste CONSIGNÉE (vérifiable par l'utilisateur,
-            // RF-20) — elle n'est pas présentée comme une garantie
-            // d'authenticité (procédure docs/11 §3).
+            // No trusted digest published for this model; the computed
+            // digest stays LOGGED (user-verifiable, RF-20) — it is not
+            // presented as a guarantee of authenticity (procedure
+            // docs/11 §3).
             shared.logger.log(Event::DeviceEvent {
                 kind: "empreinte-consignée".into(),
             });
@@ -1029,18 +1029,18 @@ fn finalize_download(
         serde_json::to_string_pretty(&root).unwrap_or_default(),
     );
     let _ = app.emit("models://done", serde_json::json!({ "id": id, "ok": true }));
-    // Le worker réévalue le moteur chargé : si le modèle fraîchement
-    // installé le rend périmé (faux → réel), il recharge sans intervention
-    // utilisateur (RF-15), et sans toucher à une dictée en cours.
+    // The worker re-evaluates the loaded engine: if the freshly
+    // installed model makes it stale (fake → real), it reloads without
+    // user action (RF-15), and without touching an ongoing dictation.
     let _ = app.state::<UiShared>().tx.send(WorkerMsg::ModelInstalled);
     Ok(())
 }
 
-// ------------------------------------------------ empreintes en flux -----
+// ------------------------------------------------ streamed digests -----
 
-/// Empreinte SHA-256 d'un fichier EN FLUX (P1-2 audit) : lecture par
-/// morceaux de 1 Mio ; un GGUF ~708 Mo ne doit pas doubler la mémoire du
-/// processus pour être digéré (l'ancien code lisait le fichier entier).
+/// SHA-256 digest of a file IN STREAM (P1-2 audit): 1 MiB chunk reads —
+/// a ~708 MB GGUF must not double the process's memory to be digested
+/// (the old code read the whole file).
 fn streamed_sha256(path: &std::path::Path) -> Result<String, String> {
     use sha2::Digest;
     use std::io::Read;
@@ -1058,16 +1058,16 @@ fn streamed_sha256(path: &std::path::Path) -> Result<String, String> {
     Ok(hex_digest(&hasher.finalize()))
 }
 
-/// Préfixe du format d'empreinte de dossier (évolution future = nouveau
-/// préfixe ; jamais le même nom pour une autre formule).
+/// Folder-digest format prefix (a future evolution = a new prefix; never
+/// the same name for another formula).
 const DIR_DIGEST_V1: &str = "voxli-dir-digest-v1";
 
-/// Digest déterministe d'un dossier modèle (Parakeet — P1-1 audit) :
-/// fichiers triés par chemin relatif (séparateur `/`), chaque fichier
-/// haché en flux, chemin et taille participant au digest — jamais un
-/// `fs::read` d'un répertoire. La valeur n'est PAS une empreinte SHA-256
-/// de fichier : c'est un format signé par son préfixe et consigné tel
-/// quel au manifeste (`voxli-dir-digest-v1:…`).
+/// Deterministic digest of a model folder (Parakeet — P1-1 audit):
+/// files sorted by relative path (`/` separator), each file hashed in
+/// stream, path and size participating in the digest — never an
+/// `fs::read` of a directory. The value is NOT a file SHA-256 digest:
+/// it is a format signed by its prefix and logged as such in the
+/// manifest (`voxli-dir-digest-v1:…`).
 fn directory_digest(dir: &std::path::Path) -> Result<String, String> {
     use sha2::Digest;
     use std::io::Read;
@@ -1104,8 +1104,8 @@ fn directory_digest(dir: &std::path::Path) -> Result<String, String> {
     files.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut hasher = sha2::Sha256::new();
-    // En-tête : liste des chemins — le digest réagit à un ajout, un
-    // retrait ou un renommage de fichier, pas seulement au contenu.
+    // Header: the path list — the digest reacts to an added, removed or
+    // renamed file, not only to content.
     hasher.update(DIR_DIGEST_V1.as_bytes());
     hasher.update(b"\n");
     let names: Vec<&str> = files.iter().map(|(r, _, _)| r.as_str()).collect();
@@ -1133,16 +1133,16 @@ fn directory_digest(dir: &std::path::Path) -> Result<String, String> {
     ))
 }
 
-/// Digest SHA-256 brut → hexadécimal minuscule.
+/// Raw SHA-256 digest → lowercase hex.
 fn hex_digest(digest: &[u8]) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-// ----------------------------------------- validation de l'extraction ---
+// ----------------------------------------- extraction validation ---
 
-/// P1-5 (audit) : les noms d'ENTRÉES de l'archive sont listés (`tar -tjf`)
-/// et validés AVANT l'extraction — jamais de dépendance aveugle à la
-/// politique du `tar` système (bsdtar protège par défaut, GNU ancien non).
+/// P1-5 (audit): the ARCHIVE ENTRY names are listed (`tar -tjf`) and
+/// validated BEFORE extraction — never a blind trust in the system
+/// tar's policy (bsdtar protects by default, older GNU tar does not).
 fn validate_archive_members(archive: &std::path::Path) -> Result<(), String> {
     let out = std::process::Command::new("tar")
         .args(["-tjf", &archive.display().to_string()])
@@ -1163,8 +1163,8 @@ fn validate_archive_members(archive: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Nom d'entrée d'archive sain : relatif, sans « .. », sans séparateur
-/// Windows ni « : » (préfixe de lecteur), sans NUL.
+/// Sane archive entry name: relative, no "..", no Windows
+/// separator, no ":" (drive prefix), no NUL.
 fn archive_entry_name_safe(name: &str) -> bool {
     if name.trim().is_empty() {
         return false;
@@ -1178,8 +1178,8 @@ fn archive_entry_name_safe(name: &str) -> bool {
     name.split('/').all(|c| c != "..")
 }
 
-/// P1-5 (audit, barrière post-extraction) : tout fichier extrait doit
-/// résoudre canoniquement DANS le dossier cible.
+/// P1-5 (audit, post-extraction barrier): every extracted file must
+/// resolve canonically INSIDE the target folder.
 fn ensure_tree_within(root: &std::path::Path) -> Result<(), String> {
     let root_canon = root
         .canonicalize()
@@ -1207,14 +1207,14 @@ fn ensure_tree_within(root: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// P2 (audit) : le nom de modèle configuré est un NOM SIMPLE relatif au
-/// dossier des modèles — jamais un chemin (pas de `/`, `\`, `..`, `:`,
-/// pas de nom invisible commençant par un point). Empêche une config
-/// modifiée de faire lire au moteur un fichier hors `%APPDATA%\Voxli\models`.
+/// P2 (audit): the configured model name is a PLAIN name relative to the
+/// models folder — never a path (no `/`, `\`, `..`, `:`, no invisible
+/// name starting with a dot). Prevents a modified config from making
+/// the engine read a file outside `%APPDATA%\Voxli\models`.
 fn is_safe_model_name(name: &str) -> bool {
-    // Les espaces de bord ne sont pas une variante légitime d'un nom :
-    // «  .hidden.bin » (espace initiale) masque un fichier caché, et une
-    // marge accidentelle pointerait ailleurs que le modèle voulu.
+    // Edge spaces are not a legitimate variant of a name: " .hidden.bin"
+    // (leading space) hides a hidden file, and an accidental margin
+    // would point elsewhere than the intended model.
     if name != name.trim() {
         return false;
     }
@@ -1229,7 +1229,7 @@ fn is_safe_model_name(name: &str) -> bool {
         && !name.split('/').any(|c| c == "..")
 }
 
-// --------------------------------------------------- historique RF-33 ---
+// --------------------------------------------------- history RF-33 ---
 
 #[derive(Serialize)]
 pub struct HistoryItem {
@@ -1249,10 +1249,10 @@ fn item_of(e: voxli_storage::Entry) -> HistoryItem {
     }
 }
 
-/// Lecture bornée (RF-33) : les `n` entrées les plus récentes. Le store
-/// chiffré décode côté utilisateur courant — l'IPC renvoie le texte de
-/// l'historique : c'est l'exception **contenue** autorisée (contenu choisi
-/// par l'utilisateur, supprimable à tout instant ; documentée docs/05 §3).
+/// Bounded read (RF-33): the `n` most recent entries. The encrypted
+/// store decodes for the current user — the IPC returns transcript
+/// history: this is the authorized, **contained** exception (user-chosen
+/// content, deletable at any moment; documented docs/05 §3).
 #[tauri::command]
 pub fn history_query(shared: State<'_, UiShared>, n: Option<u32>) -> Vec<HistoryItem> {
     let guard = lock_or_recover(&shared.history);
@@ -1281,10 +1281,10 @@ pub fn history_purge(shared: State<'_, UiShared>) -> Result<(), String> {
     Ok(())
 }
 
-// ------------------------------------------------------ dictionnaire RF-23 ---
+// ------------------------------------------------- dictionary RF-23 ---
 
-/// Exporte le dictionnaire d'un profil (CSV `cible|variante…`) au webview
-/// (téléchargement via balise `<a download>`).
+/// Exports a profile's dictionary (CSV `target|variant…`) to the webview
+/// (download via an `<a download>` tag).
 #[tauri::command]
 pub fn dictionaries_export(shared: State<'_, UiShared>, profile: String) -> Result<String, String> {
     let cfg = lock_or_recover(&shared.config);
@@ -1299,7 +1299,7 @@ pub fn dictionaries_export(shared: State<'_, UiShared>, profile: String) -> Resu
     Ok(entries.join("\n"))
 }
 
-/// Importe un dictionnaire CSV (une entrée par ligne : `cible|v1|v2`).
+/// Imports a dictionary CSV (one entry per line: `target|v1|v2`).
 #[tauri::command]
 pub fn dictionaries_import(
     shared: State<'_, UiShared>,
@@ -1326,10 +1326,10 @@ pub fn dictionaries_import(
     Ok(count)
 }
 
-// -------------------------------------------------------- RF-37 contexte ---
+// --------------------------------------------------- RF-37 context ---
 
-/// Aperçu de contexte : app + titre de la fenêtre au premier plan, JAMAIS
-/// le contenu du champ (RF-37). Refus explicite hors mode autorisé.
+/// Context preview: foreground app + window title, NEVER the content of
+/// the field (RF-37). Explicit refusal outside the allowed mode.
 #[tauri::command]
 pub fn context_preview(shared: State<'_, UiShared>) -> Result<Option<(String, String)>, String> {
     let mode = lock_or_recover(&shared.config).privacy.context_read;
@@ -1351,12 +1351,12 @@ pub fn context_preview(shared: State<'_, UiShared>) -> Result<Option<(String, St
     }
 }
 
-// ------------------------------------------------------- export données ---
+// ---------------------------------------------------- data export ---
 
-/// Export de données utilisateur (RF-33 : maîtrise) : copie la configuration,
-/// les dictionnaires et le rapport de diagnostic dans un dossier fourni —
-/// jamais de texte dicté ni de clé API dans l'export. Destination par
-/// défaut : `Bureau\voxli-export-…`.
+/// User data export (RF-33: ownership): copies the configuration, the
+/// dictionaries and the diagnostic report into a provided folder — never
+/// dictated text nor API key in the export. Default destination:
+/// `Desktop\Voxli\voxli-export-…`.
 #[tauri::command]
 pub fn data_export(
     shared: State<'_, UiShared>,
@@ -1376,16 +1376,16 @@ pub fn data_export(
     let stamp = format!("voxli-export-epoch-{}", now_secs());
     let out = dest.join(&stamp);
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    // Configuration (lisible, sans secrets).
+    // Configuration (readable, secret-free).
     if let Ok(raw) = fs::read_to_string(dir.join("config.json")) {
         fs::write(out.join("config.json"), raw).map_err(|e| e.to_string())?;
     }
-    // Empreintes des modèles installés (manifests).
+    // Digests of installed models (manifests).
     if let Ok(raw) = fs::read_to_string(dir.join("models").join("manifests.json")) {
         fs::create_dir_all(out.join("models")).ok();
         fs::write(out.join("models").join("manifests.json"), raw).map_err(|e| e.to_string())?;
     }
-    // Rapport de support.
+    // Support report.
     let log_file = dir.join("logs").join("voxli.log");
     let raw = fs::read_to_string(&log_file).unwrap_or_default();
     let lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
@@ -1401,16 +1401,16 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
-// ------------------------------------------------------------ secours ---
+// ------------------------------------------------------------ rescue ---
 
-/// Texte courant du tampon de secours ; `null` si aucun.
+/// Current text of the rescue buffer; `null` if none.
 #[tauri::command]
 pub fn rescue_last(shared: State<'_, UiShared>) -> Option<String> {
     lock_or_recover(&shared.last).clone()
 }
 
-/// « Coller à nouveau » (RF-31) — ré-insère le texte du tampon interne.
-/// Exception documentée : le texte arbitraire ne peut pas entrer par IPC.
+/// "Paste again" (RF-31) — re-inserts the internal buffer's text.
+/// Documented exception: arbitrary text must not enter through IPC.
 #[tauri::command]
 pub fn rescue_paste_again(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
@@ -1419,8 +1419,8 @@ pub fn rescue_paste_again(shared: State<'_, UiShared>) -> Result<(), String> {
     Ok(())
 }
 
-/// « Réessayer » après panne moteur (RF-21) : l'orchestrateur relance le
-/// pipeline avec l'audio qu'il a conservé.
+/// "Retry" after an engine failure (RF-21): the orchestrator restarts
+/// the pipeline with the audio it kept.
 #[tauri::command]
 pub fn rescue_retry(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
@@ -1437,10 +1437,10 @@ pub fn rescue_close(app: AppHandle<Wry>) -> Result<(), String> {
     Ok(())
 }
 
-// -------------------------------------------------------- dictée ----
+// ----------------------------------------------------- dictation ----
 
-/// Annule une dictée en cours ou remet à zéro l'état de récupération
-/// (l'audio retenu est libéré — invariant 3).
+/// Cancels an ongoing dictation or resets the recovery state (the held
+/// audio is released — invariant 3).
 #[tauri::command]
 pub fn cancel_dictation(shared: State<'_, UiShared>) -> Result<(), String> {
     let _ = shared
@@ -1449,10 +1449,10 @@ pub fn cancel_dictation(shared: State<'_, UiShared>) -> Result<(), String> {
     Ok(())
 }
 
-// ------------------------------------------------- diagnostic RF-34 ----
+// --------------------------------------------------- diagnostics RF-34 ----
 
-/// Exporte le rapport de support (rédigé par construction). Destination :
-/// chemin fourni, sinon `Bureau\rapport-diagnostic-voxli.txt`.
+/// Exports the support report (redacted by construction). Destination:
+/// provided path, else `Desktop\rapport-diagnostic-voxli.txt`.
 #[tauri::command]
 pub fn diagnostics_export(
     shared: State<'_, UiShared>,
@@ -1474,7 +1474,7 @@ pub fn diagnostics_export(
     Ok(path.display().to_string())
 }
 
-// ------------------------------------------------------------ unitaires ---
+// ------------------------------------------------------------ tests ---
 
 #[cfg(test)]
 mod tests {
@@ -1510,8 +1510,8 @@ mod tests {
 
     #[test]
     fn t_streamed_hash_matches_reference() {
-        // Parité : le hachage en flux doit valoir exactement le SHA-256
-        // d'une lecture globale (sha2 en une passe, à titre de référence).
+        // Parity: the streamed hash must equal exactly the SHA-256
+        // of a whole-file read (sha2 in one pass, as the reference).
         let dir = std::env::temp_dir().join("voxli-commands-test-hash");
         let _ = std::fs::create_dir_all(&dir);
         let file = dir.join("sample.bin");
@@ -1528,7 +1528,7 @@ mod tests {
                 .collect::<String>()
         };
         assert_eq!(streamed, reference);
-        // Déterminisme.
+        // Determinism.
         assert_eq!(streamed_sha256(&file).unwrap(), streamed);
     }
 
@@ -1542,13 +1542,13 @@ mod tests {
         std::fs::write(model.join("encoder.int8.onnx"), b"esch").unwrap();
         let d1 = directory_digest(&model).unwrap();
         assert!(d1.starts_with("voxli-dir-digest-v1:"));
-        // Stabilité (même contenu → même digeste, ordre indépendant de l'OS).
+        // Stability (same content → same digest, order independent of the OS).
         assert_eq!(directory_digest(&model).unwrap(), d1);
-        // Sensibilité : changer un octet d'un fichier change le digest.
+        // Sensitivity: changing one byte of a file changes the digest.
         std::fs::write(model.join("tokens.txt"), b"ab ce").unwrap();
         assert_ne!(directory_digest(&model).unwrap(), d1);
-        // Sensibilité : DÉPLACER un fichier change les chemins relatifs,
-        // donc le digest (couvre le renommage P1-1).
+        // Sensitivity: MOVING a file changes the relative paths, hence
+        // the digest (covers the P1-1 rename case).
         std::fs::create_dir_all(model.join("sous")).unwrap();
         std::fs::rename(
             model.join("encoder.int8.onnx"),

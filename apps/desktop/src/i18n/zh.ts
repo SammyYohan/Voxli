@@ -1,4 +1,4 @@
-/** i18n Voxli v2 — 中文（简体）(traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — SIMPLIFIED CHINESE (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
   "app.tagline": "语音听写，100% 本地。你的话语绝不会离开这台电脑 — 除非你明确允许。",
   "mode.advanced": "高级模式 — 所有设置",

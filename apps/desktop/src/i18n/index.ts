@@ -1,19 +1,19 @@
-/** i18n minimal de Voxli v2 (RF-17 amendé, docs/11) : la langue de
- * l'interface (`uiLanguage`) est indépendante de la langue d'écoute ASR
- * (`general.language`). Valeurs : `system` (détection automatique) ou un
- * code parmi LANGS ; toute valeur inconnue retombe sur « fr » — jamais
- * d'écran abscons (RF-29 : messages ouverts, jamais muets).
+/** Minimal i18n of Voxli v2 (RF-17 amended, docs/11): the UI
+ * language (`uiLanguage`) is independent from the ASR listening language
+ * (`general.language`). Values: `system` (automatic detection) or a
+ * code among LANGS; any unknown value falls back to "fr" — never
+ * an obscure screen (RF-29: open messages, never mute).
  *
- * Mécanisme :
- * - `setUiLanguage("system"|code)` normalise (système → langue détectée
- *   dans `navigator.languages`, appartenance par préfixe : pt-BR → pt,
- *   zh-TW → zh…), pose `<html lang>` ET `<html dir>` (ar → rtl) ;
- * - `t("clé")` rend la chaîne courante, repli en CHAÎNE : langue
- *   courante → `en` → `fr` → la clé elle-même ;
- * - `applyDom()` applique la langue aux éléments statiques :
- *   `[data-i18n]` (textContent), `[data-i18n-html]` (innerHTML — table
- *   de chaînes propre, JAMAIS de contenu utilisateur), `[data-i18n-title]`
- *   (attribut title) et `[data-i18n-placeholder]` (placeholder).
+ * Mechanics:
+ * - `setUiLanguage("system"|code)` normalizes (system → the language
+ *   detected in `navigator.languages`, membership by prefix: pt-BR → pt,
+ *   zh-TW → zh…), sets `<html lang>` AND `<html dir>` (ar → rtl);
+ * - `t("key")` renders the current string, CHAIN fallback:
+ *   current language → `en` → `fr` → the key itself;
+ * - `applyDom()` applies the language to the static elements:
+ *   `[data-i18n]` (textContent), `[data-i18n-html]` (innerHTML — a clean
+ *   string table, NEVER user content), `[data-i18n-title]`
+ *   (title attribute) and `[data-i18n-placeholder]` (placeholder).
  */
 
 import { dict as fr } from "./fr";
@@ -32,7 +32,7 @@ import { dict as zh } from "./zh";
 import { dict as ja } from "./ja";
 import { dict as ko } from "./ko";
 
-/** Langues d'interface disponibles (les plus parlées/utilisées au monde). */
+/** Available UI languages (the most spoken/used in the world). */
 export type LangCode =
   | "fr"
   | "en"
@@ -50,7 +50,7 @@ export type LangCode =
   | "ja"
   | "ko";
 
-/** Valeur de configuration : détectée du système, ou un code fixe. */
+/** Configuration value: detected from the system, or a fixed code. */
 export type UiLanguage = "system" | LangCode;
 
 const DICTS: Record<LangCode, Record<string, string>> = {
@@ -71,7 +71,7 @@ const DICTS: Record<LangCode, Record<string, string>> = {
   ko,
 };
 
-/** Locale {date/number formatting} de chaque langue. */
+/** Locale {date/number formatting} of each language. */
 const LOCALES: Record<LangCode, string> = {
   fr: "fr-FR",
   en: "en-GB",
@@ -90,7 +90,7 @@ const LOCALES: Record<LangCode, string> = {
   ko: "ko-KR",
 };
 
-/** Codes disponibles, ordre de présentation du sélecteur. */
+/** Available codes, presentation order of the selector. */
 export const LANGS: LangCode[] = [
   "fr",
   "en",
@@ -109,20 +109,20 @@ export const LANGS: LangCode[] = [
   "ko",
 ];
 
-/** Langue courante RÉSOLUE (jamais « system » : le sélecteur montrera la
- * valeur brute de la config, le moteur rend la langue effective). */
+/** RESOLVED current language (never "system": the selector shows the
+ * raw config value, the engine renders the effective language). */
 let current: LangCode = "fr";
 
-/** Table de correspondance préfixe BCP-47 → code. */
+/** BCP-47 prefix → code mapping table. */
 const REGION_MAP: { prefix: string; code: LangCode }[] = LANGS.map((code) => ({
   prefix: code,
   code,
 }));
 
-/** Détection de la langue système : premier langage de
- * `navigator.languages` dont le code principal est supporté
- * (pt-BR, pt-PT → pt ; zh-TW → zh ; fr-FR → fr…). Repli « en » : la
- * détection ne court-circuite jamais l'utilisateur (RF-29). */
+/** System language detection: the first language of
+ * `navigator.languages` whose primary code is supported
+ * (pt-BR, pt-PT → pt; zh-TW → zh; fr-FR → fr…). Fallback "en": the
+ * detection never short-circuits the user (RF-29). */
 export function resolveSystemLanguage(): LangCode {
   const candidates =
     (navigator.languages && navigator.languages.length > 0
@@ -138,7 +138,7 @@ export function resolveSystemLanguage(): LangCode {
   return "en";
 }
 
-/** Entrée d'un dictionnaire en chaîne : langue courante → en → fr. */
+/** Dictionary lookup in chain: current language → en → fr. */
 function lookup(key: string): string {
   const own = DICTS[current][key];
   if (own !== undefined) return own;
@@ -147,7 +147,7 @@ function lookup(key: string): string {
   return DICTS.fr[key] ?? key;
 }
 
-/** Normalise une valeur de configuration (RÉSOLUE) et pose lang/dir. */
+/** Normalizes a configuration value (RESOLVED) and sets lang/dir. */
 export function setUiLanguage(raw: string): LangCode {
   const code = resolveConfiguredLanguage(raw);
   current = code;
@@ -156,7 +156,7 @@ export function setUiLanguage(raw: string): LangCode {
   return current;
 }
 
-/** Valeur brute de config → code effectif ("system" → détection). */
+/** Raw config value → effective code ("system" → detection). */
 export function resolveConfiguredLanguage(raw: string | undefined): LangCode {
   if (raw === undefined || raw === "system") return resolveSystemLanguage();
   const d = DICTS[raw as LangCode];
@@ -167,12 +167,12 @@ export function uiLanguage(): LangCode {
   return current;
 }
 
-/** Locale de formatage pour la langue courante (dates, nombres). */
+/** Formatting locale for the current language (dates, numbers). */
 export function localeFor(): string {
   return LOCALES[current];
 }
 
-/** Chaîne courante d'une clé, avec interpolation optionnelle {n}-like. */
+/** Current string of a key, with optional {n}-like interpolation. */
 export function t(key: string, args?: Record<string, string | number>): string {
   let s = lookup(key);
   if (args !== undefined) {
@@ -183,7 +183,7 @@ export function t(key: string, args?: Record<string, string | number>): string {
   return s;
 }
 
-/** Applique la langue courante aux éléments statiques de la fenêtre. */
+/** Applies the current language to the static elements of the window. */
 export function applyDom(): void {
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-i18n]"))) {
     const key = el.dataset.i18n;
@@ -191,9 +191,9 @@ export function applyDom(): void {
   }
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-i18n-html]"))) {
     const key = el.dataset.i18nHtml;
-    // innerHTML ici ne porte JAMAIS de contenu utilisateur : les valeurs
-    // sont les chaînes statiques du dictionnaire (seul le balisage de
-    // présentation).
+    // innerHTML here NEVER carries user content: the values
+    // are the static strings of the dictionary (presentation
+    // markup only).
     if (key !== undefined && key !== "") el.innerHTML = t(key);
   }
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-i18n-title]"))) {
@@ -206,7 +206,7 @@ export function applyDom(): void {
   }
 }
 
-/** Capsule : définir la langue puis peindre le document statique. */
+/** Capsule: set the language then paint the static document. */
 export function applyUiLanguage(raw: string): void {
   setUiLanguage(raw);
   applyDom();

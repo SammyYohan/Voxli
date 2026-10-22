@@ -1,9 +1,9 @@
-﻿# Mesure mémoire (docs/06 §4 : cible de mémoire de repos sous 210 Mo).
+﻿# Memory measurement (docs/06 §4: resting memory target under 210 MB).
 #
-# Échantillonne le jeu de travail + mémoire privée du processus Voxli,
-# pendant une fenêtre d'observation, en affichant min/moy/max.
+# Samples the working set + private memory of the Voxli process
+# during an observation window, printing min/avg/max.
 #
-# Exécuter : powershell -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Seconds 60
+# Run: powershell -ExecutionPolicy Bypass -File scripts/measure-memory.ps1 -Seconds 60
 
 param(
     [int] $Seconds = 60,
@@ -21,7 +21,7 @@ $end = (Get-Date).AddSeconds($Seconds)
 while ((Get-Date) -lt $end) {
     $p = Get-Process -Name $ProcessName | Select-Object -First 1
     if ($p) {
-        # Jeu de travail + mémoire privée : les deux faces du budget WebView2.
+        # Working set + private memory: the two halves of the WebView2 budget.
         $mb = ($p.WorkingSet64 + $p.PrivateMemorySize64) / 1MB
         $points.Add($mb) | Out-Null
         Write-Output (('{0:HH:mm:ss}  {1,7:F1} Mo' -f (Get-Date), $mb))

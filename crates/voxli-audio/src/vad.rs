@@ -1,19 +1,19 @@
-﻿//! VAD minimal par énergie (P0) — RF-18.
+﻿//! Minimal energy-based VAD (P0) — RF-18.
 //!
-//! Le silence, le bruit de clavier/ventilateur et l'audio non vocal ne
-//! doivent pas produire de texte : un énoncé dont la voix détectée est
-//! inférieure à `min_speech_ms` est rejeté. Le VAD Silero complet (modèle
-//! ONNX) remplace ce backend en P1 — même trait, même point de couture.
+//! Silence, keyboard/fan noise and non-speech audio must not produce text:
+//! an utterance whose detected voiced duration is below `min_speech_ms` is
+//! rejected. The full Silero VAD (ONNX model) replaces this backend in
+//! P1 — same trait, same seam.
 
 use voxli_core::{AudioBuffer, SpeechVerdict, VoiceActivity};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VadConfig {
-    /// Durée minimale de voix détectée pour transcrire (ms).
+    /// Minimum detected voiced duration before transcribing (ms).
     pub min_speech_ms: u32,
-    /// Seuil RMS par trame (0..1). Défaut ≈ −46 dBFS.
+    /// Per-frame RMS threshold (0..1). Default ≈ −46 dBFS.
     pub threshold_rms: f32,
-    /// Durée de trame d'analyse (ms).
+    /// Analysis frame duration (ms).
     pub frame_ms: u32,
 }
 
@@ -27,8 +27,8 @@ impl Default for VadConfig {
     }
 }
 
-/// VAD par énergie : RMS par trame de `frame_ms`, cumul des trames au-dessus
-/// du seuil.
+/// Energy-based VAD: RMS per `frame_ms` frame, accumulated across frames
+/// above the threshold.
 pub struct EnergyVad {
     cfg: VadConfig,
 }

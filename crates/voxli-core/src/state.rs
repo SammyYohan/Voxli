@@ -1,15 +1,15 @@
-//! Machine à états de la session de dictée (docs/04 §3).
+//! Dictation session state machine (docs/04 §3).
 //!
 //! ```text
-//! Inactif → Enregistrement → Finalisation → Analyse → Transcription
-//!   → PostTraitement → Insertion → Inséré | Secours | ErreurRécupérable
+//! Idle → Recording → Finalizing → VAD → Transcribing
+//!   → PostProcessing → Inserting → Inserted | Rescue | RecoverableError
 //! ```
 
 use std::time::Duration;
 
 use crate::types::FocusSnapshot;
 
-/// Marqueur de demande en file (RF-05 : file d'attente de 1).
+/// Marker of a queued request (RF-05: queue depth 1).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PendingMarker {
     pub target: FocusSnapshot,
@@ -17,9 +17,9 @@ pub struct PendingMarker {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecoveryReason {
-    /// Erreur moteur : audio conservé, « réessayer » disponible (RF-20, RF-21).
+    /// Engine error: audio kept, "retry" available (RF-20, RF-21).
     EngineError,
-    /// Échec d'insertion des niveaux 1–3 : fenêtre de secours (RF-28, RF-31).
+    /// Insertion levels 1–3 failed: rescue window (RF-28, RF-31).
     InsertFailed,
 }
 
@@ -32,8 +32,8 @@ impl RecoveryReason {
     }
 }
 
-/// État observable de la session. L'interface ne reçoit que ces états et des
-/// horodatages — jamais de texte (ADR-02, RF-34).
+/// Observable session state. The UI receives only these states and
+/// timestamps — never text (ADR-02, RF-34).
 #[derive(Clone, Debug, PartialEq)]
 pub enum DictationState {
     Idle,
@@ -72,7 +72,7 @@ impl DictationState {
         }
     }
 
-    /// La cible mémorisée au démarrage de la prise, quand l'état en porte une.
+    /// The target memorized at capture start, when the state carries one.
     pub fn target(&self) -> Option<&FocusSnapshot> {
         match self {
             DictationState::Recording { target, .. }

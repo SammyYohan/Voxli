@@ -10,29 +10,29 @@ voxli-core = { path = "../voxli-core" }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
 
-# Moteur réel — activé explicitement (feature `whisper`) : la compilation
-# embarque whisper.cpp via CMake ; voir scripts/fetch-model.ps1.
+# Real engine — explicitly enabled with the `whisper` feature: the build
+# embeds whisper.cpp through CMake; see scripts/fetch-model.ps1.
 whisper-rs = { version = "0.16", optional = true }
 
-# Parakeet TDT v3 (P3) via la crate officielle : 100 % local, poids
-# CC-BY-4.0 ; la compilation C++ requiert CMake.
+# Parakeet TDT v3 (P3) through the official crate: 100 % local, CC-BY-4.0
+# weights; the C++ build requires CMake.
 sherpa-onnx = { version = "1.13", optional = true }
 
-# Moteur distant BYOK (P4, RF-36) : transport HTTPS multipart minimal.
+# Remote BYOK engine (P4, RF-36): minimal HTTPS multipart transport.
 ureq = { version = "2", optional = true, features = ["tls"] }
 
-# Nemotron 3.5 ASR streaming (SDK NeMo-Speech.cpp, ADR-06) : liaison
-# optionnelle, l'installation locale du SDK est requise (README § 6).
+# Nemotron 3.5 ASR streaming (NeMo-Speech.cpp SDK, ADR-06): optional
+# linkage, the SDK must be installed locally (README § 6).
 voxli-win = { path = "../voxli-win", optional = true }
 
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
-# Accélération GPU optionnelle du moteur whisper.cpp : compile ggml avec
-# le backend Vulkan (pilotes Intel/AMD/NVIDIA ; le contrôle CUDA suit le
-# même schéma). Le build nominal reste CPU-only : le GPU est une
-# OPPORTUNITÉ de plus sur les machines qui en possèdent, jamais une
-# contrainte (prérequis au build : SDK Vulkan/glslc, voir README § 6).
+# Optional GPU acceleration for the whisper.cpp engine: compiles ggml with
+# the Vulkan backend (Intel/AMD/NVIDIA drivers; CUDA follows the same
+# pattern). The nominal build stays CPU-only: on machines that have one,
+# the GPU is an additional OPPORTUNITY, never a constraint (build
+# prerequisites: Vulkan SDK/glslc, see README § 6).
 whisper-gpu = ["whisper", "whisper-rs/vulkan"]
 parakeet = ["dep:sherpa-onnx"]
 remote = ["dep:ureq"]

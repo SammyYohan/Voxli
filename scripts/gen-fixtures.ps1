@@ -1,14 +1,14 @@
-﻿# Génération des fixtures audio (tests/fixtures/audio).
+﻿# Generation of the audio fixtures (tests/fixtures/audio).
 #
-# Écrit des WAV PCM16 mono 16 kHz déterministes (aucun fichier binaire suivi
-# dans le dépôt). Ces fixtures servent à la recette manuelle et aux futurs
-# tests d'intégration du moteur réel : chaque fichier a un contenu utilement
-# identifiable (docs/06 §1).
+# Writes deterministic 16 kHz mono PCM16 WAVs (no binary file tracked
+# in the repository). These fixtures serve the manual acceptance tests and future
+# integration tests of the real engine: each file has usefully
+# identifiable content (docs/06 §1).
 #
-# Performance : écritures dans des tableaux pré-dimensionnés — jamais
-# d'ajouts unitaires via List[T] (x10 plus lent sous PowerShell).
+# Performance: writes into pre-sized arrays — never
+# one-by-one additions via List[T] (10x slower under PowerShell).
 #
-# Exécuter : powershell -ExecutionPolicy Bypass -File scripts/gen-fixtures.ps1
+# Run: powershell -ExecutionPolicy Bypass -File scripts/gen-fixtures.ps1
 
 param([string] $Out = 'tests/fixtures/audio')
 
@@ -75,11 +75,11 @@ function Concat {
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 Write-Host "Génération des fixtures dans $Out ..."
 
-# 1. Silence pur : le VAD doit répondre « silence », la fenêtre ne produit rien.
+# 1. Pure silence: the VAD must answer "silence", the window produces nothing.
 Write-Wav (Join-Path $Out 'silence-2s.wav') (New-Object 'float[]' (2 * $rate)) $rate
 
-# 2. Tonalité « parole-like » (trois composantes de bande média, fondamentale
-#    220 Hz) : le VAD doit la passer ; le moteur réel doit y lire un énoncé.
+# 2. "Speech-like" tone (three mid-band components, fundamental
+#    220 Hz): the VAD must let it through; the real engine must read an utterance in it.
 $voix = Concat @(
     (New-Sine -Freq 220.0 -Count $rate -SampleRate $rate -Amp 0.28),
     (New-Sine -Freq 440.0 -Count $rate -SampleRate $rate -Amp 0.28),
@@ -87,18 +87,18 @@ $voix = Concat @(
 )
 Write-Wav (Join-Path $Out 'voix-synthetique-3s.wav') $voix $rate
 
-# 3. Prise trop brève : doit être rejetée par minSpeechMs = 250 (RF-18).
+# 3. Take too short: must be rejected by minSpeechMs = 250 (RF-18).
 Write-Wav (Join-Path $Out 'short-100ms.wav') (New-Sine -Freq 440.0 -Count ([int]($rate * 0.1)) -SampleRate $rate) $rate
 
-# 4. Bruit de clavier approximé (salve aléatoire + silence) : le VAD doit
-#    répondre Silence ; le pipeline n'insère rien (RF-18).
+# 4. Approximated keyboard noise (random burst + silence): the VAD must
+#    answer Silence; the pipeline inserts nothing (RF-18).
 $nNoise = [int]($rate * 0.05)
 $rand = New-Object System.Random(42)
 $noise = New-Object 'float[]' $rate
 for ($i = 0; $i -lt $nNoise; $i++) { $noise[$i] = [float](($rand.NextDouble() - 0.5) * 0.6) }
 Write-Wav (Join-Path $Out 'clic-clavier-1s.wav') $noise $rate
 
-# 5. Longue prise : exercice de durée maximale et de latence (docs/06 §4).
+# 5. Long take: max-duration and latency exercise (docs/06 §4).
 Write-Wav (Join-Path $Out 'long-10s.wav') (New-Sine -Freq 300.0 -Count (10 * $rate) -SampleRate $rate -Amp 0.3) $rate
 
 Write-Host 'Fixtures écrites :'

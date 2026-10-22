@@ -1,5 +1,5 @@
-//! Types d'erreurs du noyau. Un type par module (convention docs/05 §6) ;
-//! aucun `unwrap()` sur un chemin utilisateur en production.
+//! Kernel error types. One type per module (docs/05 §6 convention); no
+//! `unwrap()` on user-facing paths in production.
 
 use thiserror::Error;
 
@@ -17,9 +17,9 @@ pub enum CaptureError {
     NotStarted,
     #[error("impossible d'ouvrir un flux dans ce format d'échantillon")]
     UnsupportedFormat,
-    /// Fin de prise sans un seul échantillon converti : ni perte du
-    /// périphérique (qui reste vivant), ni silence — un état pathologique
-    /// signalé tel quel au journal (P2-3, audit).
+    /// Capture ended without a single converted sample: neither device loss
+    /// (the device stays alive) nor silence — a pathological state reported
+    /// as-is to the log (P2-3, audit).
     #[error("prise vide : aucun échantillon reçu du périphérique")]
     NoData,
 }
@@ -36,12 +36,12 @@ pub enum AsrError {
     Cancelled,
     #[error("mémoire insuffisante pour l'inférence")]
     OutOfMemory,
-    /// Le consentement n'a pas été vérifié côté appelant : l'appel distant est
-    /// refusé par construction (ADR-03, RF-36).
+    /// Consent was not verified on the caller's side: the remote call is
+    /// refused by construction (ADR-03, RF-36).
     #[error("consentement absent : fonction distante désactivée")]
     ConsentMissing,
-    /// Message diagnostique d'un moteur in-process (SDK) : le détail du SDK
-    /// est conservé pour le journal, jamais pour l'interface.
+    /// Diagnostic message from an in-process (SDK) engine: the SDK detail is
+    /// kept for the log, never for the UI.
     #[error("échec du moteur in-process : {0}")]
     Runtime(String),
 }

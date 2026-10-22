@@ -1,10 +1,10 @@
-//! `voxli-storage` — historique local (RF-33).
+//! `voxli-storage` — local history (RF-33).
 //!
-//! Défaut produit : **mémoire seule**, aucune trace de texte sur disque.
-//! L'option « conserver sur disque » (V1) utilise SQLite chiffré, lié au
-//! compte Windows, avec rétention configurable et purge à la désinstallation.
+//! Production default: **memory only**, no text trace on disk.
+//! The "keep on disk" option (V1) uses encrypted SQLite, tied to the
+//! Windows account, with configurable retention and purge at uninstall.
 //!
-//! Interface volontairement minimale (docs/05 §2.6) : `append`, `recent`,
+//! Deliberately minimal interface (docs/05 §2.6): `append`, `recent`,
 //! `delete`, `purge`.
 
 use thiserror::Error;
@@ -17,8 +17,8 @@ pub enum StorageError {
     Corrupt(String),
 }
 
-/// Entrée d'historique : le texte y est porté par l'objet métier, jamais
-/// journalisé (RF-34).
+/// History entry: its text is carried by the business object, never
+/// logged (RF-34).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
     pub id: u64,
@@ -27,17 +27,17 @@ pub struct Entry {
     pub created_ms: u64,
 }
 
-/// Backend d'historique. Toutes les méthodes sont bornées (pas de requête non
-/// limitée) ; `purge` supprime tout (RF-33).
+/// History backend. Every method is bounded (no unbounded
+/// query); `purge` deletes everything (RF-33).
 pub trait HistoryStore: Send {
     fn append(&mut self, text: &str, engine: &str, created_ms: u64) -> Result<u64, StorageError>;
-    /// Les `n` entrées les plus récentes, la plus récente d'abord.
+    /// The `n` most recent entries, most recent first.
     fn recent(&self, n: usize) -> Vec<Entry>;
     fn delete(&mut self, id: u64) -> bool;
-    /// Supprime les entrées plus vieilles que `cutoff_ms` (rétention RF-33) ;
-    /// retourne le nombre d'entrées retirées.
+    /// Deletes entries older than `cutoff_ms` (RF-33 retention);
+    /// returns the number of entries removed.
     fn retain_since(&mut self, cutoff_ms: u64) -> usize;
-    /// Suppression totale, y compris le fichier (purge à la désinstallation).
+    /// Full deletion, including the file (purge at uninstall).
     fn purge(&mut self);
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
@@ -45,17 +45,17 @@ pub trait HistoryStore: Send {
     }
 }
 
-/// Codec de chiffrement du texte au repos (RF-33). Le contenu **n'est
-/// jamais stocké en clair** quand un codec réel est branché ; l'interface
-/// empêche d'oublier l'un des deux sens. Un échec de chiffrement est une
-/// erreur **explicite** : jamais un blob vide stocké sous le coup d'un
-/// `unwrap_or_default()` (donnée perdue sans trace).
+/// At-rest text encryption codec (RF-33). Content is **never
+/// stored in clear** when a real codec is plugged in; the interface
+/// makes it impossible to forget either direction. An encryption failure
+/// is an **explicit** error: never an empty blob stored via
+/// `unwrap_or_default()` (data lost without a trace).
 pub trait TextCodec: Send {
     fn encode(&self, text: &str) -> Result<Vec<u8>, StorageError>;
     fn decode(&self, blob: &[u8]) -> Option<String>;
 }
 
-/// Codec transparent — tests et backend mémoire.
+/// Transparent codec — tests and memory backend.
 pub struct PlainCodec;
 
 impl TextCodec for PlainCodec {
@@ -67,9 +67,9 @@ impl TextCodec for PlainCodec {
     }
 }
 
-/// Enveloppe d'un `HistoryStore` avec chiffrement du champ `text` (RF-33).
-/// Le fichier SQLite reste listable (identifiants, dates) : les **contenus**
-/// sont illisibles hors du compte Windows.
+/// Wrapper around a `HistoryStore` that encrypts the `text` field (RF-33).
+/// The SQLite file remains listable (identifiers, dates): the **contents**
+/// are unreadable outside the Windows account.
 pub struct EncryptedStore<S: HistoryStore, C: TextCodec> {
     inner: S,
     codec: C,
@@ -79,7 +79,7 @@ impl<S: HistoryStore, C: TextCodec> EncryptedStore<S, C> {
     pub fn new(inner: S, codec: C) -> Self {
         Self { inner, codec }
     }
-    /// Accès direct au store sous-jacent (purge du fichier, VACUUM…).
+    /// Direct access to the underlying store (file purge, VACUUM…).
     pub fn inner(&mut self) -> &mut S {
         &mut self.inner
     }
@@ -88,9 +88,9 @@ impl<S: HistoryStore, C: TextCodec> EncryptedStore<S, C> {
 impl<S: HistoryStore, C: TextCodec> HistoryStore for EncryptedStore<S, C> {
     fn append(&mut self, text: &str, engine: &str, created_ms: u64) -> Result<u64, StorageError> {
         let blob = self.codec.encode(text)?;
-        // Stockage en tableau d'octets échappés UTF-8 lossy : le codec peut
-        // produire des octets arbitraires (DPAPI) ; on transite par encodage
-        // hexadécimal borné pour rester un TEXT sûr dans la colonne.
+        // Stored as a TEXT value: the codec may produce arbitrary bytes
+        // (DPAPI), so the blob transits through a bounded hexadecimal
+        // encoding to remain a safe TEXT value in the column.
         let hex = bytes_to_hex(&blob);
         self.inner.append(&hex, engine, created_ms)
     }
@@ -144,9 +144,9 @@ fn decode_hex(s: &str) -> Option<Vec<u8>> {
 
 #[cfg(all(feature = "secure-disk", target_os = "windows"))]
 pub mod secure_backend {
-    //! Codec DPAPI : chaque entrée d'historique est chiffrée **au compte
-    //! Windows** (RFC RF-33 « chiffré, lié au compte »). Un fichier copié sur
-    //! une autre machine, ou lu par un autre compte, est illisible.
+    //! DPAPI codec: every history entry is encrypted **to the Windows
+    //! account** (RF-33 "encrypted, tied to the account"). A file copied to
+    //! another machine, or read by another account, is unreadable.
     use super::TextCodec;
 
     pub struct DpapiCodec;
@@ -166,12 +166,12 @@ pub mod secure_backend {
 #[cfg(all(feature = "secure-disk", target_os = "windows"))]
 pub use secure_backend::DpapiCodec;
 
-/// Backend mémoire (défaut produit). Double de test pour le backend SQLite.
+/// Memory backend (production default). Test double for the SQLite backend.
 #[derive(Default)]
 pub struct MemoryStore {
     entries: Vec<Entry>,
     next_id: u64,
-    /// Capacité maximale en mémoire (protection contre une dérive).
+    /// Maximum in-memory capacity (drift protection).
     cap: usize,
 }
 
@@ -232,8 +232,9 @@ impl HistoryStore for MemoryStore {
 
 #[cfg(feature = "sqlite")]
 mod sqlite_backend {
-    //! Backend disque chiffré (V1) — squelette : le chiffrement au niveau
-    //! fichier (lié au compte Windows via voxli-secure) est activé en P2.
+    //! Encrypted on-disk backend (V1) — skeleton: file-level
+    //! encryption (tied to the Windows account via voxli-secure) is
+    //! enabled in P2.
     use super::*;
 
     pub struct SqliteStore {
@@ -254,11 +255,12 @@ mod sqlite_backend {
                  );",
             )
             .map_err(|e| StorageError::Corrupt(e.to_string()))?;
-            // La séquence des identifiants est RE PRISE de la base : une
-            // réouverture (nouveau lancement de l'application) repart de
-            // MAX(id)+1 — sinon les INSERT explicites heurtaient la clé
-            // primaire existante et tout append échouait jusqu'à redémarrage
-            // (constat au niveau code : `next_id` repartait in-memory de 1).
+            // The ID sequence is RESUMED from the database: on reopen
+            // (a new launch of the application) it continues from
+            // MAX(id)+1 — otherwise the explicit INSERTs collided with
+            // the existing primary key and every append failed until a
+            // restart (observed at code level: `next_id` restarted
+            // in memory from 1).
             let max = conn
                 .query_row("SELECT COALESCE(MAX(id), 0) FROM history", [], |r| {
                     r.get::<_, i64>(0)
@@ -369,7 +371,7 @@ mod tests {
         assert!(s.is_empty());
     }
 
-    /// Rétention RF-33 : les entrées plus vieilles que la fenêtre partent.
+    /// RF-33 retention: entries older than the window are dropped.
     #[test]
     fn t_retention_cutoff() {
         let mut s = MemoryStore::new(100);
@@ -381,7 +383,7 @@ mod tests {
         assert_eq!(texts, vec!["récent".to_string()]);
     }
 
-    /// Store chiffré : le texte ne transite jamais en clair, round-trip net.
+    /// Encrypted store: text never transits in clear, clean round-trip.
     #[test]
     fn t_encrypted_store_round_trip_and_at_rest() {
         struct UppercaseCodec;
@@ -395,14 +397,14 @@ mod tests {
         }
         let mut s = EncryptedStore::new(MemoryStore::new(10), UppercaseCodec);
         s.append("contenu secret", "fake", 7).unwrap();
-        // Au repos : la valeur stockée est l'encodage hexadécimal du texte
-        // codé (format obligatoire pour des blobs binaires dans SQLite) —
-        // jamais l'original.
+        // At rest: the stored value is the hexadecimal encoding of the
+        // encoded text (mandatory format for binary blobs in SQLite) —
+        // never the original.
         let raw = s.inner().recent(1);
         assert_eq!(raw[0].text, "434f4e54454e5520534543524554");
-        // En lecture : décodé.
+        // On read: decoded.
         assert_eq!(s.recent(1)[0].text, "contenu secret");
-        // Rétention déléguée.
+        // Retention delegated.
         assert_eq!(s.retain_since(8), 1);
         assert!(s.is_empty());
     }
@@ -415,8 +417,8 @@ mod tests {
         assert!(decode_hex("abc").is_none());
     }
 
-    /// Un échec de chiffrement est une erreur explicite : RIEN n'est
-    /// écrit (jamais de blob vide qui ferait disparaître l'entrée).
+    /// An encryption failure is an explicit error: NOTHING is
+    /// written (never an empty blob that would erase the entry).
     #[test]
     fn t_encrypt_failure_is_surfacable() {
         struct FailingCodec;
@@ -433,10 +435,10 @@ mod tests {
         assert!(s.is_empty(), "aucune écriture après échec de chiffrement");
     }
 
-    /// Régression backend SQLite (feature `sqlite`) : après réouverture,
-    /// les identifiants reprennent après le maximum existant — sinon les
-    /// INSERT explicites heurtaient la clé primaire et tout append
-    /// échouait jusqu'à redémarrage.
+    /// SQLite backend regression (feature `sqlite`): after reopen,
+    /// IDs continue after the existing maximum — otherwise the
+    /// explicit INSERTs collided with the primary key and every append
+    /// failed until a restart.
     #[cfg(feature = "sqlite")]
     #[test]
     fn t_sqlite_reopen_continues_id_sequence() {

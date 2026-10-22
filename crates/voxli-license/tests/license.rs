@@ -7,7 +7,7 @@ use voxli_license::*;
 const PRODUCT: &str = "voxli";
 
 fn test_keypair() -> (SigningKey, ed25519_dalek::VerifyingKey) {
-    // Graine fixe : aucune dépendance à `rand`, tests déterministes.
+    // Fixed seed: no `rand` dependency, deterministic tests.
     let sk = SigningKey::from_bytes(&[42u8; 32]);
     let vk = sk.verifying_key();
     (sk, vk)
@@ -25,7 +25,7 @@ fn doc() -> LicenseDoc {
 }
 
 fn now() -> SystemTime {
-    UNIX_EPOCH + Duration::from_secs(1_792_000_000) // 17/10/2026 env.
+    UNIX_EPOCH + Duration::from_secs(1_792_000_000) // ≈ 2026-10-17
 }
 
 #[test]
@@ -42,18 +42,18 @@ fn t_valid_license_accepted() {
 fn t_altered_byte_rejected() {
     let (sk, vk) = test_keypair();
     let blob = sign(&doc(), &sk);
-    // Altérer un octet du payload sans casser la structure base64 : remplacer
-    // un caractère du milieu par un autre caractère de l'alphabet base64
-    // (le payload est encodé : on altère par position, pas par contenu).
+    // Alter one payload byte without breaking the base64 structure: replace
+    // one character in the middle by another character of the base64
+    // alphabet (the payload is encoded: we alter by position, not content).
     let mut altered = blob.clone();
     let mid = altered.len() / 2;
     let c = altered.as_bytes()[mid] as char;
     let sub = if c == 'A' { 'B' } else { 'A' };
     altered.replace_range(mid..mid + 1, &sub.to_string());
-    // Si la substitution casse le base64, altérer la signature plutôt :
+    // If the substitution breaks the base64, alter the signature instead:
     let ok = verify(&altered, &vk, PRODUCT, now(), Duration::ZERO).is_err();
     assert!(ok, "une licence altérée doit être refusée");
-    // Altération directe de la signature :
+    // Direct alteration of the signature:
     let mut sig_flipped = blob.clone();
     let last = sig_flipped.len() - 2;
     sig_flipped.replace_range(
@@ -93,7 +93,7 @@ fn t_expired_rejected_without_grace() {
 fn t_grace_period_allows_offline_use() {
     let (sk, vk) = test_keypair();
     let mut d = doc();
-    // Expirée depuis 5 jours ; grâce de 30 jours (RF-38).
+    // Expired for 5 days; 30-day grace (RF-38).
     d.expires_at = Some("2026-10-12T00:00:00Z".into());
     let blob = sign(&d, &sk);
     assert!(verify(&blob, &vk, PRODUCT, now(), Duration::from_secs(30 * 86_400)).is_ok());

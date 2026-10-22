@@ -1,21 +1,22 @@
-//! Orchestrateur de la session de dictée.
+//! Dictation session orchestrator.
 //!
-//! La logique est **synchrone et pure** : elle pilote les ports (traits) et
-//! émet des événements via un sink injecté. Le threading réel (threads
-//! temps réel, pipeline, injection — ADR-12) est de la responsabilité de la
-//! couche d'assemblage (`apps/desktop/src-tauri`).
+//! The logic is **synchronous and pure**: it drives the ports (traits) and
+//! emits events through an injected sink. Real threading (real-time
+//! threads, pipeline, injection — ADR-12) belongs to the assembly layer
+//! (`apps/desktop/src-tauri`).
 //!
-//! Invariants (docs/04 §3, vérifiés par `tests/flow.rs`) :
-//! 1. le texte transcrit est placé dans le tampon interne **avant** toute
-//!    tentative d'insertion (RF-22) et n'est jamais perdu (RF-20) ;
-//! 2. une seule session active ; une demande pendant une session occupée est
-//!    refusée explicitement avec indication (RF-05, option « refus » — la
-//!    file d'attente de 1 arrive en V1) ;
-//! 3. l'audio est libéré après insertion, refus ou annulation.
+//! Invariants (docs/04 §3, verified by `tests/flow.rs`):
+//! 1. the transcribed text is placed in the internal buffer **before** any
+//!    insertion attempt (RF-22) and is never lost (RF-20);
+//! 2. one active session at a time; a request while a session is busy is
+//!    either explicitly refused with an indication (press during
+//!    recording) or queued behind the current session (RF-05, queue
+//!    depth 1);
+//! 3. audio is released after insertion, refusal, or cancellation.
 //!
-//! En P0 le pipeline s'exécute à bloc sur le thread de session ; la découpe
-//! en étapes pilotées par événements (V1, RF-05) réutilisera ces mêmes
-//! états sans changer les ports.
+//! In P0 the pipeline runs monolithically on the session thread; the
+//! event-driven split into stages (V1, RF-05) will reuse these same states
+//! without changing the ports.
 
 use std::time::Duration;
 
@@ -27,7 +28,7 @@ use crate::types::{
     TranscribeOptions, Transcript, TriggerMode, DOUBLE_PUSH_WINDOW_MS,
 };
 
-/// Événements d'entrée de l'orchestrateur.
+/// Orchestrator input events.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     HotkeyPressed,
@@ -38,49 +39,51 @@ pub enum InputEvent {
     Tick,
 }
 
-/// Événements de sortie. Aucun ne porte de contenu de texte, sauf
-/// `RescueRequested` : la fenêtre de secours affiche le texte — c'est sa
-/// fonction (RF-31), documentée dans la table IPC de docs/05 §3 comme
-/// exception unique, strictement locale.
+/// Output events. None carries text content, except `RescueRequested`: the
+/// rescue window displays the text — that is its function (RF-31),
+/// documented in the docs/05 §3 IPC table as the single, strictly local
+/// exception.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CoreEvent {
     StateChanged(DictationState),
-    /// Aucune voix exploitable : aucune insertion (RF-18).
+    /// No usable speech: nothing gets inserted (RF-18).
     NothingToTranscribe,
-    /// Demande refusée : session occupée (RF-05) — indication visible.
+    /// Request refused: busy session (RF-05) — visible indication.
     RejectedBusy,
     Inserted {
         level: InsertLevel,
-        /// Essais abandonnés avant le niveau final, formatés `niveau:code`
-        /// (jamais de contenu — RF-34) : la mesure honnête des replis
-        /// (ex. ValuePattern → presse-papiers).
+        /// Attempts abandoned before the level finally used, formatted
+        /// `level:code` (never content — RF-34): an honest measure of the
+        /// fallbacks (e.g. ValuePattern → clipboard).
         attempts: Vec<String>,
     },
-    /// Échec total d'insertion : fenêtre de secours (RF-28 niveau 4, RF-31).
+    /// Total insertion failure: rescue window (RF-28 level 4, RF-31).
     RescueRequested {
         transcript: Transcript,
     },
-    /// Insertion refusée : champ sensible, app exclue ou cible indisponible
-    /// (RF-29, RF-32) — message neutre, texte récupérable (RF-22).
+    /// Insertion refused: sensitive field, excluded app, or unavailable
+    /// target (RF-29, RF-32) — neutral message, the text stays recoverable
+    /// (RF-22).
     Refused {
         reason: RefuseReason,
     },
-    /// Panne récupérable : audio conservé, « réessayer » disponible (RF-20).
+    /// Recoverable failure: audio kept, "retry" available (RF-20).
     Recovered {
         reason: RecoveryReason,
     },
-    /// Durée maximale proche : avertissement 30 s avant la coupure (RF-11).
+    /// Maximum duration near: warning 30 s before the cutoff (RF-11).
     MaxDurationWarning {
         remaining_ms: u64,
     },
-    /// RF-32 (option « cible actuelle ») : la fenêtre mémorisée a disparu
-    /// et l'insertion a repris dans la fenêtre au premier plan.
+    /// RF-32 (option "current target"): the focused window differs from the
+    /// remembered one at insert time — insertion resumed into the current
+    /// foreground window.
     RetargetedToCurrent,
-    /// Demande mise en file d'attente (RF-05, file de 1) : elle démarrera
-    /// automatiquement à la fin de la session en cours.
+    /// Request queued (RF-05, queue of 1): it will start automatically when
+    /// the current session ends.
     QueuedAfterCurrent,
-    /// Prise verrouillée par double appui (RF-02c) : elle survivra au
-    /// relâchement jusqu'au prochain appui.
+    /// Recording locked by double push (RF-02c): it will survive the
+    /// release until the next press.
     RecordingLocked,
     Latency {
         stage: Stage,
@@ -91,14 +94,14 @@ pub enum CoreEvent {
         duration: Duration,
         level: Option<InsertLevel>,
     },
-    /// Erreur technique (codes stables, sans contenu — RF-34).
+    /// Technical error (stable codes, no content — RF-34).
     Error {
         module: &'static str,
         code: u32,
     },
 }
 
-/// Horloge temps réel (monotone) pour la production.
+/// Real-time (monotonic) clock for production.
 pub struct SteadyClock {
     base: std::time::Instant,
 }
@@ -117,7 +120,7 @@ impl Clock for SteadyClock {
     }
 }
 
-/// Horloge de test : avancée manuellement.
+/// Test clock: advanced manually.
 pub struct TestClock(pub std::cell::Cell<u64>);
 
 impl Clock for TestClock {
@@ -126,30 +129,30 @@ impl Clock for TestClock {
     }
 }
 
-/// Configuration de l'orchestrateur ; valeurs par défaut issues de
-/// `voxli-config` (docs/05 §4).
+/// Orchestrator configuration; default values come from `voxli-config`
+/// (docs/05 §4).
 #[derive(Clone, Debug)]
 pub struct OrchestratorCfg {
     pub pre_roll_ms: u32,
     pub max_recording: Duration,
     pub min_speech_ms: u32,
     pub remember_target_at_start: bool,
-    /// Profil utilisé quand aucune liaison RF-25 ne correspond à la cible.
+    /// Profile used when no RF-25 binding matches the target.
     pub profile: Profile,
-    /// Profils par application (RF-25) — priorité dans l'ordre du tableau.
+    /// Per-application profiles (RF-25) — priority follows array order.
     pub profile_bindings: Vec<crate::types::ProfileBinding>,
     pub excluded_apps: Vec<String>,
-    /// Code de langue forcé (`None` : détection automatique — RF-16).
+    /// Forced language code (`None`: automatic detection — RF-16).
     pub language: Option<String>,
-    /// Repli quand la détection est interdite (énoncé < 1,5 s, RF-16).
+    /// Fallback when detection is forbidden (utterance < 1.5 s, RF-16).
     pub auto_language_fallback: Option<String>,
-    /// Amorce de vocabulaire métier explicite (RF-24) ; sinon construite
-    /// depuis le dictionnaire du profil.
+    /// Explicit domain-vocabulary primer (RF-24); otherwise built from the
+    /// profile dictionary.
     pub initial_prompt: Option<String>,
-    /// Durée minimale en dessous de laquelle la détection de langue est
-    /// interdite (RF-16). Défaut 1,5 s.
+    /// Minimum duration under which language detection is forbidden (RF-16).
+    /// Default 1.5 s.
     pub auto_language_min: Duration,
-    /// Mode de déclenchement (RF-02).
+    /// Trigger mode (RF-02).
     pub trigger: TriggerMode,
 }
 
@@ -172,7 +175,7 @@ impl Default for OrchestratorCfg {
     }
 }
 
-/// Dépendances injectées. Aucune n'est connue du noyau au-delà de son trait.
+/// Injected dependencies. The kernel knows none beyond its trait.
 pub struct Deps<'a> {
     pub capture: &'a mut dyn crate::traits::Capture,
     pub vad: &'a dyn crate::traits::VoiceActivity,
@@ -182,8 +185,8 @@ pub struct Deps<'a> {
     pub focus: &'a dyn crate::traits::FocusReader,
 }
 
-/// Travail retenu après une panne récupérable (RF-20) : l'audio de la prise
-/// est conservé jusqu'au « réessayer » ou à l'annulation (invariant 3).
+/// Job kept after a recoverable failure (RF-20): the capture audio is kept
+/// until "retry" or cancellation (invariant 3).
 struct RecoveryJob {
     target: FocusSnapshot,
     audio: AudioBuffer,
@@ -193,18 +196,18 @@ pub struct Orchestrator<'a> {
     cfg: OrchestratorCfg,
     deps: Deps<'a>,
     state: DictationState,
-    /// Tampon interne du dernier texte transcrit (RF-22) — jamais perdu.
+    /// Internal buffer of the last transcribed text (RF-22) — never lost.
     last: Option<Transcript>,
     recovering: Option<RecoveryJob>,
-    /// Profil résolu pour la session en cours (RF-25) — `None` hors session.
+    /// Profile resolved for the current session (RF-25) — `None` outside a session.
     session_profile: Option<Profile>,
-    /// Mode (c) : prise verrouillée (RF-02).
+    /// Mode (c): recording locked (RF-02).
     recording_locked: bool,
-    /// Instant du dernier appui (détection du double appui, RF-02c).
+    /// Instant of the last press (double-push detection, RF-02c).
     press_started: Option<Duration>,
-    /// File d'attente de 1 (RF-05) : une demande pendant le pipeline.
+    /// Queue of 1 (RF-05): a request arriving during the pipeline.
     queued: bool,
-    /// `true` une fois l'avertissement 30 s émis pour la prise en cours (RF-11).
+    /// `true` once the 30 s warning has been emitted for the current capture (RF-11).
     duration_warned: bool,
     sink: Box<dyn FnMut(CoreEvent) + 'a>,
     clock: &'a dyn Clock,
@@ -237,20 +240,20 @@ impl<'a> Orchestrator<'a> {
         &self.state
     }
 
-    /// Texte du tampon interne — accessible même après échec d'insertion
-    /// (RF-22). La fenêtre de secours et « coller à nouveau » s'en servent.
+    /// Text from the internal buffer — readable even after an insertion
+    /// failure (RF-22). The rescue window and "paste again" use it.
     pub fn last_transcript(&self) -> Option<&Transcript> {
         self.last.as_ref()
     }
 
-    /// Restaure le tampon après un rechargement de configuration (RF-01) :
-    /// « coller à nouveau » doit rester fonctionnel — RF-22 exige qu'aucun
-    /// rechargement ne perde le dernier texte.
+    /// Restores the buffer after a configuration reload (RF-01):
+    /// "paste again" must keep working — RF-22 requires that no reload ever
+    /// lose the last text.
     pub fn restore_buffer(&mut self, transcript: Transcript) {
         self.last = Some(transcript);
     }
 
-    /// L'audio est-il encore détenu (non libéré) ? Invariant 3.
+    /// Is audio still held (not released)? Invariant 3.
     pub fn holds_audio(&self) -> bool {
         self.recovering.is_some()
     }
@@ -282,9 +285,11 @@ impl<'a> Orchestrator<'a> {
     fn on_pressed(&mut self) {
         match self.cfg.trigger {
             TriggerMode::Hold => match self.state.clone() {
-                // RF-05 : appui pendant une session occupée → mise en file
-                // (exercée de fait par le canal d'assemblage) ; le noyau
-                // garde la même sémantique pour la découpe événementielle V1.
+                // RF-05: a press while a session is busy is queued, except
+                // while still recording (explicit refusal). P0 effectively
+                // exercises this path whenever the assembly channel delivers
+                // a press; the core keeps the same semantics for the V1
+                // event-driven split.
                 DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
                 DictationState::Recording { .. } => self.emit(CoreEvent::RejectedBusy),
                 _ => {
@@ -304,7 +309,7 @@ impl<'a> Orchestrator<'a> {
                 DictationState::Idle | DictationState::Recovery { .. } => self.begin_recording(),
                 DictationState::Recording { started_at, .. } => {
                     if self.push_within_window(started_at) {
-                        // Double appui rapproché : verrouillage (RF-02c).
+                        // Tight double push: lock (RF-02c).
                         self.recording_locked = true;
                         self.emit(CoreEvent::RecordingLocked);
                     } else {
@@ -319,8 +324,8 @@ impl<'a> Orchestrator<'a> {
         }
     }
 
-    /// L'appui courant (candidat au double appui) est-il survenu dans la
-    /// fenêtre `DOUBLE_PUSH_WINDOW_MS` suivant le précédent ?
+    /// Did the current press (double-push candidate) land within
+    /// `DOUBLE_PUSH_WINDOW_MS` after the previous one?
     fn push_within_window(&self, started_at: Duration) -> bool {
         self.press_started
             .map(|p| self.now().saturating_sub(p) <= Duration::from_millis(DOUBLE_PUSH_WINDOW_MS))
@@ -336,12 +341,12 @@ impl<'a> Orchestrator<'a> {
         }
         match self.cfg.trigger {
             TriggerMode::Hold => self.finish_recording(),
-            // RF-02b : en bascule, le relâchement n'arrête rien (l'appui
-            // suivant arrête).
+            // RF-02b: in toggle mode the release stops nothing (the next
+            // press stops).
             TriggerMode::Toggle => {}
             TriggerMode::DoublePushLock => {
-                // Un appui MAINTENU au-delà de la fenêtre arrête la prise ;
-                // un appui bref ou une prise verrouillée continue.
+                // A press HELD past the window stops the capture; a brief
+                // press or a locked recording continues.
                 let held_long = self
                     .press_started
                     .map(|p| {
@@ -372,7 +377,7 @@ impl<'a> Orchestrator<'a> {
             });
             return;
         }
-        // Profil par application (RF-25) : résolu **une fois par session**.
+        // Per-application profile (RF-25): resolved **once per session**.
         self.session_profile = select_profile(&self.cfg.profile_bindings, &target.app_id).cloned();
         self.recording_locked = false;
         self.duration_warned = false;
@@ -386,7 +391,7 @@ impl<'a> Orchestrator<'a> {
     fn on_cancel(&mut self) {
         match self.state.clone() {
             DictationState::Recording { started_at, .. } => {
-                // Annulation explicite : l'audio capté est jeté.
+                // Explicit cancellation: the captured audio is discarded.
                 let _ = self.deps.capture.stop();
                 self.recording_locked = false;
                 self.queued = false;
@@ -400,7 +405,7 @@ impl<'a> Orchestrator<'a> {
                 });
             }
             DictationState::Recovery { .. } => {
-                // Invariant 3 : l'audio de récupération est libéré.
+                // Invariant 3: the recovery audio is released.
                 self.recovering = None;
                 self.queued = false;
                 self.set_state(DictationState::Idle);
@@ -427,8 +432,8 @@ impl<'a> Orchestrator<'a> {
             DictationState::Recovery {
                 reason: RecoveryReason::InsertFailed,
             } => {
-                // « Réessayer » après échec d'insertion = réinsérer le dernier
-                // texte (jamais perdu, RF-22), vers la cible actuelle.
+                // "Retry" after an insertion failure = re-insert the last
+                // text (never lost, RF-22), toward the current target.
                 let Some(t) = self.last.clone() else {
                     self.set_state(DictationState::Idle);
                     return;
@@ -467,13 +472,13 @@ impl<'a> Orchestrator<'a> {
         if let DictationState::Recording { started_at, .. } = self.state.clone() {
             let elapsed = self.now().saturating_sub(started_at);
             if elapsed >= self.cfg.max_recording {
-                // Durée maximale de sécurité : arrêt puis transcription (RF-11).
+                // Safety maximum duration: stop, then transcribe (RF-11).
                 self.finish_recording();
             } else if !self.duration_warned
                 && self.cfg.max_recording > Duration::from_secs(30)
                 && elapsed >= self.cfg.max_recording - Duration::from_secs(30)
             {
-                // Avertissement 30 s avant la coupure de sécurité (RF-11).
+                // Warning 30 s before the safety cutoff (RF-11).
                 self.duration_warned = true;
                 self.emit(CoreEvent::MaxDurationWarning {
                     remaining_ms: (self.cfg.max_recording.as_millis() - elapsed.as_millis()) as u64,
@@ -510,9 +515,9 @@ impl<'a> Orchestrator<'a> {
                     duration: self.now().saturating_sub(start),
                     level: None,
                 });
-                // Une demande mise en file pendant la dictée doit être
-                // servie même si l'arrêt de la capture échoue (sinon elle
-                // resterait bloquée jusqu'à la session suivante).
+                // A request queued during the dictation must be served even
+                // if stopping the capture fails (otherwise it would stay
+                // stuck until the next session).
                 self.serve_queue();
                 return;
             }
@@ -523,19 +528,19 @@ impl<'a> Orchestrator<'a> {
         self.run_pipeline(target, audio, profile);
     }
 
-    /// Pipeline complet : VAD → transcription → post-traitement → insertion.
-    /// Synchrone ; l'assemblage l'exécute sur le thread pipeline (ADR-12).
+    /// Full pipeline: VAD → transcription → post-processing → insertion.
+    /// Synchronous; the assembly layer runs it on the pipeline thread (ADR-12).
     fn run_pipeline(&mut self, target: FocusSnapshot, audio: AudioBuffer, profile: Profile) {
         let t0 = self.now();
 
-        // --- Analyse VAD (RF-18) -----------------------------------------
+        // --- VAD analysis (RF-18) -----------------------------------------
         let verdict = self.deps.vad.contains_speech(&audio);
         self.emit(CoreEvent::Latency {
             stage: Stage::Vad,
             micros: self.since(t0),
         });
         if verdict != SpeechVerdict::Speech {
-            // Aucune insertion ; l'audio est libéré (invariant 3).
+            // Nothing gets inserted; the audio is released (invariant 3).
             let captured = audio.duration();
             drop(audio);
             self.set_state(DictationState::Idle);
@@ -549,15 +554,16 @@ impl<'a> Orchestrator<'a> {
             return;
         }
 
-        // --- Transcription (RF-14 : strictement locale par défaut) --------
-        // RF-16 : la détection automatique de langue est interdite sur un
-        // énoncé plus court que `auto_language_min` (défaut 1,5 s) — repli.
+        // --- Transcription (RF-14: strictly local by default) --------
+        // RF-16: automatic language detection is forbidden for an utterance
+        // shorter than `auto_language_min` (default 1.5 s) — the fallback
+        // applies.
         let mut language = self.cfg.language.clone();
         if language.is_none() && audio.duration() < self.cfg.auto_language_min {
             language = self.cfg.auto_language_fallback.clone();
         }
-        // RF-24 : amorce = champ explicite sinon les termes cibles du dictionnaire
-        // (jusqu'à 512 caractères — la fenêtre utile de Whisper).
+        // RF-24: primer = the explicit field, else the dictionary target
+        // terms (up to 512 characters — Whisper's useful context window).
         let initial_prompt = self.cfg.initial_prompt.clone().or_else(|| {
             if profile.dictionary.is_empty() {
                 None
@@ -604,7 +610,7 @@ impl<'a> Orchestrator<'a> {
             }
             Ok(t) => t,
             Err(e) => {
-                // RF-20 : l'audio est conservé, le texte n'est pas perdu.
+                // RF-20: the audio is kept, the text is not lost.
                 self.recovering = Some(RecoveryJob {
                     target: target.clone(),
                     audio,
@@ -627,13 +633,13 @@ impl<'a> Orchestrator<'a> {
                 return;
             }
         };
-        drop(audio); // l'audio n'est plus nécessaire après la transcription
+        drop(audio); // the audio is no longer needed after transcription
         self.set_state(DictationState::Transcribing {
             target: target.clone(),
             queued: None,
         });
 
-        // --- Post-traitement local niveau 0/1 (RF-26) --------------------
+        // --- Local post-processing level 0/1 (RF-26) --------------------
         let t2 = self.now();
         let text = match self.deps.post.process(&base.text, &profile) {
             Ok(t) => t,
@@ -648,13 +654,13 @@ impl<'a> Orchestrator<'a> {
             target: target.clone(),
         });
 
-        // --- Insertion (RF-22 : le texte est au tampon AVANT la tentative) --
+        // --- Insertion (RF-22: the text is in the buffer BEFORE the attempt) --
         self.last = Some(transcript.clone());
         self.insert_flow(transcript, target, profile);
     }
 
-    /// Dispose de la file d'attente (RF-05) quand la session retombe à
-    /// l'inactif : la demande en attente démarre immédiatement.
+    /// Serves the queue (RF-05) when the session falls back to idle: the
+    /// pending request starts immediately.
     fn serve_queue(&mut self) {
         if self.queued {
             self.queued = false;
@@ -663,10 +669,11 @@ impl<'a> Orchestrator<'a> {
     }
 
     fn insert_flow(&mut self, transcript: Transcript, target: FocusSnapshot, profile: Profile) {
-        // RF-32 : avec l'option « insérer dans la fenêtre actuelle » (défaut
-        // `false`), la cible est **relue au moment d'insérer** — la fenêtre
-        // mémorisée peut avoir disparu ; avec l'option mémorisation, la cible
-        // de départ fait foi (refus → secours, chemin RF-31 testé ailleurs).
+        // RF-32: with the "insert into the current window" option (default
+        // `false`), the target is **re-read at insert time** — the memorized
+        // window may have gone away; with the remember-at-start option, the
+        // target captured at start prevails (all levels refused → rescue,
+        // the RF-31 path tested elsewhere).
         let target = if !self.cfg.remember_target_at_start {
             match self.deps.focus.snapshot() {
                 Some(fresh) if fresh.app_id != target.app_id || fresh.title != target.title => {
@@ -722,7 +729,7 @@ impl<'a> Orchestrator<'a> {
                     InsertError::RefusedExcluded => RefuseReason::ExcludedApp,
                     _ => RefuseReason::TargetUnavailable,
                 };
-                // Texte conservé au tampon (RF-22) ; message neutre (RF-29).
+                // Text kept in the buffer (RF-22); neutral message (RF-29).
                 self.set_state(DictationState::Idle);
                 self.emit(CoreEvent::Refused { reason });
                 self.emit(CoreEvent::SessionFinished {
@@ -733,7 +740,7 @@ impl<'a> Orchestrator<'a> {
                 self.serve_queue();
             }
             Err(InsertError::AllLevelsFailed(_)) => {
-                // RF-28 niveau 4 / RF-31 : fenêtre de secours, texte intact.
+                // RF-28 level 4 / RF-31: rescue window, text intact.
                 self.set_state(DictationState::Recovery {
                     reason: RecoveryReason::InsertFailed,
                 });
@@ -752,8 +759,8 @@ impl<'a> Orchestrator<'a> {
     }
 }
 
-/// Codes stables consignés dans les journaux (RF-34) — publics pour que
-/// l'assemblage journalise les mêmes codes que le noyau.
+/// Stable codes written to the logs (RF-34) — public so the assembly layer
+/// logs the same codes as the core.
 pub fn capture_code(e: &crate::errors::CaptureError) -> u32 {
     match e {
         crate::errors::CaptureError::NoDevice => 1,
@@ -774,8 +781,8 @@ pub fn asr_code(e: &crate::errors::AsrError) -> u32 {
         crate::errors::AsrError::Cancelled => 4,
         crate::errors::AsrError::OutOfMemory => 5,
         crate::errors::AsrError::ConsentMissing => 6,
-        // Détail SDK in-process : code dédié 8, message au journal si le
-        // chemin applicatif en a besoin (le numéro seul ne suffit plus).
+        // In-process SDK detail: dedicated code 8, message to the log when
+        // the application path needs it (the bare number no longer suffices).
         crate::errors::AsrError::Runtime(_) => 8,
     }
 }

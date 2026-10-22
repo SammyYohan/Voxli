@@ -1,7 +1,7 @@
-﻿//! Moteur factice déterministe — tests, CI, démo sans modèle.
+﻿//! Deterministic fake engine — tests, CI, demo without a model.
 //!
-//! Il retourne un texte stable par « empreinte » de la durée d'audio : deux
-//! appels identiques produisent le même résultat. Aucun réseau, aucun modèle.
+//! It returns a stable text keyed by the audio duration "fingerprint":
+//! two identical calls produce the same result. No network, no model.
 
 use std::time::Duration;
 
@@ -11,7 +11,7 @@ use voxli_core::{AsrError, AudioBuffer, EngineId, TranscribeOptions, Transcript,
 pub struct FakeEngine {
     pub text: String,
     pub fail: bool,
-    /// Latence artificielle (tests de file d'attente, RF-05).
+    /// Artificial latency (queue tests, RF-05).
     pub delay: Option<Duration>,
 }
 
@@ -26,7 +26,7 @@ impl Default for FakeEngine {
 }
 
 impl FakeEngine {
-    /// Texte fonction de la durée : reproductible pour les bancs de latence.
+    /// Text as a function of duration: reproducible for latency benchmarks.
     pub fn from_duration(audio: &AudioBuffer) -> String {
         let ms = audio.duration().as_millis();
         format!("[moteur factice] énoncé de {ms} ms")

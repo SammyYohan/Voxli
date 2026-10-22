@@ -1,17 +1,17 @@
-/** Pastille RF-09 v2 — indicateur permanent en haut au centre de l'écran.
- * La fenêtre vit du démarrage à l'extinction : au repos elle montre le
- * seul point d'écoute armée, pendant la prise le visuel complet (état,
- * vumètre, texte en direct). Le survol est détecté côté noyau (la fenêtre
- * est traversée par le clic) : à l'entrée, la légende montre le raccourci
- * de dictée configuré — relu à chaque survol, il peut changer à chaud.
- * Aucun contenu dicté n'est journalisé ni conservé (RF-34) ; les
- * hypothèses streaming sont transitoires (amendement ADR-02) et
- * s'effacent dès la fin de la prise.
- * Langue de présentation : `general.uiLanguage` (v5, repli fr). */
+/** Pill RF-09 v2 — permanent indicator at the top center of the screen.
+ * The window lives from startup to shutdown: at rest it shows the
+ * armed listening point alone, during a take the full visual (state,
+ * level meter, live text). Hover is detected on the core side (the window
+ * is click-through): on entry, the legend shows the configured
+ * dictation hotkey — re-read on every hover, it can change at runtime.
+ * No dictated content is logged or kept (RF-34); the
+ * streaming partials are transient (ADR-02 amendment) and
+ * vanish as soon as the take ends.
+ * Presentation language: `general.uiLanguage` (v5, fr fallback). */
 
 import { applyUiLanguage, t } from "./i18n";
 
-/** Noms des touches localisés (libellés de voxli-hotkeys côté noyau). */
+/** Localized key names (labels of the core-side voxli-hotkeys). */
 function keyName(raw: string): string {
   return raw
     .split("+")
@@ -25,8 +25,8 @@ void (async function init() {
   const listen = await import("@tauri-apps/api/event").then((m) => m.listen);
   const { invoke } = await import("@tauri-apps/api/core");
 
-  // Langue de l'interface (v5) : lue de la configuration (la pastille
-  // s'ouvre APRÈS le chargement par l'assemblage) — repli fr silencieux.
+  // UI language (v5): read from the configuration (the pill
+  // opens AFTER being loaded by the assembly) — silent fr fallback.
   try {
     const cfg = await invoke<{ general: { uiLanguage: string } }>("config_get");
     applyUiLanguage(cfg.general.uiLanguage);
@@ -46,15 +46,15 @@ void (async function init() {
     applyState(payload.state);
   });
 
-  /* Jauge de voix (RF-09 v2) : balistiques de vumètre — remplissage vif,
-   * vidange douce (chasse plus lente), rendu via requestAnimationFrame
-   * pour une animation continue entre les échantillons (~10 Hz). La boucle
-   * s'arrête seule quand la voix se tait : aucun coût hors prise. */
+  /* Voice gauge (RF-09 v2): meter ballistics — fast fill,
+   * gentle drain (slower chase), rendering via requestAnimationFrame
+   * for continuous animation between samples (~10 Hz). The loop
+   * stops by itself when the voice goes quiet: no cost outside a take. */
   let target = 0;
   let shown = 0;
   let raf = 0;
 
-  /** Pose la largeur et l'intensité (variable CSS --lvl pour opacité/halo). */
+  /** Sets the width and the intensity (CSS variable --lvl for opacity/glow). */
   function applyLevel(v: number): void {
     const fill = document.getElementById("pill-meter");
     if (fill === null) return;
@@ -64,7 +64,7 @@ void (async function init() {
   }
 
   function step(): void {
-    // Attaque rapide (la voix monte), chute douce (la jauge se vide).
+    // Fast attack (the voice rises), gentle fall (the gauge drains).
     const chase = target > shown ? 0.5 : 0.14;
     shown += (target - shown) * chase;
     if (target < 0.004 && shown < 0.004) {
@@ -84,10 +84,10 @@ void (async function init() {
     if (raf === 0) raf = requestAnimationFrame(step);
   });
 
-  // Hypothèse transitoire du streaming (amendement ADR-02) : la ligne
-  // s'écrit en direct. Uniquement de l'affichage. Un volant vide (partiel
-  // filtré, silence « anti-hallucination ») ne pose PAS has-partial :
-  // sinon le libellé disparaît derrière un curseur orphelin.
+  // Transient streaming partial (ADR-02 amendment): the line
+  // writes live. Display only. An empty stream (a filtered
+  // partial, "anti-hallucination" silence) does NOT set has-partial:
+  // otherwise the label disappears behind an orphaned cursor.
   void listen<{ text: string; atMs: number }>("dictation://partial", (ev) => {
     const el = document.getElementById("partial");
     if (el === null) return;
@@ -97,9 +97,9 @@ void (async function init() {
     document.body.classList.toggle("has-partial", text !== "");
   });
 
-  // Survol (détection noyau, fenêtre traversée au clic) : la légende
-  // montre le raccourci courant, relu à chaque entrée (RF-01 : changeable
-  // à chaud).
+  // Hover (core-side detection, click-through window): the legend
+  // shows the current hotkey, re-read on every entry (RF-01: changeable
+  // at runtime).
   void listen<boolean>("pill://hover", (ev) => {
     if (ev.payload) {
       document.body.classList.add("hover");
@@ -113,7 +113,7 @@ void (async function init() {
     }
   });
 
-  /** Efface la ligne transitoire (fin de prise — RF-34 : rien ne reste). */
+  /** Clears the transient line (end of take — RF-34: nothing remains). */
   function clearPartial(): void {
     const el = document.getElementById("partial");
     if (el !== null) {
@@ -123,19 +123,19 @@ void (async function init() {
     document.body.classList.remove("has-partial");
   }
 
-  /** Le visuel entier suit l'attribut data-state (CSS = vérité unique). */
+  /** The whole visual follows the data-state attribute (CSS = single truth). */
   function applyState(state: string): void {
     document.body.dataset.state = state;
     if (state !== "recording") {
-      // Les partiels n'ont de sens que pendant la prise : ils sont
-      // effacés dès que le moteur prend la main.
+      // Partials only make sense during a take: they are
+      // cleared as soon as the engine takes over.
       clearPartial();
     }
     const label = document.getElementById("label");
     if (label !== null) {
       const key = `state.${state}`;
       const rendered = t(key);
-      // Clé inconnue → le nom brut d'état reste lisible (jamais blanc).
+      // Unknown key → the raw state name stays readable (never blank).
       label.textContent = rendered === key ? state : rendered;
     }
   }

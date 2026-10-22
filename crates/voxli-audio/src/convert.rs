@@ -1,12 +1,11 @@
-﻿//! Conversion du signal (RF-12, RF-13).
+﻿//! Signal conversion (RF-12, RF-13).
 //!
-//! Tout format d'entrée (8 kHz à 192 kHz, 1 à 8 canaux, flottant) est converti
-//! en **mono 16 kHz float32** avec un ré-échantillonnage sinc fenêtré — pas
-//! d'interpolation linéaire naïve. Le test T-12/T-13 compare les propriétés
-//! (longueur, fréquence, amplitude, réjection anti-repliement) sur des signaux
-//! synthétiques.
+//! Any input format (8 kHz to 192 kHz, 1 to 8 channels, floating point) is
+//! converted to **mono 16 kHz float32** with windowed-sinc resampling — no
+//! naive linear interpolation. Test T-12/T-13 compares the properties
+//! (length, frequency, amplitude, aliasing rejection) on synthetic signals.
 
-/// Mixage N canaux → mono : moyenne des canaux (normalisée).
+/// N-channel → mono mixdown: channel average (normalized).
 pub fn mixdown_to_mono(input: &[f32], channels: usize) -> Vec<f32> {
     let channels = channels.max(1);
     if channels == 1 {
@@ -23,9 +22,9 @@ pub fn mixdown_to_mono(input: &[f32], channels: usize) -> Vec<f32> {
     out
 }
 
-/// Ré-échantillonnage sinc fenêtré (Hann), qualité T-12 :
-/// - coupure à 0,45 × min(Nyquist entrée, Nyquist sortie) ;
-/// - 24 lobes par côté — réjection du repliement > 45 dB sur les tests.
+/// Windowed-sinc (Hann) resampling, T-12 quality:
+/// - cutoff at 0.45 × min(input Nyquist, output Nyquist);
+/// - 24 lobes per side — aliasing rejection > 45 dB across the tests.
 pub fn resample(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {
     if in_rate == out_rate || input.is_empty() {
         return input.to_vec();
@@ -34,11 +33,11 @@ pub fn resample(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {
         return Vec::new();
     }
     let ratio = out_rate as f64 / in_rate as f64;
-    let fc = 0.45 * ratio.min(1.0); // fréquence de coupure normalisée
+    let fc = 0.45 * ratio.min(1.0); // normalized cutoff frequency
     let taps_per_side: i64 = 24;
 
-    // Table de sinc fenêtré pré-calculée : les poids dépendent de la phase
-    // fractionnaire ; on quantifie la phase sur 1024 pas.
+    // Pre-computed windowed-sinc table: the weights depend on the
+    // fractional phase; the phase is quantized to 1024 steps.
     const PHASES: usize = 1024;
     let mut table = vec![0.0f64; PHASES * (taps_per_side as usize * 2)];
     for p in 0..PHASES {
@@ -49,7 +48,7 @@ pub fn resample(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {
             .enumerate()
         {
             let k = k as i64 - taps_per_side;
-            let x = (k as f64) + frac; // distance au centre en échantillons entrée
+            let x = (k as f64) + frac; // distance to the center, in input samples
             *slot = sinc_windowed(x, fc, taps_per_side as f64);
         }
     }
@@ -57,7 +56,7 @@ pub fn resample(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {
     let in_len = input.len();
     let out_len = ((in_len as f64) * ratio).round() as usize;
     let mut out = Vec::with_capacity(out_len);
-    let step = 1.0 / ratio; // pas de sortie en échantillons d'entrée
+    let step = 1.0 / ratio; // output step, in input samples
 
     for o in 0..out_len {
         let center = o as f64 * step;
@@ -71,14 +70,14 @@ pub fn resample(input: &[f32], in_rate: u32, out_rate: u32) -> Vec<f32> {
             let idx = center_idx + k;
             let weight = row[(k + taps_per_side) as usize];
             let sample = if idx < 0 || idx >= in_len as i64 {
-                0.0 // zéro-padding aux bords
+                0.0 // zero-padding at the edges
             } else {
                 input[idx as usize] as f64
             };
             acc += weight * sample;
         }
-        // Normalisation : le gain DC de la fenêtre doit être 1 quand
-        // ratio <= 1 (décimation sans coupure).
+        // Normalization: the window DC gain must be 1 whenever
+        // ratio <= 1 (decimation without a cutoff artifact).
         out.push((acc * norm_factor(fc, taps_per_side as f64)) as f32);
     }
     out
@@ -93,7 +92,7 @@ fn sinc_windowed(x: f64, fc: f64, _taps: f64) -> f64 {
 }
 
 fn hann_window(x: f64) -> f64 {
-    // Fenêtre de Hann appliquée sur |x| <= taps_per_side.
+    // Hann window applied over |x| <= taps_per_side.
     let t = x.abs() / 24.0;
     if t >= 1.0 {
         0.0
@@ -103,8 +102,8 @@ fn hann_window(x: f64) -> f64 {
 }
 
 fn norm_factor(fc: f64, _taps: f64) -> f64 {
-    // Somme des poids pour x entier vaut 2*fc*sum(sinc fenêtré) ; on
-    // normalise par la somme des poids entiers pour garantir un gain DC de 1.
+    // The sum of weights at integer x equals 2*fc*sum(windowed sinc); we
+    // normalize by that integer-weights sum to guarantee a DC gain of 1.
     let mut sum = 0.0;
     for k in -24i64..24 {
         sum += sinc_windowed(k as f64, fc, 24.0);
@@ -112,8 +111,8 @@ fn norm_factor(fc: f64, _taps: f64) -> f64 {
     1.0 / sum
 }
 
-/// Chaîne complète : mixdown puis ré-échantillonnage vers la fréquence
-/// canonique 16 kHz (voxli-core::SAMPLE_RATE_HZ).
+/// Full chain: mixdown then resampling to the canonical 16 kHz rate
+/// (voxli-core::SAMPLE_RATE_HZ).
 pub fn to_mono_16k(input: &[f32], channels: usize, in_rate: u32) -> Vec<f32> {
     let mono = mixdown_to_mono(input, channels);
     resample(&mono, in_rate, voxli_core::SAMPLE_RATE_HZ)

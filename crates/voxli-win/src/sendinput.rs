@@ -1,8 +1,8 @@
-//! Frappe Unicode via `SendInput` — niveau 3 de la cascade d'insertion
-//! (ADR-06) : caractère par caractère, sans toucher au presse-papiers.
+//! Unicode typing via `SendInput` — level 3 of the insertion cascade
+//! (ADR-06): character by character, without touching the clipboard.
 //!
-//! Plus lent et incompatible avec certains IME/jeux — mais ne détruit rien.
-//! Utilisé quand le presse-papiers est indisponible ou interdit par le profil.
+//! Slower and incompatible with some IMEs/games — but destroys nothing.
+//! Used when the clipboard is unavailable or forbidden by the profile.
 
 use std::mem::size_of;
 
@@ -43,13 +43,13 @@ fn vk_event(vk: VIRTUAL_KEY, flags: u32) -> INPUT {
     }
 }
 
-/// Fait défiler tous les éléments UTF-16 de `text` (pairs surrogates compris).
+/// Types out all UTF-16 units of `text` (surrogate pairs included).
 pub fn type_unicode(text: &str) -> Result<(), String> {
     let units: Vec<u16> = text.encode_utf16().collect();
     if units.is_empty() {
         return Ok(());
     }
-    // Envoi par lots de 64 (limite raisonnable de la file d'entrée système).
+    // Sent in batches of 64 (reasonable limit of the system input queue).
     for chunk in units.chunks(64) {
         let mut inputs: Vec<INPUT> = Vec::with_capacity(chunk.len() * 2);
         for &unit in chunk {
@@ -67,15 +67,15 @@ pub fn type_unicode(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Envoie `Ctrl+V` (niveau 2 : collage après écriture du presse-papiers).
+/// Sends `Ctrl+V` (level 2: paste after the clipboard write).
 ///
-/// Bug constaté (18/10/2026) : le `V` était construit via `key_event`
-/// (façade `KEYEVENTF_UNICODE`, `wVk = 0`) — sans ce drapeau, un INPUT
-/// avec `wVk = 0` est **mort** (Windows exige un code virtuel 1-254) ;
-/// le collage ne se produisait jamais, alors que `SendInput` rendait
-/// « succès » (4 événements injectés). Les quatre événements passent
-/// désormais par la façade `vk_event` (codes virtuels `VK_CONTROL` /
-/// `VK_V` — le code virtuel de `V` n'est PAS un scan code).
+/// Bug observed (18/10/2026): the `V` was built via `key_event`
+/// (the `KEYEVENTF_UNICODE` path, `wVk = 0`) — without that flag, an INPUT
+/// with `wVk = 0` is **dead** (Windows requires a virtual code 1-254);
+/// the paste never happened, while `SendInput` reported
+/// "success" (4 events injected). The four events now go through the
+/// `vk_event` path (virtual codes `VK_CONTROL` /
+/// `VK_V` — the virtual code of `V` is NOT a scan code).
 pub fn send_ctrl_v() -> Result<(), String> {
     let inputs = [
         vk_event(VK_CONTROL, KEYEVENTF_DOWN),
@@ -93,8 +93,8 @@ pub fn send_ctrl_v() -> Result<(), String> {
     Ok(())
 }
 
-// Espace réservé aux futurs modificateurs ; référence VK_SPACE pour éviter un
-// avertissement d'import inutilisé jusqu'aux profils par application (RF-25).
+// Reserved space for future modifiers; the VK_SPACE reference avoids an
+// unused-import warning until the per-application profiles (RF-25).
 #[allow(dead_code)]
 const _KEEP: VIRTUAL_KEY = VK_SPACE;
 
@@ -102,23 +102,24 @@ const _KEEP: VIRTUAL_KEY = VK_SPACE;
 mod tests {
     use super::*;
 
-    /// Régression du collage mort : chaque événement de `send_ctrl_v`
-    /// porte un code virtuel valide (jamais 0) et les drapeaux attendus.
-    /// Un `wVk = 0` sans `KEYEVENTF_UNICODE` est un événement que Windows
-    /// accepte… sans effet — d'où le symptôme « insertion réussie, rien
-    /// n'apparaît ».
+    /// Regression test for the dead paste: every event built by
+    /// `send_ctrl_v` carries a valid virtual code (never 0) and the
+    /// expected flags. A `wVk = 0` without `KEYEVENTF_UNICODE` is an event
+    /// that Windows accepts… with no effect — hence the symptom
+    /// "insertion succeeded, nothing appears".
     #[test]
     fn ctrl_v_porte_des_codes_virtuels_valides() {
-        // Accès direct aux 4 INPUT sans déclencher une frappe réelle :
-        // la construction est dupliquée ici plutôt que d'appeler
-        // send_ctrl_v (qui taperait dans la fenêtre active du poste).
+        // Direct access to the 4 INPUTs without triggering a real
+        // keystroke: the construction is duplicated here rather than
+        // calling send_ctrl_v (which would type into the active
+        // window of the machine).
         let inputs = [
             vk_event(VK_CONTROL, KEYEVENTF_DOWN),
             vk_event(VK_V, KEYEVENTF_DOWN),
             vk_event(VK_V, KEYEVENTF_KEYUP.0),
             vk_event(VK_CONTROL, KEYEVENTF_KEYUP.0),
         ];
-        // SAFETY : lecture pure des champs de l'union (aucun appel FFI).
+        // SAFETY: pure read of the union fields (no FFI call).
         let vks: Vec<VIRTUAL_KEY> = inputs
             .iter()
             .map(|i| unsafe { i.Anonymous.ki.wVk })

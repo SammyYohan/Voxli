@@ -1,4 +1,4 @@
-/** i18n Voxli v2 — 한국어 (traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — KOREAN (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
   "app.tagline": "음성 받아쓰기, 100% 로컬. 말한 내용은 이 컴퓨터를 떠나지 않습니다 — 직접 허용한 경우가 아니라면.",
   "mode.advanced": "고급 모드 — 모든 설정",

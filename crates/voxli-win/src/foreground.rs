@@ -1,13 +1,13 @@
-//! Fenêtre active : titre, exécutable, détection d'élévation (RF-29, RF-32).
+//! Active window: title, executable, elevation detection (RF-29, RF-32).
 //!
-//! La cible est mémorisée **au démarrage de la dictée** (RF-32) — c'est
-//! `foreground_info` qui alimente le `FocusSnapshot`.
+//! The target is remembered **at dictation start** (RF-32) — it is
+//! `foreground_info` that feeds the `FocusSnapshot`.
 //!
-//! Règle RF-29 durcie : quand l'élévation du processus cible ne peut pas
-//! être **prouvée** (accès refusé, jeton illisible), la réponse est
-//! conservatrice — `elevated = true` — parce que le refus d'insertion
-//! est réversible (le texte reste au tampon, RF-22) alors qu'une
-//! écriture dans une fenêtre élevée ne l'est pas.
+//! Hardened RF-29 rule: when the elevation of the target process cannot be
+//! **proven** (access denied, unreadable token), the answer is
+//! conservative — `elevated = true` — because refusing insertion is
+//! reversible (the text stays in the buffer, RF-22) whereas writing into
+//! an elevated window is not.
 
 use std::os::windows::ffi::OsStringExt;
 
@@ -26,29 +26,29 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub struct ForegroundInfo {
     pub hwnd: isize,
     pub title: String,
-    /// Nom d'exécutable en minuscules (`notepad.exe`) — identifiant d'app.
+    /// Lowercase executable name (`notepad.exe`) — app identifier.
     pub app_id: String,
-    /// `true` si la fenêtre cible est élevée **ou si l'élévation ne peut
-    /// pas être vérifiée** (règle conservatrice RF-29) — insertion hors
-    /// périmètre (ADR-06), jamais silencieuse (code `refused` à l'UI).
+    /// `true` if the target window is elevated **or if the elevation
+    /// cannot be verified** (conservative RF-29 rule) — out-of-scope
+    /// insertion (ADR-06), never silent (`refused` status to the UI).
     pub elevated: bool,
 }
 
-/// Photographie de la fenêtre au premier plan. `None` = aucune fenêtre
-/// exploitable (bureau, écran de verrouillage).
+/// Snapshot of the foreground window. `None` = no usable window
+/// (desktop, lock screen).
 pub fn foreground_info() -> Option<ForegroundInfo> {
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.0.is_null() {
             return None;
         }
-        // Titre
+        // Title
         let len = GetWindowTextLengthW(hwnd);
         let mut buf = vec![0u16; (len.max(0) as usize) + 1];
         let copied = GetWindowTextW(hwnd, &mut buf);
         let title = String::from_utf16_lossy(&buf[..copied.max(0) as usize]);
 
-        // Processus
+        // Process
         let mut pid: u32 = 0;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
         if pid == 0 {
@@ -58,7 +58,7 @@ pub fn foreground_info() -> Option<ForegroundInfo> {
         let process = match process {
             Some(p) => p,
             None => {
-                // Accès refusé : fenêtre élevée (UIPI) — signalée, pas plantée.
+                // Access denied: elevated window (UIPI) — reported, not a crash.
                 return Some(ForegroundInfo {
                     hwnd: hwnd.0 as isize,
                     title,
@@ -83,11 +83,12 @@ pub fn foreground_info() -> Option<ForegroundInfo> {
         } else {
             String::new()
         };
-        // Élévation : la réponse de rquery limitée ne suffit pas (un
-        // processus moyen peut ouvrir un processus élevé avec ce droit
-        // réduit). Le jeton fait foi, sinon « élevé » (doute ⇒ refus).
+        // Elevation: the limited rquery alone is not enough (a
+        // medium-privileged process can open an elevated process with this
+        // reduced right). The token is authoritative, otherwise "elevated"
+        // (doubt ⇒ refusal).
         let elevated = is_process_elevated(HANDLE(process.0));
-        let _ = CloseHandle(HANDLE(process.0)); // aucun handle laissé ouvert
+        let _ = CloseHandle(HANDLE(process.0)); // no handle left open
         Some(ForegroundInfo {
             hwnd: hwnd.0 as isize,
             title,
@@ -97,9 +98,9 @@ pub fn foreground_info() -> Option<ForegroundInfo> {
     }
 }
 
-/// L'élévation du processus est posée par son jeton (`TokenElevation`).
-/// Toute lecture impossible → `true` (conservateur, RF-29) : n'écrire que
-/// dans des fenêtres dont l'élévation NON elevée est prouvée.
+/// The elevation of the process is carried by its token (`TokenElevation`).
+/// Any impossible read → `true` (conservative, RF-29): only write into
+/// windows whose NON-elevated state is proven.
 unsafe fn is_process_elevated(process: HANDLE) -> bool {
     let mut token = HANDLE::default();
     if OpenProcessToken(process, TOKEN_QUERY, &mut token).is_err() {

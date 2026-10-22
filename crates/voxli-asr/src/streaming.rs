@@ -1,66 +1,66 @@
-﻿//! Streaming in-process (P2) : session d'énoncé alimentée par des tranches
-//! d'audio. Convention : le noyau (`voxli-core`) reste inchangé — sa couture
-//! batch (`Transcriptor`) garde la responsabilité du texte définitif ;
-//! le streaming sert à l'affichage en direct (partiels transitoires,
-//! jamais écrits, RF-34 + amendement ADR-02).
+﻿//! In-process streaming (P2): utterance session fed with audio slices.
+//! Convention: the core (`voxli-core`) stays untouched — its batch seam
+//! (`Transcriptor`) keeps responsibility for the final text; streaming
+//! serves the live display (transient partials, never written,
+//! RF-34 + ADR-02 amendment).
 //!
-//! Pourquoi un trait ici et pas dans `voxli-core` : la machine à états du
-//! noyau ne connaît que « buffer entier → transcription ». Les partiels sont
-//! une préoccupation d'interface ; les injecter au noyau briserait sa pureté
-//! (docs/05 §2.1) pour un bénéfice purement visuel.
+//! Why a trait here and not in `voxli-core`: the core state machine only
+//! knows "whole buffer → transcription". Partials are an interface
+//! concern; injecting them into the core would break its purity
+//! (docs/05 §2.1) for a purely visual benefit.
 
 use voxli_core::AsrError;
 
-/// Mise à jour d'une session streaming.
+/// Update of a streaming session.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamUpdate {
-    /// Hypothèse partielle : remplace le suffixe en cours d'affichage,
-    /// n'entre jamais dans le texte définitif.
+    /// Partial hypothesis: replaces the suffix currently displayed,
+    /// never enters the final text.
     Partial { text: String },
-    /// Segment finalisé par le moteur : agrégé au texte de référence.
+    /// Segment finalized by the engine: aggregated into the reference text.
     Final { text: String },
 }
 
-/// Session de reconnaissance streaming : pilotée par UN thread (le robinet
-/// de capture pousse, le même thread interroge — contrat SDK).
+/// Streaming recognition session: driven BY ONE thread (the capture faucet
+/// pushes, the same thread polls — SDK contract).
 pub trait StreamingSession: Send {
-    /// Pousse une tranche mono f32 au débit `rate` (8–96 kHz ; resample
-    /// interne). Ne déclenche pas l'inférence : `drain` récupère les
-    /// résultats arrivés depuis le dernier appel.
+    /// Pushes a mono f32 slice at `rate` (8–96 kHz; internal resampling).
+    /// Does not trigger inference: `drain` collects the results that
+    /// arrived since the last call.
     fn push(&mut self, samples: &[f32], rate: u32) -> Result<(), AsrError>;
 
-    /// Mises à jour disponibles à cet instant (peut être vide).
+    /// Updates available at this instant (may be empty).
     fn drain(&mut self) -> Result<Vec<StreamUpdate>, AsrError>;
 
-    /// Fin de prise : flush final, aspiration bornée des derniers
-    /// segments, retour du texte de référence du moteur.
+    /// End of capture: final flush, bounded drain of the last segments,
+    /// returns the engine's reference text.
     fn finish(&mut self) -> Result<String, AsrError>;
 
-    /// Texte de référence + confiance moyenne produits par la session, si
-    /// elle en a (Nemo : le final accumulé du streaming). `None` = rien à
-    /// reprendre, l'appelant retombe sur sa voie batch.
+    /// Reference text + average confidence produced by the session, if it
+    /// has any (Nemo: the accumulated streaming finals). `None` = nothing
+    /// to reuse, the caller falls back to its batch channel.
     fn take_result(&self) -> Option<(String, f32)> {
         None
     }
 
-    /// Texte « affichage » à cet instant : segments finalisés + hypothèse
-    /// partielle courante. Jamais journalisé ni conservé (RF-34).
+    /// "Display" text at this instant: finalized segments + current
+    /// partial hypothesis. Never logged nor kept (RF-34).
     fn snapshot(&self) -> String;
 
-    /// La session a auto-désactivé ses partiels (machine trop lente) :
-    /// le pilote consigne la coupure une seule fois au journal — sans
-    /// quoi la disparition des partiels serait muette pour l'utilisateur
-    /// (constat UX du 19/10).
+    /// The session auto-disabled its partials (machine too slow):
+    /// the driver logs the shutdown exactly once in the journal —
+    /// otherwise the disappearance of the partials would be silent for
+    /// the user (UX finding of 19/10).
     fn is_disabled(&self) -> bool {
         false
     }
 }
 
-/// Fabrique de session streaming — la reconnaissance offline passe par le
-/// trait batch habituel, parallèlement.
+/// Streaming session factory — offline recognition goes through the
+/// usual batch trait, in parallel.
 pub trait StreamingEngine: Send + Sync {
-    /// Ouvre une session. NB : le SDK autorise des appels indépendants sur
-    /// le même recognizer ; la session proprement dite est mono-thread.
+    /// Opens a session. NB: the SDK allows independent calls on the same
+    /// recognizer; the session proper is single-threaded.
     fn open(
         &self,
         language: Option<&str>,
@@ -68,7 +68,7 @@ pub trait StreamingEngine: Send + Sync {
     ) -> Result<Box<dyn StreamingSession>, AsrError>;
 }
 
-/// Concatène un segment au texte de référence en gérant les espaces.
+/// Concatenates a segment into the reference text, handling spaces.
 pub(crate) fn append_piece(base: &mut String, piece: &str) {
     let trimmed = piece.trim();
     if trimmed.is_empty() {
@@ -84,10 +84,10 @@ pub(crate) fn append_piece(base: &mut String, piece: &str) {
     base.push_str(trimmed);
 }
 
-// ------------------------------------------------------- session factice ---
+// --------------------------------------------------------- fake session ---
 
-/// Session déterministe sans SDK (tests, CI, démonstration du câblage).
-/// Chaque 4e `push` émet un partiel ; le drain le convertit en final.
+/// Deterministic session without SDK (tests, CI, wiring demo).
+/// Every 4th `push` emits a partial; drain converts it into a final.
 pub struct FakeSession {
     pushes: usize,
     committed: String,
@@ -121,8 +121,8 @@ impl StreamingSession for FakeSession {
 
     fn drain(&mut self) -> Result<Vec<StreamUpdate>, AsrError> {
         if let Some(t) = self.tail.take() {
-            // Petit énoncé factice : le partiel devient final 3 pushes plus
-            // tard (le test attend ce comportement déterministe).
+            // Small fake utterance: the partial becomes final 3 pushes
+            // later (the test expects this deterministic behavior).
             self.pushes += 3;
             append_piece(&mut self.committed, &t);
             return Ok(vec![StreamUpdate::Final { text: t }]);
@@ -143,7 +143,7 @@ impl StreamingSession for FakeSession {
     }
 }
 
-/// Base de streaming factice pour les tests du câblage applicatif.
+/// Fake streaming base for the application-wiring tests.
 pub struct FakeStreamer;
 
 impl StreamingEngine for FakeStreamer {
@@ -163,23 +163,24 @@ mod tests {
     #[test]
     fn fake_session_partiels_deterministes() {
         let mut s = FakeSession::new();
-        // 3 pushes : aucun update tant que le pas n'est pas atteint.
+        // 3 pushes: no update as long as the step is not reached.
         for _ in 0..3 {
             s.push(&[0.0; 160], 16_000).unwrap();
             assert!(s.drain().unwrap().is_empty());
             assert!(s.snapshot().is_empty());
         }
-        // au 4e push, un partiel figure en attente d'affichage…
+        // on the 4th push, a partial is pending display…
         s.push(&[0.0; 160], 16_000).unwrap();
         assert!(s.snapshot().contains("mot"), "partiel affichable attendu");
-        // …et le drain consomme un Update::Final (le partiel est finalisé).
+        // …and the drain consumes one Update::Final (the partial is
+        // finalized).
         let updates = s.drain().unwrap();
         assert!(
             updates.len() == 1
                 && matches!(updates[0], StreamUpdate::Final { ref text } if text.contains("mot")),
             "un final factice est attendu : {updates:?}"
         );
-        // le snapshot reflète le texte commité ; finish le renvoie.
+        // the snapshot reflects the committed text; finish returns it.
         assert_eq!(s.snapshot(), "mot 1");
         assert_eq!(s.finish().unwrap(), "mot 1");
     }

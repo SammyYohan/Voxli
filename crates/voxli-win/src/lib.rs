@@ -1,15 +1,14 @@
-﻿//! `voxli-win` — toute l'interop Win32 (convention docs/05 §6) : les autres
-//! modules n'appellent jamais l'API Windows directement.
+﻿//! `voxli-win` — all Win32 interop (convention docs/05 §6): the other
+//! modules never call the Windows API directly.
 //!
-//! Règle de sécurité du projet : `unsafe` interdit hors de ce crate et des
-//! FFI moteurs ; chaque bloc y est documenté et justifié.
+//! Project safety rule: `unsafe` is forbidden outside this crate and the
+//! engine FFI; each block is expected to be documented and justified.
 //!
-//! Modules :
-//! - `clipboard` : sauvegarde/restauration multi-format, hygiène de
-//!   l'historique (RF-30) ;
-//! - `sendinput` : frappe Unicode (niveau 3 de la cascade) ;
-//! - `foreground` : fenêtre active, titre, exécutable, détection d'élévation ;
-//! - `uia` : UI Automation — mot de passe, `ValuePattern` (niveau 1).
+//! Modules:
+//! - `clipboard`: multi-format save/restore, clipboard history hygiene (RF-30);
+//! - `sendinput`: Unicode typing (level 3 of the cascade);
+//! - `foreground`: active window, title, executable, elevation detection;
+//! - `uia`: UI Automation — password fields, `ValuePattern` (level 1).
 
 #[cfg(target_os = "windows")]
 pub mod clipboard;
@@ -20,8 +19,8 @@ pub mod sendinput;
 #[cfg(target_os = "windows")]
 pub mod uia;
 
-/// Liaison SDK NeMo-Speech.cpp (feature `nemo`) : reconnaissance vocal
-/// streaming in-process. L'archive installée fournit l'ABI C.
+/// NeMo-Speech.cpp SDK binding (feature `nemo`): streaming in-process
+/// speech recognition. The installed archive provides the C ABI.
 #[cfg(feature = "nemo")]
 pub mod nemo;
 

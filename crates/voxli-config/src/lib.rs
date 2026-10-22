@@ -1,19 +1,19 @@
-//! Configuration de Voxli — fichier `%APPDATA%\Voxli\config.json`
-//! (docs/05 §4). Règles :
-//! - chaque champ a une valeur par défaut sûre (privacy d'abord) ;
-//! - toute évolution incrémente `schema` et déclenche une migration testée ;
-//! - le fichier ne contient jamais de secret (ADR-07).
+//! Voxli configuration — the `%APPDATA%\Voxli\config.json` file (docs/05
+//! §4). Rules:
+//! - every field has a safe default (privacy first);
+//! - every change bumps `schema` and triggers a tested migration;
+//! - the file never contains a secret (ADR-07).
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Version courante du schéma. Toute évolution passe par une migration
-/// testée. v4 : mode de déclenchement (RF-02) + consentements RF-36.
-/// v5 : la langue de l'interface (`uiLanguage`, fr|en) est séparée de la
-/// langue d'écoute (`language`) — l'une pilote les textes affichés, l'autre
-/// l'inférence ASR ; les deux sont réglables indépendamment.
+/// Current schema version. Every change goes through a tested migration.
+/// v4: trigger mode (RF-02) + RF-36 consents.
+/// v5: the UI language (`uiLanguage`, fr|en) is separated from the
+/// listening language (`language`) — one drives the displayed texts, the
+/// other drives ASR inference; both are independently adjustable.
 pub const CURRENT_SCHEMA: u32 = 5;
 
 #[derive(Debug, Error)]
@@ -31,14 +31,13 @@ pub enum ConfigError {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EngineChoice {
-    /// Le meilleur moteur disponible, priorité donnée au streaming
-    /// Nemotron quand son modèle est installé (ordre documenté dans
-    /// docs/05 §4).
+    /// The best available engine, giving priority to streaming Nemotron
+    /// when its model is installed (order documented in docs/05 §4).
     #[default]
     Auto,
     Whisper,
     Parakeet,
-    /// Nemotron 3.5 ASR streaming via le SDK in-process.
+    /// Nemotron 3.5 ASR streaming via the in-process SDK.
     Nemo,
 }
 
@@ -46,18 +45,18 @@ pub enum EngineChoice {
 #[serde(rename_all = "snake_case")]
 pub enum PostProcessing {
     None,
-    /// Règles locales déterministes (niveau 1).
+    /// Deterministic local rules (level 1).
     #[default]
     Rules,
     LocalModel,
-    /// Jamais activé sans consentement explicite (RF-26).
+    /// Never enabled without explicit consent (RF-26).
     Cloud,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageKind {
-    /// Défaut : historique en mémoire seule, aucune trace sur disque (RF-33).
+    /// Default: memory-only history, no trace on disk (RF-33).
     #[default]
     Memory,
     Disk,
@@ -66,7 +65,7 @@ pub enum StorageKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextRead {
-    /// Défaut : aucune lecture du contenu des fenêtres (RF-37).
+    /// Default: no window-content reading (RF-37).
     #[default]
     None,
     AppAndTitle,
@@ -76,7 +75,7 @@ pub enum ContextRead {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Telemetry {
-    /// Défaut : aucune télémétrie (ADR-10).
+    /// Default: no telemetry (ADR-10).
     #[default]
     Off,
     OptIn,
@@ -100,24 +99,24 @@ pub enum Aggressiveness {
     High,
 }
 
-/// Mode de déclenchement de la dictée (RF-02) — miroir de schéma ; la
-/// conversion vers le type du noyau se fait dans l'assemblage.
+/// Dictation trigger mode (RF-02) — a schema mirror; conversion to the
+/// core's type happens in the assembly layer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TriggerMode {
-    /// (a) appui maintenu (défaut, compatibilité P0).
+    /// (a) hold-to-talk (default, P0 compatibility).
     #[default]
     Hold,
-    /// (b) bascule : un appui démarre, le suivant arrête.
+    /// (b) toggle: one press starts, the next one stops.
     Toggle,
-    /// (c) double appui pour verrouiller.
+    /// (c) double push to lock.
     DoublePushLock,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
-    /// Aucune réécriture (code, verbatim garanti RF-27).
+    /// No rewriting (code, verbatim guaranteed, RF-27).
     Verbatim,
     #[default]
     Punctuated,
@@ -129,15 +128,20 @@ pub enum Style {
 #[serde(rename_all = "camelCase", default)]
 pub struct General {
     pub language: String,
-    /// Langue de l'interface utilisateur (`fr`|`en`) — indépendante de
-    /// `language` ci-dessus (langue d'écoute ASR, RF-17). Toute valeur
-    /// inconnue retombe sur `fr` côté frontend (jamais d'écran abscons).
+    /// UI language (`system` or one of the 15 `i18n/` codes, RF-17
+    /// amended) — independent of `language` above (the ASR listening
+    /// language, RF-17). Unknown values fall back to `fr` on the
+    /// frontend; `system` follows `navigator.languages` (never an
+    /// obscure screen).
     pub ui_language: String,
-    /// Choix de calcul des transcriptions (`auto`|`cpu`|`gpu`) — additif
-    /// v5 rétro-compatible (serde conteneur `default`) : toute valeur
-    /// inconnue/vide retombe sur `auto` côté noyau (RF-29). `auto` laisse
-    /// whisper.cpp utiliser un GPU quand le build en embarque un ; `cpu`
-    /// le refuse explicitement ; `gpu` l'exige du build.
+    /// Compute choice for transcriptions (`auto`|`cpu`|`gpu`|`duo`) — an
+    /// additive v5 extension (serde container `default`): any unknown/empty
+    /// value falls back to `auto` on the core side — never a panic nor a
+    /// silent unknown mode. `auto` lets whisper.cpp use a GPU when the
+    /// build embeds one (availability, not measured speed); `cpu`
+    /// explicitly refuses it; `gpu` requires the build to provide one;
+    /// `duo` renders the live text on the GPU and keeps the final text
+    /// on CPU (transparent fallback, journaled).
     pub compute: String,
     pub engine: EngineChoice,
     pub model: String,
@@ -184,7 +188,7 @@ pub struct Hotkeys {
     pub paste_last_transcript: String,
     pub show_last_transcript: String,
     pub use_low_level_hook: bool,
-    /// Mode de déclenchement de la dictée (RF-02).
+    /// Dictation trigger mode (RF-02).
     pub mode: TriggerMode,
 }
 
@@ -244,8 +248,8 @@ pub struct InsertionCfg {
     pub remember_target_at_start: bool,
     pub clipboard_hold_ms: ClipboardHoldMs,
     pub exclude_from_clipboard_history: bool,
-    /// Liste d'exclusion par défaut (gestionnaires de mots de passe). La
-    /// bureau à distance n'y figure pas : on y insère via presse-papiers.
+    /// Default exclusion list (password managers). Remote Desktop is
+    /// deliberately absent: insertion goes through the clipboard there.
     pub excluded_apps: Vec<String>,
 }
 
@@ -260,7 +264,7 @@ impl Default for InsertionCfg {
     }
 }
 
-/// Applications jamais lues, jamais ciblées (RF-29).
+/// Applications never read, never targeted (RF-29).
 pub fn default_excluded_apps() -> Vec<String> {
     vec![
         "keepass.exe".into(),
@@ -301,14 +305,14 @@ impl Default for ClipboardHoldMs {
     }
 }
 
-/// Consentements explicites, par utilisation (RF-36, RF-26 niveau 3).
-/// Tout défaut est `false` : rien de distant sans un accord donné ici.
+/// Explicit consents, per usage (RF-36, RF-26 level 3).
+/// Every default is `false`: nothing remote without an agreement given here.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ConsentCfg {
-    /// Transcription par un service IA distant (BYOK, P4).
+    /// Transcription by a remote AI service (BYOK, P4).
     pub remote_asr: bool,
-    /// Post-traitement distant (RF-26 niveau 3).
+    /// Remote post-processing (RF-26 level 3).
     pub cloud_post: bool,
 }
 
@@ -347,7 +351,7 @@ pub struct Profiles {
 pub struct ProfileCfg {
     pub style: Style,
     pub dictionary: Vec<String>,
-    /// Applications associées à ce profil (RF-25).
+    /// Applications bound to this profile (RF-25).
     #[serde(rename = "match", default)]
     pub matches: Vec<String>,
 }
@@ -403,8 +407,8 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Clamp des valeurs numériques aux bornes documentées — défense en
-    /// profondeur contre un fichier édité à la main.
+    /// Clamps numeric values to the documented bounds — defense in depth
+    /// against a hand-edited file.
     pub fn normalized(mut self) -> Self {
         self.audio.pre_roll_ms = self.audio.pre_roll_ms.clamp(100, 1000);
         self.audio.max_recording_seconds = self.audio.max_recording_seconds.clamp(30, 1800);
@@ -413,7 +417,7 @@ impl Config {
         self
     }
 
-    /// Chargement avec migration depuis n'importe quelle version ≥ 1.
+    /// Loads with migration from any version ≥ 1.
     pub fn load(path: &std::path::Path) -> Result<Self, ConfigError> {
         let raw = std::fs::read_to_string(path)?;
         Self::from_json(&raw)
@@ -439,11 +443,11 @@ impl Config {
         Ok(())
     }
 
-    /// Répertoire par défaut : `%APPDATA%\Voxli` (cfg Windows) ; sinon
-    /// `./voxli-data`. L'héritage du nom de code `Plume` (repli conditionnel
-    /// du 18/10) est retiré le 19/10 : les données locales ont été déplacées
-    /// une fois pour toutes vers `%APPDATA%\Voxli` — plus aucun chemin
-    /// `Plume` dans le code ni dans les chaînes applicatives.
+    /// Default directory: `%APPDATA%\Voxli` (Windows env); otherwise
+    /// `./voxli-data`. The inheritance of the `Plume` codename (conditional
+    /// fallback of 18/10) was removed on 19/10: the local data was moved
+    /// once and for all to `%APPDATA%\Voxli` — no more `Plume` path in the
+    /// code or in application strings.
     pub fn default_dir() -> PathBuf {
         match std::env::var("APPDATA") {
             Ok(base) if !base.is_empty() => PathBuf::from(&base).join("Voxli"),
@@ -456,12 +460,12 @@ impl Config {
     }
 }
 
-/// Chaîne de migrations. Chaque étape est testée (tests/config.rs).
+/// Migration chain. Every step is tested (tests/config.rs).
 fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> {
     let mut v = from;
     while v < CURRENT_SCHEMA {
         match v {
-            // 1 → 2 : « cleanup » renommé « postProcessing » (niveaux RF-26).
+            // 1 → 2: "cleanup" renamed to "postProcessing" (RF-26 levels).
             1 => {
                 if let Some(general) = value.get_mut("general").and_then(|g| g.as_object_mut()) {
                     if let Some(cleanup) = general.remove("cleanup") {
@@ -471,7 +475,7 @@ fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> 
                     }
                 }
             }
-            // 2 → 3 : VAD explicite (seuil de durée minimale RF-18).
+            // 2 → 3: explicit VAD (minimum duration threshold, RF-18).
             2 => {
                 if let Some(audio) = value.get_mut("audio").and_then(|a| a.as_object_mut()) {
                     if !audio.contains_key("vad") {
@@ -486,7 +490,7 @@ fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> 
                     }
                 }
             }
-            // 3 → 4 : mode de déclenchement (RF-02) + consentements (RF-36).
+            // 3 → 4: trigger mode (RF-02) + consents (RF-36).
             3 => {
                 if let Some(hk) = value.get_mut("hotkeys").and_then(|h| h.as_object_mut()) {
                     if !hk.contains_key("mode") {
@@ -502,11 +506,11 @@ fn migrate(value: &mut serde_json::Value, from: u32) -> Result<(), ConfigError> 
                     }
                 }
             }
-            // 4 → 5 : la langue de l'interface est séparée de la langue
-            // d'écoute (`uiLanguage` apparaît, défaut `fr`) ; `language`
-            // garde son unique rôle de langue d'inférence ASR. Le choix de
-            // calcul CPU/GPU (`compute`) est additif au même titre — tout
-            // ancien fichier existe, la valeur sûre est `auto`.
+            // 4 → 5: the UI language is separated from the listening
+            // language (`uiLanguage` appears, default `fr`); `language`
+            // keeps its single role as the ASR inference language. The
+            // CPU/GPU compute choice (`compute`) is additive in the same
+            // way — every prior file exists, and the safe value is `auto`.
             4 => {
                 if let Some(general) = value.get_mut("general").and_then(|g| g.as_object_mut()) {
                     if !general.contains_key("uiLanguage") {

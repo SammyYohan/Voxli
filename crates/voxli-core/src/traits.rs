@@ -1,6 +1,6 @@
-﻿//! Ports (traits) du noyau — les points de couture testables (docs/05 §1) :
-//! « les implémentations sont injectées dans le noyau via les traits définis
-//! dans voxli-core ».
+﻿//! Kernel ports (traits) — the testable seam points (docs/05 §1):
+//! "implementations are injected into the kernel through the traits defined
+//! in voxli-core".
 
 use std::time::Duration;
 
@@ -10,28 +10,28 @@ use crate::types::{
     TranscribeOptions, Transcript,
 };
 
-/// Capture audio (RF-06, RF-07). Le démarrage inclut le pré-roll : l'audio
-/// antérieur à l'appui est restitué par `stop`.
+/// Audio capture (RF-06, RF-07). Starting includes the pre-roll: audio
+/// preceding the press is restituted by `stop`.
 pub trait Capture {
     fn start(&mut self, pre_roll_ms: u32) -> Result<(), CaptureError>;
     fn stop(&mut self) -> Result<AudioBuffer, CaptureError>;
-    /// Niveau d'entrée normalisé 0..1 pour l'indicateur visuel (RF-09).
+    /// Normalized input level 0..1 for the visual indicator (RF-09).
     fn level(&self) -> Level;
-    /// `true` si le périphérique a signalé une déconnexion depuis le début de
-    /// la prise (RF-10).
+    /// `true` when the device reported disconnection since the capture
+    /// started (RF-10).
     fn device_lost(&self) -> bool {
         false
     }
 }
 
-/// Verdict du VAD (RF-18).
+/// VAD verdict (RF-18).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpeechVerdict {
-    /// Voix exploitable.
+    /// Usable speech.
     Speech,
-    /// De la voix, mais une durée inférieure au seuil (`min_speech_ms`).
+    /// Speech, but shorter than the threshold (`min_speech_ms`).
     TooShort,
-    /// Silence ou bruit non vocal.
+    /// Silence or non-vocal noise.
     Silence,
 }
 
@@ -39,11 +39,11 @@ pub trait VoiceActivity {
     fn contains_speech(&self, audio: &AudioBuffer) -> SpeechVerdict;
 }
 
-/// Moteur de transcription (ADR-03). L'appelant (pipeline) garde le
-/// consentement pour tout moteur distant — le garde-fou est côté appelant,
-/// jamais dans le moteur.
+/// Transcription engine (ADR-03). The caller (pipeline) holds the consent
+/// for any remote engine — the guardrail lives in the caller, never in the
+/// engine.
 pub trait Transcriptor: Send + Sync {
-    /// Préchargement en tâche de fond (RF-19). Peut ne rien faire.
+    /// Background warm-up (RF-19). May be a no-op.
     fn warmup(&self) -> Result<(), AsrError>;
     fn transcribe(
         &self,
@@ -53,40 +53,40 @@ pub trait Transcriptor: Send + Sync {
     fn id(&self) -> EngineId;
 }
 
-/// Post-traitement local (RF-26). Niveau 0 : identité. Le moteur distant
-/// n'implémente pas ce trait — il passe par un `Transcriptor` dédié.
+/// Local post-processing (RF-26). Level 0: identity. The remote engine does
+/// not implement this trait — it goes through a dedicated `Transcriptor`.
 pub trait PostProcessor {
     fn process(&self, text: &str, profile: &Profile) -> Result<String, PostError>;
 }
 
-/// Lecture de la cible de dictée (RF-32). Retourne `None` si aucun champ
-/// focalisé exploitable n'est détecté.
+/// Reads the dictation target (RF-32). Returns `None` when no usable
+/// focused field is detected.
 pub trait FocusReader {
     fn snapshot(&self) -> Option<FocusSnapshot>;
 }
 
-/// Insertion du texte (RF-28 à RF-32). `plan` est une fonction pure de
-/// `(capacités du champ, profil) → ordre des niveaux` : testable hors Windows.
+/// Text insertion (RF-28 through RF-32). `plan` is a pure function of
+/// `(field capabilities, profile) → level order`: testable off-Windows.
 pub trait Inserter {
     fn plan(&self, target: &FocusSnapshot, profile: &Profile) -> InsertPlan;
-    /// `insert` ne reçoit que le plan et le texte ; en cas d'échec total, le
-    /// texte reste dans le tampon interne de l'orchestrateur (RF-22).
+    /// `insert` receives only the plan and the text; on total failure, the
+    /// text stays in the orchestrator's internal buffer (RF-22).
     fn insert(&self, text: &str, plan: &InsertPlan) -> Result<InsertReport, InsertError>;
 }
 
-/// Droits Free/Pro (RF-38, RF-39).
+/// Free/Pro entitlements (RF-38, RF-39).
 pub trait Entitlement {
     fn feature(&self, f: crate::types::Feature) -> bool;
 }
 
-/// Horloge injectable pour tester les temporisations (durée maximale de
-/// sécurité RF-11) sans temps réel.
+/// Injectable clock to test timings (the RF-11 maximum duration) without
+/// real time.
 pub trait Clock {
     fn now(&self) -> Duration;
 }
 
-/// Tranche de latence mesurée (docs/06 §4). Seule la durée est journalisée,
-/// jamais le contenu (RF-34).
+/// Measured latency stage (docs/06 §4). Only the duration is logged, never
+/// the content (RF-34).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stage {
     ReleaseDetect,

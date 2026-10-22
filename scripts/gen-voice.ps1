@@ -1,6 +1,6 @@
-﻿# Génère une voix de test (SAPI de Windows → WAV 16 kHz mono PCM 16 bits)
-# pour les essais de débit du streaming sans microphone. Répété et
-# déterministe : même phrase à chaque appel.
+﻿# Generates a test voice (Windows SAPI → 16 kHz mono 16-bit PCM WAV)
+# for streaming throughput tests without a microphone. Repeatable and
+# deterministic: same sentence on every call.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -16,7 +16,7 @@ $fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(
     [System.Speech.AudioFormat.AudioChannel]::Mono)
 $synth.SetOutputToWaveFile($wav, $fmt)
 $synth.Rate = 0
-# Phrase longue (~10 s) : le débit streaming se mesure sur la durée.
+# Long sentence (~10 s): streaming throughput is measured over duration.
 $synth.Speak(
     "Bonjour, je teste la dictee vocale locale en francais avec Voxli. " +
     "Cette phrase longue sert a mesurer la latence du texte en direct, " +

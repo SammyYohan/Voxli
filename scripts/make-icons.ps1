@@ -1,16 +1,16 @@
-﻿# Génération des icônes Voxli (bundle NSIS + tray + web).
+﻿# Generation of the Voxli icons (NSIS bundle + tray + web).
 #
-# Entrée  : assets/logo.png (canvas carré 1080×1080).
-# Sorties : assets/logo.ico, apps/desktop/src-tauri/icons/icon.ico (ICO multi-tailles
-#           16/24/32/48/64/256 encodées BMP 32bpp + masque AND — format canonique que
-#           rc.exe (tauri-build) et le shell Windows décodent de façon identique),
-#           plus icons/32x32.png, 128x128.png et 256x256.png.
+# Input   : assets/logo.png (square 1080×1080 canvas).
+# Outputs : assets/logo.ico, apps/desktop/src-tauri/icons/icon.ico (ICO with sizes
+#           16/24/32/48/64/256 encoded as BMP 32bpp + AND mask — the canonical format
+#           that rc.exe (tauri-build) and the Windows shell decode identically),
+#           plus icons/32x32.png, 128x128.png and 256x256.png.
 #
-# ATENTION : ne pas regénérer icon.ico via « pnpm tauri icon » : celui-ci écrit des
-# entrées PNG-compressées que rc.exe aplatit en une seule image dans l'exe (bogues
-# observés en M1 : icône fenêtre = fragment zoomé). Repasser par ce script.
+# WARNING: do not regenerate icon.ico via "pnpm tauri icon": it writes
+# PNG-compressed entries that rc.exe flattens into a single image inside the exe (bugs
+# observed in M1: window icon = a zoomed fragment). Go back through this script.
 #
-# Exécuter : powershell -ExecutionPolicy Bypass -File scripts/make-icons.ps1
+# Run: powershell -ExecutionPolicy Bypass -File scripts/make-icons.ps1
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -42,8 +42,8 @@ function Resize-Png([string]$source, [string]$dest, [int]$size) {
     Write-Host "  icone : $dest"
 }
 
-# Construit un BMP d'entrée ICO 32bpp (BITMAPINFOHEADER + pixels BGRA bas->haut +
-# masque AND nul : la canal alpha gère la transparence).
+# Builds a 32bpp ICO inner BMP (BITMAPINFOHEADER + BGRA pixels bottom->up +
+# null AND mask: the alpha channel handles transparency).
 function New-IconImage([System.Drawing.Image]$srcImg, [int]$size) {
     $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -62,7 +62,7 @@ function New-IconImage([System.Drawing.Image]$srcImg, [int]$size) {
     $xor = New-Object byte[] ($size * $rowBytes)
     $row = New-Object byte[] $rowBytes
     $o = 0
-    for ($y = $size - 1; $y -ge 0; $y--) {  # ICO : premier octet = ligne du bas
+    for ($y = $size - 1; $y -ge 0; $y--) {  # ICO: first byte = bottom row
         [Runtime.InteropServices.Marshal]::Copy([IntPtr]($data.Scan0.ToInt64() + $y * $stride), $row, 0, $rowBytes)
         [Array]::Copy($row, 0, $xor, $o, $rowBytes)
         $o += $rowBytes

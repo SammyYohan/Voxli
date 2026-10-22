@@ -10,8 +10,8 @@ thiserror = { workspace = true }
 
 [features]
 default = []
-# NeMo-Speech.cpp : liaison au SDK C installé localement (voir build.rs et
-# README § 6). Off par défaut : le build nominal reste vert sans SDK.
+# NeMo-Speech.cpp: linkage to the locally installed C SDK (see build.rs and
+# README § 6). Off by default: the nominal build stays green without the SDK.
 nemo = []
 
 [target.'cfg(target_os = "windows")'.dependencies]

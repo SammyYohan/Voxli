@@ -1,11 +1,11 @@
-//! `voxli-license` — vérification de licence locale signée (ADR-08, RF-38).
+//! `voxli-license` — local signed-license verification (ADR-08, RF-38).
 //!
-//! Fonctionnement :
-//! - la licence est un JSON signé **Ed25519** ; la vérification est hors
-//!   ligne avec une clé **publique** embarquée dans le binaire ;
-//! - aucune clé privée ni secret de signature n'existe dans le dépôt ni dans
-//!   l'artefact (test T-38 / S3 : recherche de motifs dans les binaires) ;
-//! - période de grâce hors ligne configurable (défaut 30 jours).
+//! How it works:
+//! - a license is JSON signed with **Ed25519**; verification is offline,
+//!   with a **public** key embedded in the binary;
+//! - no private key or signing secret exists in the repository or in the
+//!   artifact (test T-38 / S3: pattern scan of the binaries);
+//! - configurable offline grace period (default 30 days).
 
 pub mod pubkey;
 
@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use voxli_core::Feature;
 
-/// Format de blob de licence : deux lignes, payload JSON base64 puis
-/// signature Ed25519 base64.
+/// License blob format: two lines, base64 JSON payload then base64
+/// Ed25519 signature.
 pub const BLOB_FORMAT: &str = "voxli-license-v1";
 
 #[derive(Debug, Error)]
@@ -38,19 +38,19 @@ pub enum LicenseError {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LicenseDoc {
-    /// Identifiant produit — la vérification refuse tout autre produit.
+    /// Product identifier — verification refuses any other product.
     pub product: String,
     pub licensee: String,
-    /// Noms de fonctionnalités (voir `Feature::as_str`).
+    /// Feature names (see `Feature::as_str`).
     pub features: Vec<String>,
     /// RFC 3339 (UTC).
     pub issued_at: String,
-    /// `None` = perpétuelle (fenêtre de mises à jour gérée côté produit).
+    /// `None` = perpetual (update window handled on the product side).
     pub expires_at: Option<String>,
     pub seats: Option<u32>,
 }
 
-/// Droits dérivés d'une licence vérifiée.
+/// Rights derived from a verified license.
 #[derive(Clone, Debug)]
 pub struct Entitlement {
     features: Vec<String>,
@@ -71,8 +71,8 @@ impl Entitlement {
         &self.licensee
     }
 
-    /// Date de péremption en secondes depuis l'époque (une licence
-    /// perpétuelle en est dépourvue).
+    /// Expiry date in seconds since the epoch (a perpetual license has
+    /// none).
     pub fn expires_at_secs(&self) -> Option<u64> {
         self.expires_at_secs
     }
@@ -84,13 +84,13 @@ impl voxli_core::Entitlement for Entitlement {
     }
 }
 
-/// Clé publique embarquée dans le binaire (32 octets bruts).
+/// Public key embedded in the binary (32 raw bytes).
 pub fn public_key_from_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> VerifyingKey {
     VerifyingKey::from_bytes(&bytes).expect("clé publique embarquée invalide (invariant)")
 }
 
-/// Vérification complète : format, signature, produit, expiration.
-/// Fonction **pure** sur des octets — testable hors ligne (docs/05 §2.6).
+/// Full verification: format, signature, product, expiration.
+/// **Pure** function over bytes — testable offline (docs/05 §2.6).
 pub fn verify(
     blob: &str,
     public_key: &VerifyingKey,
@@ -100,9 +100,9 @@ pub fn verify(
 ) -> Result<Entitlement, LicenseError> {
     let mut lines = blob.trim().lines();
     let header = lines.next().ok_or(LicenseError::BadFormat)?.trim();
-    // Depuis le 19/10, un seul en-tête accepté (`voxli-license-v1`) :
-    // l'ancien format de nom de code n'a jamais été publié, le compat
-    // `plume-license-v1` est retiré (aucun blob existant à relire).
+    // Since 2026-10-19, a single accepted header (`voxli-license-v1`):
+    // the old code-name format was never published and the compat
+    // `plume-license-v1` is gone (no existing blob to re-read).
     if header != BLOB_FORMAT {
         return Err(LicenseError::BadFormat);
     }
@@ -149,7 +149,7 @@ pub fn verify(
     })
 }
 
-/// Sérialise un blob signé (outil d'émission, hors dépôt produit).
+/// Serializes a signed blob (issuing tool, outside the product repo).
 pub fn sign(doc: &LicenseDoc, signing_key: &ed25519_dalek::SigningKey) -> String {
     let payload = serde_json::to_vec(doc).expect("sérialisation licence");
     let sig = signing_key.sign(&payload);
@@ -162,8 +162,8 @@ pub fn sign(doc: &LicenseDoc, signing_key: &ed25519_dalek::SigningKey) -> String
 
 // ------------------------------------------------------------ helpers -----
 
-/// Base64 variante standard, sans dépendance externe (≈ 30 lignes, testée).
-/// Public : sert aussi à l'outil d'émission hors dépôt et aux tests.
+/// Standard-variant Base64, no external dependency (≈ 30 lines, tested).
+/// Public: also used by the out-of-repo issuing tool and the tests.
 pub fn b64_encode(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
@@ -222,8 +222,8 @@ pub fn b64_decode(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// Analyse RFC 3339 minimaliste (`YYYY-MM-DDTHH:MM:SSZ`) — sufisant pour les
-/// dates de licence, générées par l'émetteur.
+/// Minimalist RFC 3339 parser (`YYYY-MM-DDTHH:MM:SSZ`) — sufficient for
+/// license dates, which are generated by the issuer.
 pub fn parse_rfc3339_secs(s: &str) -> Option<u64> {
     let b = s.as_bytes();
     if b.len() < 20 {
@@ -235,7 +235,7 @@ pub fn parse_rfc3339_secs(s: &str) -> Option<u64> {
     let hour: i64 = s.get(11..13)?.parse().ok()?;
     let min: i64 = s.get(14..16)?.parse().ok()?;
     let sec: i64 = s.get(17..19)?.parse().ok()?;
-    // Jours depuis l'époque (algorithme de Howard Hinnant, domaine public).
+    // Days since the epoch (Howard Hinnant's algorithm, public domain).
     let days = {
         let y = if month <= 2 { year - 1 } else { year };
         let era = if y >= 0 { y } else { y - 399 } / 400;

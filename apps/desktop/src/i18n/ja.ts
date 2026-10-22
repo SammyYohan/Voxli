@@ -1,4 +1,4 @@
-/** i18n Voxli v2 — 日本語 (traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — JAPANESE (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
   "app.tagline": "音声入力（音声書き起こし）、100% ローカル。あなたの言葉がこのマシンの外に出ることはありません — 明示的に許可しない限り。",
   "mode.advanced": "詳細モード — すべての設定",

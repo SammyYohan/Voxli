@@ -1,10 +1,10 @@
 import { defineConfig } from "vite";
 
 /**
- * Trois fenêtres autonomes, aucune chargeur de framework :
- * - `index.html`  → fenêtre « Réglages » (affichée depuis le tray) ;
- * - `rescue.html` → fenêtre de secours RF-31 ;
- * - `pill.html`   → pastille d'état RF-09.
+ * Three standalone windows, no framework loader:
+ * - `index.html`  → "Settings" window (shown from the tray);
+ * - `rescue.html` → rescue window RF-31;
+ * - `pill.html`   → state pill RF-09.
  */
 export default defineConfig({
   build: {

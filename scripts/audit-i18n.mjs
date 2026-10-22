@@ -1,16 +1,16 @@
 /**
- * Audit i18n : chaque dictionnaire de `apps/desktop/src/i18n/` doit porter
- * exactement les clés de la référence `en.ts` (ni trou, ni clé en plus),
- * avec les placeholders ({n}, {name}…) identiques. Exécuter :
+ * i18n audit: every dictionary in `apps/desktop/src/i18n/` must carry
+ * exactly the keys of the `en.ts` reference (no hole, no extra key),
+ * with identical placeholders ({n}, {name}…). Run:
  *   node scripts/audit-i18n.mjs
- * Sortie : un rapport par langue, code de sortie 1 au premier écart.
+ * Output: one report per language, exit code 1 at the first mismatch.
  *
- * Niveau 2 (références) : les clés citées par l'application doivent
- * EXISTER dans la référence — attributs `data-i18n[-html|-title|
- * -placeholder]` des trois fenêtres (*.html à la racine d'apps/desktop)
- * et appels littéraux `t("clé")` du TS. Une clé fabriquée retombe
- * silencieusement dans la chaîne de repli (courant→en→fr) : c'est un
- * trou de traduction invisible à l'œil, donc traqué ici.
+ * Level 2 (references): keys cited by the application must
+ * EXIST in the reference — `data-i18n[-html|-title|-placeholder]`
+ * attributes of the three windows (*.html at the root of apps/desktop)
+ * and literal `t("key")` calls in the TS. A made-up key silently
+ * falls into the fallback chain (current→en→fr): it is an
+ * invisible-to-the-eye translation hole, hence hunted here.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -58,18 +58,18 @@ for (const file of FILES) {
   }
 }
 
-// ---- niveau 2 : références de l'application vs référence ----------------
+// ---- level 2: application references vs the reference ----------------
 const used = new Set();
-// 1) attributs data-i18n* des pages HTML (index, pill, rescue).
+// 1) data-i18n* attributes of the HTML pages (index, pill, rescue).
 for (const page of ["index.html", "pill.html", "rescue.html"]) {
   const html = readFileSync(join(APP, page), "utf8");
   for (const m of html.matchAll(/data-i18n(?:-html|-title|-placeholder)?="([^"]+)"/g)) {
     used.add(m[1]);
   }
 }
-// 2) appels littéraux t("…") dans le TS (les gabarits dynamiques
-//    `t(\`x.${v}\`)` sont exclus : leurs bases sont couvertes par les
-//    clés fixes qui composent la famille, vérifiées ci-dessus).
+// 2) literal t("…") calls in the TS (the dynamic templates
+//    `t(\`x.${v}\`)` are excluded: their bases are covered by the
+//    fixed keys composing the family, checked above).
 function collectTsCalls(dir) {
   for (const f of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, f.name);

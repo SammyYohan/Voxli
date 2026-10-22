@@ -1,6 +1,6 @@
-/** i18n Voxli v2 — Turc (traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — TURKISH (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
-  // Squelette / mode simple-avancé
+  // Skeleton / simple-advanced mode
   "app.tagline": "Sesli dikte, %100 yerel. Sözcükleriniz bu makineden asla dışarı çıkmaz — siz açıkça istemedikçe.",
   "mode.advanced": "Gelişmiş mod — tüm ayarlar",
   "mode.theme": "Tema",
@@ -8,13 +8,13 @@ export const dict: Record<string, string> = {
   "theme.light": "açık",
   "theme.dark": "koyu",
 
-  // Onboarding 1-clic
+  // One-click onboarding
   "onboarding.title": "🚀 Voxli'ye hoş geldiniz!",
   "onboarding.intro": "Anında, akıcı ve %100 yerel sesli dikteye hazır mısınız?",
   "onboarding.desc": "Hemen başlamak için kompakt Whisper modelini tek tıkla yükleyin (57 MB, bir kez indirilir, her şey çevrimdışı çalışır):",
   "onboarding.download": "⚡ Whisper'ı indir ve etkinleştir (1 tık)",
 
-  // État
+  // Status
   "state.section": "Durum",
   "state.engineWord": "motor:",
   "audio.meterTitle": "Mikrofon düzeyi — asla gönderilmez, asla kaydedilmez",
@@ -26,7 +26,7 @@ export const dict: Record<string, string> = {
   "state.inserting": "ekleniyor…",
   "state.recovery": "hata — yeniden denenebilir",
 
-  // Général
+  // General
   "general.section": "Genel",
   "general.languageLabel": "Dikte dili (otomatik = uygulama algılar)",
   "general.languageAuto": "Otomatik algılama (önerilir)",
@@ -38,7 +38,7 @@ export const dict: Record<string, string> = {
   "general.save": "Ayarları kaydet",
   "general.saved": "kaydedildi — anında uygulandı",
 
-  // Raccourcis
+  // Hotkeys
   "hk.section": "Kısayollar ve tetikleme",
   "hk.pushLabel": "Dikte",
   "hk.modeLabel": "Tetikleme modu",
@@ -49,7 +49,7 @@ export const dict: Record<string, string> = {
   "hk.showLabel": "Son metni göster",
   "hk.note": "Kayda hemen uygulanır (RF-01) — kısayolu başka bir uygulama zaten kullanıyorsa bir ileti bunu bildirir.",
 
-  // Vocabulaire
+  // Vocabulary
   "vocab.section": "Sözlük ve özel kelime dağarcığı",
   "vocab.intro": "Kısaltmalarınızı, özel adlarınızı, şirketlerinizi veya mesleki terimlerinizi Voxli'ye öğretin. Bunlar Whisper'a cerrahi keskinlik için eklenir (Magic Formatting).",
   "vocab.profileLabel": "Kelime dağarcığı profili:",
@@ -77,7 +77,7 @@ export const dict: Record<string, string> = {
   "audio.vadBalanced": "dengeli (varsayılan)",
   "audio.vadHigh": "katı — gürültüyü yok sayar",
 
-  // Modèles
+  // Models
   "models.section": "Ses (tanıma motoru)",
   "models.intro": "İndirme <b>sizin açık talebinizdir</b> ve Voxli'nin bu ekrandan açtığı <b>tek</b> ağ bağlantısıdır. Her dosya alındıktan sonra doğrulanır; kanıt yerel bir günlükte kalır.",
   "models.colModel": "Model",
@@ -99,12 +99,12 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— yaklaşık {n} MB",
   "models.verifiedBadge": "yayınlanan güvenilir referansla eşleşiyor (docs/11 §3)",
 
-  // Moteurs (sélection, écran Voix)
+  // Engines (selection, Voice screen)
   "engines.auto": "Otomatik (önerilir)",
   "engines.hintSdk": "kullanılamıyor — SDK bu derlemeye dahil değil",
   "engines.effective": "Etkin motor: {engine}",
 
-  // Profils
+  // Profiles
   "profiles.section": "Profiller ve sözlükler",
   "profiles.lockNotice": "Çoklu profil: Pro özelliği. Lisanssız yalnızca varsayılan profil uygulanır — atamalarınız burada kayıtlı kalır.",
   "profiles.codeAppsLabel": "“Kod” profili — ilişkili uygulamalar (virgülle ayrılmış)",
@@ -117,7 +117,7 @@ export const dict: Record<string, string> = {
   "profiles.note": "Sözlük söylediklerinizi düzeltir (söylenen “metalurci” yeniden <i>metalurji</i> olur) “ham metin” modunda bile: bu sizin düzeltmenizdir, ürünün elle yazması değil.",
   "dict.imported": "Sözlük içe aktarıldı: {n} giriş.",
 
-  // Historique
+  // History
   "history.section": "Geçmiş",
   "history.keepLabel": "Transkriptleri sakla",
   "history.no": "hayır — hiçbir şey saklanmaz (varsayılan davranış)",
@@ -134,7 +134,7 @@ export const dict: Record<string, string> = {
   "history.delete": "sil",
   "history.empty": "girdi yok",
 
-  // Licence
+  // License
   "license.section": "Lisans",
   "license.active": "Lisans etkin — sahibi: {name}.",
   "license.grace": "Lisansın süresi doldu — çevrimdışı ödeme dönemi: Pro özellikler {days} gün daha, sonra ücretsiz sürüme dönüş.",
@@ -145,7 +145,7 @@ export const dict: Record<string, string> = {
   "license.importAction": "Doğrula ve içe aktar",
   "license.imported": "lisans içe aktarıldı ve doğrulandı.",
 
-  // Vie privée
+  // Privacy
   "privacy.simpleNote": "Tamamen yerel: açık izniniz yoksa hiçbir şey bu makineden çıkmaz. Ayrıntılar (izinler, bağlam okuma) gelişmiş moddadır.",
   "privacy.section": "Gizlilik",
   "privacy.strictLabel": "Katı yerel mod",
@@ -164,30 +164,30 @@ export const dict: Record<string, string> = {
   "privacy.contextEmpty": "bağlam okunmadı",
   "privacy.note": "İki anahtar da “asla”da kaldığı sürece hiçbir uzak hizmet etkin değildir — uzak motor derlenmiş olsa bile.",
 
-  // Diagnostic
+  // Diagnostics
   "diag.section": "Tanılama ve veriler",
   "diag.exportReport": "Tanılama raporunu dışa aktar",
   "diag.exportData": "Verilerimi dışa aktar (yapılandırma + sözlükler)",
   "diag.downloadLink": "Dosyayı indir",
   "diag.note": "Raporda tasarım gereği dikte edilmiş tek bir karakter, ses veya pano içeriği yoktur. Göndermeden önce okuyun.",
 
-  // Pied de page
+  // Footer
   "footer.text": "Voxli — %100 yerel. Gelişmiş ayarlar <code>%APPDATA%\\Voxli\\config.json</code> içinde.",
 
-  // Dons (可见 mais discrets : pied de page permanent + encart périodique)
+  // Donations (visible but discreet: permanent header-bar link + periodic banner)
   "donate.bannerTitle": "Voxli ücretsiz, yerel ve reklamsızdır. Gelişimine destek olabilirsiniz:",
   "donate.kofi": "Ko-fi'de bir kahve ısmarlayın",
   "donate.paypal": "PayPal.me ile bağış yapın",
   "donate.later": "Belki sonra",
   "donate.forever": "Bir daha sormayın",
 
-  // Notifications dynamiques
+  // Dynamic notifications
   "notice.modelStarted": "Whisper model indirmesi başladı (57 MB)...",
   "notice.modelInterrupted": "İndirme kesildi ({reason}). Yeniden deneyebilirsiniz: kaldığı yerden devam eder.",
   "notice.modelOk": "Model kuruldu — hemen kullanıma alındı.",
   "notice.networkError": "ağ hatası",
 
-  // Fenêtre de secours
+  // Rescue window
   "rescue.title": "Kurtarma metni",
   "rescue.intro": "Bu metin az önce dikte edildi: hedef uygulamaya eklenemedi. Makinenizde, Voxli'nin iç arabelleğinde kalır — başka hiçbir yerde izi kalmadı.",
   "rescue.retry": "Yeniden dene",
@@ -196,10 +196,10 @@ export const dict: Record<string, string> = {
   "rescue.close": "Kapat",
   "rescue.emptyHint": "Bekleyen metin yok. Transkripsiyon az önce başarısız olduysa ses saklanır: “Yeniden dene” düğmesine basın.",
 
-  // Pastille
+  // Pill
   "pill.legend": "Dikte",
 
-  // Noms de touches (légende de survol)
+  // Key names (hover legend)
   "key.Space": "Boşluk",
   "key.Control": "Ctrl",
   "key.Ctrl": "Ctrl",
@@ -211,7 +211,7 @@ export const dict: Record<string, string> = {
   "key.Enter": "Enter",
   "key.Escape": "Esc",
 
-  // Libellés moteur
+  // Engine labels
   "engine.fake": "sahte motor (demo)",
   "engine.whisper.cpp": "whisper.cpp — %100 yerel",
   "engine.parakeet": "Parakeet — %100 yerel",

@@ -1,16 +1,17 @@
-﻿//! Moteur **Parakeet TDT v3** (ONNX, nemo_transducer) via la crate
-//! officielle `sherpa-onnx` (ADR-03 point 2, décision de recherche §7).
+﻿//! **Parakeet TDT v3** engine (ONNX, nemo_transducer) through the
+//! official `sherpa-onnx` crate (ADR-03 point 2, research decision §7).
 //!
-//! - modèles : `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3[-int8]` — 25 langues,
-//!   ponctuation et casse natives, poids CC-BY-4.0 (attribution requise :
-//!   écran « Licences » de l'application et THIRD-PARTY-LICENSES.md) ;
-//! - `warmup` passe 150 ms de silence par le chemin réel de décodage (RF-19) :
-//!   onnxruntime alloue ses tampons au premier décodage, les miens sont
-//!   prêts avant la première dictée ; la transcription reste strictement
-//!   locale ;
-//! - l'amorce de vocabulaire (RF-24) n'existe pas pour ce moteur : les
-//!   néologismes métier passent par le dictionnaire post-traitement.
-//!   Documenté à l'écran de choix du moteur.
+//! - models: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3[-int8]` — 25
+//!   languages, native punctuation and casing, CC-BY-4.0 weights
+//!   (attribution required: the app's "Licenses" screen and
+//!   THIRD-PARTY-LICENSES.md);
+//! - `warmup` pushes 150 ms of silence through the real decoding path
+//!   (RF-19): onnxruntime allocates its buffers on the first decode,
+//!   ours are ready before the first dictation; the transcription
+//!   stays strictly local;
+//! - the vocabulary bootstrap (RF-24) does not exist for this engine:
+//!   domain neologisms go through the post-processing dictionary.
+//!   Documented on the engine-choice screen.
 
 use std::path::Path;
 
@@ -25,12 +26,12 @@ pub struct ParakeetOnnxEngine {
     model_dir: String,
 }
 
-// Les structures sherpa-onnx sont conçues pour être partagées entre threads
-// (panier global onnxruntime). L'invariant doc est celui de la crate.
+// The sherpa-onnx structures are designed to be shared across threads
+// (global onnxruntime pool). The documented invariant is the crate's.
 unsafe impl Send for ParakeetOnnxEngine {}
 unsafe impl Sync for ParakeetOnnxEngine {}
 
-/// Cherche un fichier du modèle (int8 d'abord, sinon fp32) dans le dossier.
+/// Looks up a model file (int8 first, else fp32) in the directory.
 fn find_file(dir: &Path, base: &str, exts: &[&str]) -> Option<std::path::PathBuf> {
     for name in [format!("{base}.int8.onnx"), format!("{base}.onnx")] {
         let p = dir.join(&name);
@@ -48,8 +49,8 @@ fn find_file(dir: &Path, base: &str, exts: &[&str]) -> Option<std::path::PathBuf
 }
 
 impl ParakeetOnnxEngine {
-    /// Charge le dossier du modèle (contenant encoder/decoder/joiner/tokens).
-    /// Vérifie la présence des fichiers AVANT tout chargement lourd (RF-20).
+    /// Loads the model directory (containing encoder/decoder/joiner/tokens).
+    /// Checks the files' presence BEFORE any heavy loading (RF-20).
     pub fn load(model_dir: &Path, num_threads: i32) -> Result<Self, AsrError> {
         let missing = |n: &str| {
             AsrError::ModelMissing(format!(
@@ -92,10 +93,10 @@ impl ParakeetOnnxEngine {
 
 impl Transcriptor for ParakeetOnnxEngine {
     fn warmup(&self) -> Result<(), AsrError> {
-        // Warm-up complet (RF-19) : onnxruntime alloue ses tampons internes au
-        // premier décodage ; on passe 150 ms de silence par le chemin réel
-        // (création du flux + décodage). Un résultat vide est normal sur du
-        // silence — ni erreur ni insertion.
+        // Full warm-up (RF-19): onnxruntime allocates its internal buffers
+        // on the first decode; we push 150 ms of silence through the real
+        // path (stream creation + decoding). An empty result is normal
+        // on silence — neither an error nor an insertion.
         let silence = AudioBuffer::new(
             vec![0.0; SAMPLE_RATE_HZ as usize * 15 / 100],
             SAMPLE_RATE_HZ,
@@ -121,8 +122,8 @@ impl Transcriptor for ParakeetOnnxEngine {
         let result = stream.get_result().ok_or(AsrError::Inference)?;
         Ok(Transcript {
             text: result.text,
-            // Pas de score native exploitable côté parakeet : confiance
-            // neutre (les règles RF-27 veillent au reste).
+            // No natively exploitable score on the parakeet side: neutral
+            // confidence (the RF-27 rules watch over the rest).
             confidence: 0.9,
             duration: audio.duration(),
             engine: EngineId::ParakeetOnnx,

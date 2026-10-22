@@ -1,6 +1,6 @@
-/** i18n Voxli v2 — Arabe (traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — ARABIC (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
-  // Squelette / mode simple-avancé
+  // Skeleton / simple-advanced mode
   "app.tagline": "إملاء صوتي، محلي بنسبة 100%. كلماتك لا تغادر هذا الجهاز أبدًا — إلا إذا طلبت ذلك صراحةً.",
   "mode.advanced": "الوضع المتقدم — كل الإعدادات",
   "mode.theme": "النمط",
@@ -8,13 +8,13 @@ export const dict: Record<string, string> = {
   "theme.light": "فاتح",
   "theme.dark": "داكن",
 
-  // Onboarding 1-clic
+  // One-click onboarding
   "onboarding.title": "🚀 مرحبًا بك في Voxli!",
   "onboarding.intro": "أمستَ للاستمتاع بإملاء صوتي فوري وسلس ومحلي بنسبة 100%؟",
   "onboarding.desc": "للبدء فورًا، ثبّت نموذج Whisper المصغّر بنقرة واحدة (57 MB، يُنزَّل مرة واحدة، ويعمل كل شيء دون اتصال):",
   "onboarding.download": "⚡ نزّل وفعّل Whisper (نقرة واحدة)",
 
-  // État
+  // Status
   "state.section": "الحالة",
   "state.engineWord": "المحرّك:",
   "audio.meterTitle": "مستوى الميكروفون — لا يُرسَل أبدًا ولا يُسجَّل أبدًا",
@@ -26,7 +26,7 @@ export const dict: Record<string, string> = {
   "state.inserting": "إدراج…",
   "state.recovery": "خطأ — يمكن إعادة المحاولة",
 
-  // Général
+  // General
   "general.section": "عام",
   "general.languageLabel": "لغة الإملاء (تلقائي = يكتشفها التطبيق)",
   "general.languageAuto": "كشف تلقائي (مستحسن)",
@@ -38,7 +38,7 @@ export const dict: Record<string, string> = {
   "general.save": "احفظ الإعدادات",
   "general.saved": "حُفظ — طُبِّق فورًا",
 
-  // Raccourcis
+  // Hotkeys
   "hk.section": "الاختصارات والتشغيل",
   "hk.pushLabel": "الإملاء",
   "hk.modeLabel": "نمط التشغيل",
@@ -49,7 +49,7 @@ export const dict: Record<string, string> = {
   "hk.showLabel": "أظهر النص الأخير",
   "hk.note": "يُطبَّق على التسجيل فورًا (RF-01) — إذا كان تطبيق آخر يستخدم الاختصار أصلًا، ستظهر رسالة بذلك.",
 
-  // Vocabulaire
+  // Vocabulary
   "vocab.section": "القاموس والمفردات المخصصة",
   "vocab.intro": "علّم Voxli اختصاراتك والأسماء الخاصة وشركاتك أو مصطلحات عملك. تُحقن هذه الكلمات في Whisper لدقة جراحية (Magic Formatting).",
   "vocab.profileLabel": "ملف المفردات:",
@@ -77,7 +77,7 @@ export const dict: Record<string, string> = {
   "audio.vadBalanced": "متوازن (افتراضي)",
   "audio.vadHigh": "صارم — يتجاهل الضجيج",
 
-  // Modèles
+  // Models
   "models.section": "الصوت (محرّك التعرف)",
   "models.intro": "التنزيل <b>إجراء صريح منك</b>، وهنا هو <b>الاتصال الشبكي الوحيد</b> الذي يفتحه Voxli من هذه الشاشة. يُدقَّق كل ملف بعد استلامه، ويبقى الإثبات في سجل محلي.",
   "models.colModel": "النموذج",
@@ -99,12 +99,12 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— نحو {n} MB",
   "models.verifiedBadge": "يطابق المرجع الموثوق المنشور (docs/11 §3)",
 
-  // Moteurs (sélection, écran Voix)
+  // Engines (selection, Voice screen)
   "engines.auto": "تلقائي (مستحسن)",
   "engines.hintSdk": "غير متاح — SDK غير مضمن في هذا الإصدار",
   "engines.effective": "المحرّك النشط: {engine}",
 
-  // Profils
+  // Profiles
   "profiles.section": "الملفات والقواميس",
   "profiles.lockNotice": "ملفات متعددة: ميزة Pro. بدون ترخيص يُطبَّق الملف الافتراضي فقط — تبقى ارتباطاتك محفوظة هنا.",
   "profiles.codeAppsLabel": "ملف «الكود» — التطبيقات المرتبطة (مفصولة بفواصل)",
@@ -117,7 +117,7 @@ export const dict: Record<string, string> = {
   "profiles.note": "القاموس يستعيد نطقك («ميتالورجيه» المنطوق يعود إلى <i>ميتالورجي</i>) حتى في وضع «النص الخام»: هذا تصحيحك أنت، وليس إعادة كتابة من المنتج.",
   "dict.imported": "استُورد القاموس: عدد الإدخالات {n}.",
 
-  // Historique
+  // History
   "history.section": "السجل",
   "history.keepLabel": "احتفظ بالتفريغات",
   "history.no": "لا — لا يُحفظ شيء (السلوك الافتراضي)",
@@ -134,7 +134,7 @@ export const dict: Record<string, string> = {
   "history.delete": "حذف",
   "history.empty": "لا مدخلات",
 
-  // Licence
+  // License
   "license.section": "الترخيص",
   "license.active": "الترخيص نشط — الحائز: {name}.",
   "license.grace": "انتهى الترخيص — فترة سماح دون اتصال: بقيت {days} يومًا من مزايا Pro، ثم العودة إلى الإصدار المجاني.",
@@ -145,7 +145,7 @@ export const dict: Record<string, string> = {
   "license.importAction": "تحقق واستورد",
   "license.imported": "استُورد الترخيص ودُقِّق.",
 
-  // Vie privée
+  // Privacy
   "privacy.simpleNote": "محلي تمامًا: لا شيء يغادر هذا الجهاز دون موافقتك الصريحة. التفاصيل (الموافقات، قراءة السياق) في الوضع المتقدم.",
   "privacy.section": "الخصوصية",
   "privacy.strictLabel": "الوضع المحلي الصارم",
@@ -164,30 +164,30 @@ export const dict: Record<string, string> = {
   "privacy.contextEmpty": "لا قراءة للسياق",
   "privacy.note": "لا تعمل أي خدمة بعيد ما بقي المفتاحان على «أبدًا» — حتى لو كان محرّك بعيد مضمنًا في البرنامج.",
 
-  // Diagnostic
+  // Diagnostics
   "diag.section": "التشخيص والبيانات",
   "diag.exportReport": "صدّر تقرير التشخيص",
   "diag.exportData": "صدّر بياناتي (الإعداد + القواميس)",
   "diag.downloadLink": "نزّل الملف",
   "diag.note": "بحسب التصميم لا يتضمن التقرير أي حرف مُملى، ولا صوتًا، ولا محتوى الحافظة. اقرأه قبل إرسال أي شيء.",
 
-  // Pied de page
+  // Footer
   "footer.text": "Voxli — محلي بنسبة 100%. الإعدادات المتقدمة في <code>%APPDATA%\\Voxli\\config.json</code>.",
 
-  // Dons (可见 mais discrets : pied de page permanent + encart périodique)
+  // Donations (visible but discreet: permanent header-bar link + periodic banner)
   "donate.bannerTitle": "Voxli مجاني ومحلي وبلا إعلانات. يمكنك دعم تطويره:",
   "donate.kofi": "اشترِ قهوة عبر Ko-fi",
   "donate.paypal": "تبرّع عبر PayPal.me",
   "donate.later": "ربما لاحقًا",
   "donate.forever": "لا تسأل مرة أخرى",
 
-  // Notifications dynamiques
+  // Dynamic notifications
   "notice.modelStarted": "بدأ تنزيل نموذج Whisper (57 MB)...",
   "notice.modelInterrupted": "قُطع التنزيل ({reason}). يمكنك المحاولة مجددًا: سيُستأنف من حيث توقف.",
   "notice.modelOk": "ثُبِّت النموذج — يُستخدم فورًا.",
   "notice.networkError": "خطأ شبكة",
 
-  // Fenêtre de secours
+  // Rescue window
   "rescue.title": "نص الإنقاذ",
   "rescue.intro": "أُملي هذا النص للتو: تعذّر إدراجه في التطبيق الهدف. يبقى على جهازك، في المخزن الداخلي لـ Voxli — لم يترك أي أثر في مكان آخر.",
   "rescue.retry": "أعد المحاولة",
@@ -196,10 +196,10 @@ export const dict: Record<string, string> = {
   "rescue.close": "أغلق",
   "rescue.emptyHint": "لا نص بانتظار. إذا فشل تفريغ للتو، فالصوت محفوظ: اضغط «أعد المحاولة».",
 
-  // Pastille
+  // Pill
   "pill.legend": "الإملاء",
 
-  // Noms de touches (légende de survol)
+  // Key names (hover legend)
   "key.Space": "مسافة",
   "key.Control": "Ctrl",
   "key.Ctrl": "Ctrl",
@@ -211,7 +211,7 @@ export const dict: Record<string, string> = {
   "key.Enter": "Enter",
   "key.Escape": "Esc",
 
-  // Libellés moteur
+  // Engine labels
   "engine.fake": "محرّك وهمي (تجريبي)",
   "engine.whisper.cpp": "whisper.cpp — محلي بنسبة 100%",
   "engine.parakeet": "Parakeet — محلي بنسبة 100%",

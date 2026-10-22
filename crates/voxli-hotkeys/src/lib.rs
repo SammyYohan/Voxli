@@ -1,16 +1,16 @@
-﻿//! `voxli-hotkeys` — politique des raccourcis globaux (ADR-05).
+﻿//! `voxli-hotkeys` — global hotkey policy (ADR-05).
 //!
-//! La partie **pure** (normalisation, validation, conflits) vit ici et est
-//! testée hors Windows. L'enregistrement réel (`RegisterHotKey` via le plugin
-//! `tauri-plugin-global-shortcut`) vit dans `apps/desktop/src-tauri` : un seul
-//! mécanisme d'enregistrement, jamais deux.
+//! The **pure** part (normalization, validation, conflicts) lives here and
+//! is tested outside Windows. The actual registration (`RegisterHotKey` via
+//! the `tauri-plugin-global-shortcut` plugin) lives in
+//! `apps/desktop/src-tauri`: a single registration mechanism, never two.
 //!
-//! Faits Windows (docs/03 ADR-05) :
-//! - `RegisterHotKey` échoue si la combinaison appartient à un autre
-//!   processus — base de RF-03 ;
-//! - certaines combinaisons système (`Win+L`, `Ctrl+Alt+Suppr`…) ne sont pas
-//!   enregistrables — l'interface doit guider vers des choix viables ;
-//! - la détection de relâchement est scrutée toutes les ~50 ms.
+//! Windows facts (docs/03 ADR-05):
+//! - `RegisterHotKey` fails if the combination belongs to another process —
+//!   the basis of RF-03;
+//! - some system combinations (`Win+L`, `Ctrl+Alt+Suppr`…) cannot be
+//!   registered — the UI must steer users toward viable choices;
+//! - key release detection is polled every ~50 ms.
 
 use std::fmt;
 
@@ -29,7 +29,7 @@ pub enum HotkeyError {
     Register(String),
 }
 
-/// Touche non modificateur reconnue.
+/// Recognized non-modifier key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Key {
     Letter(char),
@@ -77,8 +77,8 @@ impl Key {
     }
 }
 
-/// Combinaison modificateurs + touche, normalisée (ordre canonique
-/// `Ctrl+Shift+Alt+Win+Touche`).
+/// Modifiers + key combination, normalized (canonical order
+/// `Ctrl+Shift+Alt+Win+Key`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Combo {
     #[serde(default)]
@@ -93,8 +93,8 @@ pub struct Combo {
 }
 
 impl Combo {
-    /// Analyse tolérante : `Ctrl + Alt + Espace`, `ctrl+alt+space`… (RF-01 :
-    /// l'utilisateur écrit la combinaison comme il veut).
+    /// Tolerant parsing: `Ctrl + Alt + Espace`, `ctrl+alt+space`… (RF-01:
+    /// the user writes the combination however they like).
     pub fn parse(input: &str) -> Result<Combo, HotkeyError> {
         let mut combo = Combo::default();
         for part in input.split('+').map(str::trim).filter(|p| !p.is_empty()) {
@@ -116,7 +116,7 @@ impl Combo {
         Ok(combo)
     }
 
-    /// Sérialisation canonique affichée à l'utilisateur.
+    /// Canonical serialization shown to the user.
     pub fn canonical(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
         if self.ctrl {
@@ -135,16 +135,15 @@ impl Combo {
         parts.join("+")
     }
 
-    /// Combinaisons impossibles à enregistrer (réservées par Windows).
-    /// `Ctrl+Alt+Suppr` n'est jamais délivrée aux applications ; `Win+L`
-    /// verrouille la session et ne peut pas être redéfinie sans stratégie
-    /// système.
+    /// Combinations that cannot be registered (reserved by Windows).
+    /// `Ctrl+Alt+Suppr` is never delivered to applications; `Win+L` locks
+    /// the session and cannot be redefined without a system policy.
     pub fn is_reserved(&self) -> bool {
         if self.win {
             match self.key {
                 Some(Key::Letter('l')) => return true,
-                // Win+1..9 : lanceur d'applications du système (la barre des
-                // tâches capte ces combinaisons, jamais nous).
+                // Win+1..9: the system's app launcher (the taskbar grabs
+                // these combinations, never us).
                 Some(Key::Digit(d)) if (1..=9).contains(&d) => return true,
                 Some(Key::Letter('g'))
                 | Some(Key::Letter('h'))
@@ -166,7 +165,7 @@ impl Combo {
         }
         if self.ctrl && self.alt {
             if let Some(Key::Letter('d' | 'e' | 'f')) = self.key {
-                return true; // Ctrl+Alt+Del famille / ergonomie
+                return true; // Ctrl+Alt+Del family / ergonomics
             }
         }
         false
@@ -179,14 +178,14 @@ impl fmt::Display for Combo {
     }
 }
 
-/// Résolution de conflit à l'enregistrement (RF-03) — politique pure :
-/// 1. combinaison réservée → refus immédiat avec alternatives proposées ;
-/// 2. sinon, la tentative réelle est faite par l'assemblage (plugin
-///    `global-shortcut`, unique mécanisme autorisé : `main.rs`) — tout
-///    échec y est consigné au journal PUIS signalé à l'interface, jamais
-///    de panique (ADR-05). Les variantes `Conflict`/`Register` restent
-///    exposées au polymorphisme de cette API pure mais ne sont pas
-///    construites à ce jour (l'assemblage gère l'échec autrement).
+/// Conflict resolution at registration time (RF-03) — pure policy:
+/// 1. reserved combination → immediate refusal with suggested alternatives;
+/// 2. otherwise, the actual attempt is made by the wiring (the
+///    `global-shortcut` plugin, the only allowed mechanism: `main.rs`) —
+///    every failure is logged THEN reported to the UI, never a panic
+///    (ADR-05). The `Conflict`/`Register` variants remain exposed to this
+///    pure API's polymorphism but are not constructed to date (the wiring
+///    handles failure differently).
 pub fn validate_before_register(candidate: &Combo) -> Result<Vec<Combo>, HotkeyError> {
     if candidate.key.is_none() {
         return Err(HotkeyError::Unparsable("aucune touche".into()));
@@ -194,7 +193,7 @@ pub fn validate_before_register(candidate: &Combo) -> Result<Vec<Combo>, HotkeyE
     if candidate.is_reserved() {
         return Err(HotkeyError::Reserved(candidate.canonical()));
     }
-    // Alternatives proposées à l'utilisateur quand l'enregistrement échoue.
+    // Alternatives suggested to the user when the registration fails.
     let alternatives = vec![
         Combo {
             ctrl: true,

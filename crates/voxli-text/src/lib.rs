@@ -1,12 +1,12 @@
-﻿//! `voxli-text` — insertion du texte dans Windows.
+﻿//! `voxli-text` — text insertion on Windows.
 //!
-//! Interface publique : `Inserter`, `InsertPlan`, `InsertReport`,
-//! `FocusSnapshot` (lecture seule des capacités) — docs/05 §2.4.
+//! Public interface: `Inserter`, `InsertPlan`, `InsertReport`,
+//! `FocusSnapshot` (read-only view of capabilities) — docs/05 §2.4.
 //!
-//! - `plan_insertion` est une **fonction pure** de `(capacités du champ,
-//!   profil) → ordre des niveaux` : entièrement testable hors Windows ;
-//! - l'exécution réelle (`WindowsInserter`, `WindowsFocusReader`) est couverte
-//!   par la recette manuelle instrumentée (matrice de 12 applications,
+//! - `plan_insertion` is a **pure function** from `(field capabilities,
+//!   profile) → level order`: fully testable outside Windows;
+//! - the real execution (`WindowsInserter`, `WindowsFocusReader`) is covered
+//!   by the instrumented manual acceptance procedure (matrix of 12 apps,
 //!   `tests/e2e/matrice-12-apps.md`).
 
 #[cfg(target_os = "windows")]

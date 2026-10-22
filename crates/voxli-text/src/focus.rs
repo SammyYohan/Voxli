@@ -1,10 +1,10 @@
-﻿//! Lecteur de focus Windows : alimente le `FocusSnapshot` mémorisé au
-//! démarrage de la dictée (RF-32) avec les capacités UIA (RF-28, RF-29).
+﻿//! Windows focus reader: feeds the `FocusSnapshot` captured when dictation
+//! starts (RF-32) with the UIA capabilities (RF-28, RF-29).
 
 use voxli_core::{FocusReader, FocusSnapshot};
 use voxli_win::{foreground_info, uia::Uia};
 
-/// Exclusion d'applications portée par la configuration
+/// Application exclusion driven by the configuration
 /// (`insertion.excludedApps`, RF-29).
 pub struct WindowsFocusReader {
     pub excluded_apps: Vec<String>,
@@ -13,8 +13,8 @@ pub struct WindowsFocusReader {
 
 impl WindowsFocusReader {
     pub fn new(excluded_apps: Vec<String>) -> Self {
-        // L'initialisation UIA peut échouer (COM indisponible) : dégradation
-        // propre — le niveau 1 n'est simplement pas proposé (RF-28).
+        // UIA initialization can fail (COM unavailable): clean
+        // degradation — level 1 is simply not offered (RF-28).
         let uia = Uia::new().ok();
         Self { excluded_apps, uia }
     }
@@ -40,7 +40,7 @@ impl FocusReader for WindowsFocusReader {
             .iter()
             .any(|a| a.eq_ignore_ascii_case(&info.app_id));
         if sensitive {
-            caps.is_password = true; // même traitement : refus neutre (RF-29)
+            caps.is_password = true; // same treatment: neutral refusal (RF-29)
         }
         Some(FocusSnapshot {
             app_id: info.app_id,

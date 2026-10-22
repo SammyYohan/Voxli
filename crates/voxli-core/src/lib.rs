@@ -1,16 +1,16 @@
-//! `voxli-core` — le noyau de Voxli.
+//! `voxli-core` — the Voxli kernel.
 //!
-//! Rôle (docs/05 §2.1) : la logique métier pure, testable sans Windows, sans
-//! audio, sans GPU. Ce crate ne dépend d'aucun autre crate interne : les
-//! implémentations (whisper, ONNX, UIA, DPAPI) sont injectées via les traits
-//! définis ici.
+//! Role (docs/05 §2.1): pure business logic, testable without Windows,
+//! audio, or a GPU. This crate depends on no other internal crate: the
+//! implementations (whisper, ONNX, UIA, DPAPI) are injected through the
+//! traits defined here.
 //!
-//! Invariants portés par l'orchestrateur (docs/04 §3) :
-//! 1. aucune transition ne perd le texte transcrit (RF-20, RF-22) ;
-//! 2. une seule session active ; une seconde demande est mise en file (1) ou
-//!    refusée explicitement (RF-05) ;
-//! 3. l'audio est libéré après insertion ou après expiration du délai de
-//!    récupération.
+//! Invariants carried by the orchestrator (docs/04 §3):
+//! 1. no transition loses the transcribed text (RF-20, RF-22);
+//! 2. one active session at a time; a second request is queued (depth 1) or
+//!    explicitly refused (RF-05);
+//! 3. audio is released on insertion, explicit refusal, retry or
+//!    cancellation — the core keeps no timer of its own.
 
 pub mod errors;
 pub mod orchestrator;

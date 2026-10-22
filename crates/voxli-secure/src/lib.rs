@@ -1,11 +1,10 @@
-//! `voxli-secure` — stockage des secrets (ADR-07).
+//! `voxli-secure` — secret storage (ADR-07).
 //!
-//! Les clés d'API des services distants et le jeton d'activation ne vivent
-//! jamais dans `config.json`, jamais dans le stockage du webview. Deux
-//! backends :
-//! - `MemorySecretStore` : double de test et mode dégradé ;
-//! - `DpapiSecretStore` (feature `dpapi`, Windows) : blobs chiffrés liés au
-//!   compte Windows (`CryptProtectData`), fichier par clé.
+//! The API keys of remote services and the activation token never live in
+//! `config.json`, never in webview storage. Two backends:
+//! - `MemorySecretStore`: a test double and the degraded mode;
+//! - `DpapiSecretStore` (`dpapi` feature, Windows): encrypted blobs bound to
+//!   the Windows account (`CryptProtectData`), one file per key.
 
 use std::collections::HashMap;
 
@@ -21,7 +20,7 @@ pub enum SecureError {
     Corrupt(String),
 }
 
-/// Stockage clé → valeur binaire (get/set/delete) — interface minimale
+/// Key → binary-blob storage (get/set/delete) — minimal interface
 /// (docs/05 §2.6).
 pub trait SecretStore: Send {
     fn get(&self, key: &str) -> Option<Vec<u8>>;
@@ -29,7 +28,7 @@ pub trait SecretStore: Send {
     fn delete(&mut self, key: &str) -> bool;
 }
 
-/// Coffre mémoire (test et mode dégradé).
+/// In-memory vault (tests and degraded mode).
 #[derive(Default)]
 pub struct MemorySecretStore {
     map: HashMap<String, Vec<u8>>,
@@ -48,8 +47,8 @@ impl SecretStore for MemorySecretStore {
     }
 }
 
-/// Protection blob liée à l'utilisateur Windows (DPAPI). Utilisée pour
-/// l'historique chiffré sur disque (RF-33) et le cache de récupération.
+/// Blob protection bound to the Windows user (DPAPI). Used for the
+/// on-disk encrypted history (RF-33) and the recovery cache.
 #[cfg(all(target_os = "windows", feature = "dpapi"))]
 pub mod dpapi {
     use super::{SecretStore, SecureError};
@@ -59,7 +58,7 @@ pub mod dpapi {
         CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
 
-    /// Chiffre un blob lié au compte Windows courant.
+    /// Encrypts a blob bound to the current Windows account.
     pub fn protect(plain: &[u8]) -> Result<Vec<u8>, SecureError> {
         unsafe {
             let in_blob = CRYPT_INTEGER_BLOB {
@@ -85,7 +84,7 @@ pub mod dpapi {
         }
     }
 
-    /// Déchiffre un blob DPAPI (échoue sous un autre compte Windows).
+    /// Decrypts a DPAPI blob (fails under a different Windows account).
     pub fn unprotect(cipher: &[u8]) -> Result<Vec<u8>, SecureError> {
         unsafe {
             let in_blob = CRYPT_INTEGER_BLOB {
@@ -110,7 +109,7 @@ pub mod dpapi {
         }
     }
 
-    /// Coffre fichier : un blob DPAPI par clé, dans un dossier privé.
+    /// File vault: one DPAPI blob per key, inside a private directory.
     pub struct DpapiSecretStore {
         dir: std::path::PathBuf,
     }
@@ -123,7 +122,7 @@ pub mod dpapi {
         }
 
         fn path_for(&self, key: &str) -> std::path::PathBuf {
-            // La clé est un identifiant interne (jamais du contenu).
+            // The key is an internal identifier (never content).
             self.dir.join(format!("{key}.dpapi"))
         }
     }

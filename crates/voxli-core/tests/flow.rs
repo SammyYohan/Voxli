@@ -1,6 +1,6 @@
-//! Tests de la machine à états avec doubles de test (docs/06 §1 : intégration
-//! noyau — succès, silence, erreur moteur, échec d'insertion, focus perdu,
-//! champ sensible, durée maximale). Aucun matériel ni Windows requis.
+//! State machine tests with test doubles (docs/06 §1: kernel integration —
+//! success, silence, engine error, insertion failure, lost focus, sensitive
+//! field, maximum duration). No hardware and no Windows required.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -15,7 +15,7 @@ use voxli_core::*;
 #[derive(Default)]
 struct FakeCapture {
     started: bool,
-    /// 0 = silence, 1 = parole synthétique
+    /// 0 = silence, 1 = synthetic speech
     content: u8,
 }
 
@@ -48,8 +48,8 @@ impl VoiceActivity for FixedVad {
 }
 
 struct FakeEngine {
-    /// Partagé pour basculer en cours de test (panne puis rétablissement).
-    /// `Arc` (et non `Rc`) : le trait `Transcriptor` exige `Send + Sync`.
+    /// Shared to flip mid-test (failure then recovery). `Arc` (not `Rc`):
+    /// the `Transcriptor` trait requires `Send + Sync`.
     fail: Arc<AtomicBool>,
     calls: Arc<AtomicU32>,
     text: &'static str,
@@ -77,7 +77,7 @@ impl Transcriptor for FakeEngine {
     }
 }
 
-/// Post-traitement identité (niveau 0, défaut RF-26).
+/// Identity post-processing (level 0, RF-26 default).
 struct IdentityPost;
 
 impl PostProcessor for IdentityPost {
@@ -95,7 +95,7 @@ impl FocusReader for FakeFocus {
 }
 
 struct FakeInserter {
-    /// Exclusion côté test (simule la liste de voxli-config).
+    /// Test-side exclusion (mimics the voxli-config list).
     excluded: Vec<String>,
     fail_all: Rc<Cell<bool>>,
     inserts: Rc<RefCell<Vec<String>>>,
@@ -189,8 +189,8 @@ fn bench(vad: SpeechVerdict) -> Bench {
     }
 }
 
-/// Exécute un scénario et restitue les événements émis, le tampon interne,
-/// l'état final. Les compteurs restent accessibles via les `Rc` du banc.
+/// Runs a scenario and returns the emitted events, the internal buffer, and
+/// the final state. The counters stay reachable through the bench `Rc`s.
 fn run(
     b: Bench,
     script: impl FnOnce(&mut Orchestrator),
@@ -249,8 +249,8 @@ fn find(events: &[CoreEvent], f: impl Fn(&CoreEvent) -> bool) -> Option<&CoreEve
 
 // --------------------------------------------------------------- tests ----
 
-/// Flux nominal : appui → enregistrement → relâchement → transcription →
-/// insertion (niveau 1 : ValuePattern).
+/// Nominal flow: press → recording → release → transcription → insertion
+/// (level 1: ValuePattern).
 #[test]
 fn t_nominal_insertion() {
     let b = bench(SpeechVerdict::Speech);
@@ -275,7 +275,7 @@ fn t_nominal_insertion() {
     );
 }
 
-/// Silence total : aucune insertion (RF-18), audio libéré (invariant 3).
+/// Total silence: no insertion (RF-18), audio released (invariant 3).
 #[test]
 fn t_silence_produces_no_insertion() {
     let b = bench(SpeechVerdict::Silence);
@@ -289,7 +289,7 @@ fn t_silence_produces_no_insertion() {
     assert!(last.is_none());
 }
 
-/// Énoncé trop court (RF-18 : seuil de durée minimale).
+/// Utterance too short (RF-18: minimum duration threshold).
 #[test]
 fn t_too_short_rejected() {
     let b = bench(SpeechVerdict::TooShort);
@@ -301,8 +301,8 @@ fn t_too_short_rejected() {
     assert!(last.is_none());
 }
 
-/// Erreur moteur : état récupérable, audio conservé, « réessayer » aboutit
-/// (RF-20, RF-21). Le texte n'est jamais perdu.
+/// Engine error: recoverable state, audio kept, and "retry" succeeds
+/// (RF-20, RF-21). The text is never lost.
 #[test]
 fn t_engine_error_then_retry() {
     let b = bench(SpeechVerdict::Speech);
@@ -345,8 +345,8 @@ fn t_engine_error_then_retry() {
     assert!(last.is_some());
 }
 
-/// Échec total d'insertion : fenêtre de secours avec texte intact (RF-28 n.4,
-/// RF-31) ; le texte reste au tampon (RF-22) et « réessayer » réinsère.
+/// Total insertion failure: rescue window with the text intact (RF-28 #4,
+/// RF-31); the text stays in the buffer (RF-22) and "retry" re-inserts.
 #[test]
 fn t_insert_failure_rescue_then_retry() {
     let b = bench(SpeechVerdict::Speech);
@@ -357,7 +357,7 @@ fn t_insert_failure_rescue_then_retry() {
         o.handle(InputEvent::HotkeyPressed);
         o.handle(InputEvent::HotkeyReleased);
         assert_eq!(o.state().name(), "recovery");
-        // Le texte est dans le tampon AVANT la tentative d'insertion (RF-22).
+        // The text is in the buffer BEFORE the insertion attempt (RF-22).
         assert!(o.last_transcript().is_some());
         fail_all.set(false);
         o.handle(InputEvent::Retry);
@@ -373,8 +373,8 @@ fn t_insert_failure_rescue_then_retry() {
     assert!(last.is_some());
 }
 
-/// Champ de mot de passe : insertion refusée, message neutre, texte conservé
-/// au tampon (RF-29, RF-22).
+/// Password field: insertion refused, neutral message, text kept in the
+/// buffer (RF-29, RF-22).
 #[test]
 fn t_sensitive_field_refused() {
     let b = bench(SpeechVerdict::Speech);
@@ -408,7 +408,7 @@ fn t_sensitive_field_refused() {
     assert!(last.is_some(), "le texte reste récupérable (RF-22)");
 }
 
-/// Application exclue : insertion refusée, même cheminement (RF-29).
+/// Excluded application: insertion refused, same path (RF-29).
 #[test]
 fn t_excluded_app_refused() {
     let b = bench(SpeechVerdict::Speech);
@@ -442,8 +442,8 @@ fn t_excluded_app_refused() {
     assert_eq!(state, DictationState::Idle);
 }
 
-/// Fenêtre cible perdue : cible invalide au moment du démarrage → refus
-/// immédiat, aucune capture (RF-32).
+/// Target window lost: invalid target at start → immediate refusal, no
+/// capture (RF-32).
 #[test]
 fn t_no_focus_at_press() {
     let b = bench(SpeechVerdict::Speech);
@@ -468,7 +468,7 @@ fn t_no_focus_at_press() {
     assert_eq!(state, DictationState::Idle);
 }
 
-/// Fenêtre mémorisée invalide au moment d'insérer : refus explicite (RF-32).
+/// Memorized window invalid at insert time: explicit refusal (RF-32).
 #[test]
 fn t_target_gone_at_insert() {
     let b = bench(SpeechVerdict::Speech);
@@ -496,8 +496,8 @@ fn t_target_gone_at_insert() {
     assert!(last.is_some(), "texte récupérable malgré le refus (RF-22)");
 }
 
-/// Durée maximale de sécurité : un Tick au-delà du plafond finalise et
-/// transcrit normalement (RF-11).
+/// Safety maximum duration: a Tick past the ceiling finalizes and
+/// transcribes normally (RF-11).
 #[test]
 fn t_max_duration_auto_finalize() {
     let b = bench(SpeechVerdict::Speech);
@@ -538,9 +538,9 @@ fn t_max_duration_auto_finalize() {
     assert_eq!(orch.state().name(), "idle");
 }
 
-/// Appui pendant une session en récupération : une nouvelle dictée démarre
-/// (l'audio de récupération est conservé) ; re-appui en enregistrement :
-/// refus explicite (RF-05, P0).
+/// Press during a recovery session: a new dictation starts (the recovery
+/// audio is kept); another press while recording: explicit refusal (RF-05,
+/// P0).
 #[test]
 fn t_press_while_busy_rejected() {
     let b = bench(SpeechVerdict::Speech);
@@ -553,13 +553,13 @@ fn t_press_while_busy_rejected() {
         fail.store(false, Ordering::SeqCst);
         o.handle(InputEvent::HotkeyPressed);
         assert_eq!(o.state().name(), "recording");
-        o.handle(InputEvent::HotkeyPressed); // déjà en enregistrement
+        o.handle(InputEvent::HotkeyPressed); // already recording
         assert_eq!(o.state().name(), "recording");
     });
     assert!(find(&events, |e| matches!(e, CoreEvent::RejectedBusy)).is_some());
 }
 
-/// Annulation pendant l'enregistrement : audio jeté, aucune insertion.
+/// Cancellation while recording: audio discarded, no insertion.
 #[test]
 fn t_cancel_discards_audio() {
     let b = bench(SpeechVerdict::Speech);
@@ -574,8 +574,7 @@ fn t_cancel_discards_audio() {
     assert!(!states_of(&events).contains(&"transcribing"));
 }
 
-/// « Coller à nouveau » depuis l'état inactif : réinsère le dernier texte
-/// (RF-04, RF-22).
+/// "Paste again" from the idle state: re-inserts the last text (RF-04, RF-22).
 #[test]
 fn t_paste_again_reinserts_last() {
     let b = bench(SpeechVerdict::Speech);
@@ -595,7 +594,7 @@ fn t_paste_again_reinserts_last() {
     assert!(last.is_some());
 }
 
-/// Annulation d'une récupération : l'audio est libéré (invariant 3).
+/// Cancelling a recovery: the audio is released (invariant 3).
 #[test]
 fn t_cancel_recovery_releases_audio() {
     let b = bench(SpeechVerdict::Speech);
@@ -611,9 +610,9 @@ fn t_cancel_recovery_releases_audio() {
     assert_eq!(state, DictationState::Idle);
 }
 
-/// Chaînes sentinelles (motif T-34) : les événements du noyau ne contiennent
-/// jamais le texte dicté, sauf RescueRequested (fonction de la fenêtre de
-/// secours, exception documentée).
+/// Sentinel strings (T-34 pattern): kernel events never contain the dictated
+/// text, except RescueRequested (the rescue window's function, a documented
+/// exception).
 #[test]
 fn t_events_never_carry_content() {
     const SENTINELLE: &str = "SENTINELLE-7f3b-secret";
@@ -631,7 +630,7 @@ fn t_events_never_carry_content() {
     });
     for ev in &events {
         if matches!(ev, CoreEvent::RescueRequested { .. }) {
-            continue; // exception documentée (fenêtre de secours)
+            continue; // documented exception (rescue window)
         }
         let rendered = format!("{ev:?}");
         assert!(
@@ -641,10 +640,10 @@ fn t_events_never_carry_content() {
     }
 }
 
-// ---------------------------------------------- modes de déclenchement ----
+// ---------------------------------------------- trigger modes ----
 
-/// RF-02b (bascule) : appui → démarre ; **le relâchement n'arrête rien** ;
-/// l'appui suivant arrête et transcrit.
+/// RF-02b (toggle): press starts; **the release stops nothing**; the next
+/// press stops and transcribes.
 #[test]
 fn t_toggle_mode_press_starts_second_press_stops() {
     let b = bench(SpeechVerdict::Speech);
@@ -669,9 +668,9 @@ fn t_toggle_mode_press_starts_second_press_stops() {
     assert!(last.is_some());
 }
 
-/// RF-02c (double appui pour verrouiller) : appui bref démarre une prise qui
-/// survive au relâchement ; double appui → verrouillage (RecordingLocked) ;
-/// appui suivant (hors fenêtre) arrête et transcrit.
+/// RF-02c (double push to lock): a brief press starts a capture that
+/// survives the release; double push → lock (RecordingLocked); the next
+/// press (outside the window) stops and transcribes.
 #[test]
 fn t_double_push_lock_full_cycle() {
     let b = bench(SpeechVerdict::Speech);
@@ -703,13 +702,13 @@ fn t_double_push_lock_full_cycle() {
         &clock,
     );
 
-    // Appui bref : démarre et survit au relâchement (tap).
+    // Brief press: starts and survives the release (tap).
     orch.handle(InputEvent::HotkeyPressed);
-    clock_base.set(100); // relâchement 100 ms après l'appui
+    clock_base.set(100); // release 100 ms after the press
     orch.handle(InputEvent::HotkeyReleased);
     assert_eq!(orch.state().name(), "recording", "le tap n'arrête pas (c)");
 
-    // Double appui rapproché (250 ms) : verrouillage.
+    // Tight double push (250 ms): lock.
     orch.handle(InputEvent::HotkeyPressed);
     let evs = events.borrow();
     assert!(evs.iter().any(|e| matches!(e, CoreEvent::RecordingLocked)));
@@ -718,7 +717,7 @@ fn t_double_push_lock_full_cycle() {
     orch.handle(InputEvent::HotkeyReleased);
     assert_eq!(orch.state().name(), "recording", "prise verrouillée");
 
-    // Appui suivant, bien au-delà de la fenêtre : arrêt + transcription.
+    // Next press, far beyond the window: stop and transcribe.
     clock_base.set(5_000);
     orch.handle(InputEvent::HotkeyPressed);
     assert_eq!(orch.state().name(), "idle");
@@ -729,7 +728,7 @@ fn t_double_push_lock_full_cycle() {
     ));
 }
 
-/// RF-02c : un appui MAINTENU au-delà de la fenêtre arrête la prise.
+/// RF-02c: a press HELD past the window stops the capture.
 #[test]
 fn t_double_push_hold_stops() {
     let b = bench(SpeechVerdict::Speech);
@@ -770,7 +769,7 @@ fn t_double_push_hold_stops() {
         .any(|e| matches!(e, CoreEvent::Inserted { .. })));
 }
 
-/// RF-11 : avertissement émi une seule fois 30 s avant le plafond.
+/// RF-11: the warning is emitted once, 30 s before the ceiling.
 #[test]
 fn t_max_duration_warning_once() {
     let b = bench(SpeechVerdict::Speech);
@@ -803,14 +802,14 @@ fn t_max_duration_warning_once() {
     );
     orch.handle(InputEvent::HotkeyPressed);
 
-    clock_base.set(29_000); // pas encore
+    clock_base.set(29_000); // not yet
     orch.handle(InputEvent::Tick);
     assert!(!events
         .borrow()
         .iter()
         .any(|e| matches!(e, CoreEvent::MaxDurationWarning { .. })));
 
-    clock_base.set(35_000); // 30 s avant la fin
+    clock_base.set(35_000); // past the 30 s mark — 25 s remain
     orch.handle(InputEvent::Tick);
     let evs = events.borrow();
     assert!(matches!(
@@ -822,7 +821,7 @@ fn t_max_duration_warning_once() {
     ));
     drop(evs);
 
-    clock_base.set(40_000); // un seul avertissement
+    clock_base.set(40_000); // only one warning ever
     orch.handle(InputEvent::Tick);
     assert_eq!(
         events
@@ -834,8 +833,8 @@ fn t_max_duration_warning_once() {
     );
 }
 
-/// RF-16 : la détection automatique est interdite sous 1,5 s — repli de
-/// langue explicite ; au-delà, aucune langue n'est forcée.
+/// RF-16: automatic detection is forbidden under 1.5 s — explicit language
+/// fallback; beyond it, no language is forced.
 #[test]
 fn t_language_autodetect_guard() {
     type Recorded = Arc<std::sync::Mutex<Option<TranscribeOptions>>>;
@@ -863,7 +862,7 @@ fn t_language_autodetect_guard() {
         }
     }
 
-    /// Capture synthétique paramétrable : un buffer de `seconds` secondes.
+    /// Configurable synthetic capture: a buffer of `seconds` seconds.
     struct TimedCapture {
         seconds: u32,
         started: bool,
@@ -907,7 +906,7 @@ fn t_language_autodetect_guard() {
         let clock = SharedClock(Rc::new(Cell::new(0)));
         let sink_events = events.clone();
         let cfg = OrchestratorCfg {
-            // détection automatique demandée
+            // automatic detection requested
             language: None,
             auto_language_min: Duration::from_millis(1_500),
             max_recording: Duration::from_secs(600),
@@ -933,8 +932,9 @@ fn t_language_autodetect_guard() {
     }
 }
 
-/// RF-24 + RF-25 : le profil de l'application cible est résolu, le mode
-/// verbatim est passé au moteur et l'amorce est construite du dictionnaire.
+/// RF-24 + RF-25: the target application's profile is resolved, verbatim
+/// mode is passed to the engine, and the primer is built from the
+/// dictionary.
 #[test]
 fn t_profile_per_app_and_initial_prompt() {
     type Recorded = Arc<std::sync::Mutex<Option<TranscribeOptions>>>;
@@ -1022,9 +1022,9 @@ fn t_profile_per_app_and_initial_prompt() {
     );
 }
 
-/// RF-32 (option « fenêtre actuelle ») : la fenêtre a changé entre le
-/// démarrage et l'insertion → la cible est relue, indication émise, l'insertion
-/// réussit dans la fenêtre courante.
+/// RF-32 ("current window" option): the window changed between start and
+/// insertion → the target is re-read, an indication is emitted, and
+/// insertion into the current window succeeds.
 #[test]
 fn t_retarget_to_current_when_not_remembering() {
     struct ChangingFocus(Rc<Cell<u32>>);
@@ -1034,8 +1034,8 @@ fn t_retarget_to_current_when_not_remembering() {
             self.0.set(n + 1);
             let mut s = snapshot();
             if n >= 1 {
-                // À partir du 2e appel (moment d'insérer) : l'utilisateur a
-                // changé de fenêtre.
+                // From the 2nd call on (insert time): the user has switched
+                // windows.
                 s.app_id = "word.exe".into();
                 s.title = "Rapport — Word".into();
             }
@@ -1095,12 +1095,12 @@ fn t_retarget_to_current_when_not_remembering() {
     assert_eq!(orch.state(), &DictationState::Idle);
 }
 
-// ------------------------------------------- échec d'arrêt de capture -------
+// ------------------------------------------ capture stop failure -------
 
-/// Capture dont le premier `stop()` échoue (périphérique disparu pendant la
-/// prise), puis se rétablit pour les sessions suivantes.
+/// A capture whose first `stop()` fails (device gone during the capture),
+/// then recovers for later sessions.
 struct FailingStopCapture {
-    /// Nombre d'arrêts restants devant échouer.
+    /// How many more stop() calls must fail.
     stop_failures: u32,
 }
 
@@ -1120,11 +1120,11 @@ impl Capture for FailingStopCapture {
     }
 }
 
-/// Échec de `capture.stop()` : la session est close sans transcription, sans
-/// insertion, avec un événement d'erreur signé et un retour à l'inactif — et
-/// la demande reçue pendant l'incident (repliée après coup, dans l'ordre du
-/// canal d'assemblage) doit pouvoir démarrer une session propre : le noyau
-/// reste servable après l'incident (P1 file RF-05).
+/// Failure of `capture.stop()`: the session closes without transcription,
+/// without insertion, with an identified error event and a return to idle —
+/// and a request received during the incident (replayed later, in the order
+/// of the assembly channel) must be able to start a clean session: the
+/// kernel remains servable after the incident (P1 queue, RF-05).
 #[test]
 fn t_stop_failure_then_recovery_session() {
     let events = Rc::new(RefCell::new(Vec::<CoreEvent>::new()));
@@ -1160,7 +1160,7 @@ fn t_stop_failure_then_recovery_session() {
         &clock,
     );
 
-    // Session incidente : l'arrêt du flux échoue au relâchement.
+    // Incident session: stopping the stream fails on release.
     orch.handle(InputEvent::HotkeyPressed);
     orch.handle(InputEvent::HotkeyReleased);
     assert_eq!(orch.state().name(), "idle");
@@ -1184,7 +1184,7 @@ fn t_stop_failure_then_recovery_session() {
     ));
     drop(evs);
 
-    // Aucun texte fantôme pendant l'incident.
+    // No ghost text during the incident.
     assert_eq!(
         calls.load(Ordering::SeqCst),
         0,
@@ -1192,9 +1192,9 @@ fn t_stop_failure_then_recovery_session() {
     );
     assert!(inserts.borrow().is_empty());
 
-    // Session suivante (la demande en attente est servie juste après
-    // l'incident, dans l'ordre du canal d'assemblage) : elle démarre puis
-    // réussit normalement — aucun résidu de l'incident.
+    // Next session (the pending request is served right after the incident,
+    // in the order of the assembly channel): it starts and then succeeds
+    // normally — no residue from the incident.
     orch.handle(InputEvent::HotkeyPressed);
     assert_eq!(orch.state().name(), "recording");
     orch.handle(InputEvent::HotkeyReleased);

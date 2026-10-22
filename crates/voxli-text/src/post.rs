@@ -1,43 +1,44 @@
-//! Post-traitement — niveaux 0 et 1 (RF-26, RF-23, RF-24).
+//! Post-processing — levels 0 and 1 (RF-26, RF-23, RF-24).
 //!
-//! - Niveau 0 (`PassThroughProcessor`) : identité — le texte du moteur est
-//!   inséré tel quel. C'est le **défaut produit** en mode verbatim (RF-27).
-//! - Niveau 1 (`FrenchProcessor`) : règles locales **déterministes**, sans
-//!   réseau et sans modèle : dictionnaire métier du profil (RF-23), césure
-//!   des hésitations, casse de début de phrase, typographie française
-//!   (espaces insécables). Le niveau 2 (petit modèle local) et le niveau 3
-//!   (distant, jamais sans consentement RF-36) réutiliseront ce même trait.
+//! - Level 0 (`PassThroughProcessor`): identity — the engine's text is
+//!   inserted as-is. This is the **production default** in verbatim mode
+//!   (RF-27).
+//! - Level 1 (`FrenchProcessor`): **deterministic** local rules, no
+//!   network and no model: profile business dictionary (RF-23), hesitation
+//!   trimming, sentence-start capitalization, French typography
+//!   (non-breaking spaces). Level 2 (small local model) and level 3
+//!   (remote, never without consent RF-36) will reuse this same trait.
 //!
-//! Garde RF-27 : ces règles ne réécrivent **jamais les chiffres** — le test
-//! T-27 vérifie la conservation du nombre.
+//! RF-27 guard: these rules **never rewrite numbers** — test T-27 checks
+//! that the number is preserved.
 
 use voxli_core::{PostError, PostProcessor, Profile, Style};
 
-/// Niveau 0 : aucun post-traitement.
+/// Level 0: no post-processing.
 pub struct PassThroughProcessor;
 
 impl PostProcessor for PassThroughProcessor {
     fn process(&self, text: &str, profile: &Profile) -> Result<String, PostError> {
         match profile.style {
-            // Verbatim garanti : identité, jamais altérée.
+            // Guaranteed verbatim: identity, never altered.
             Style::Verbatim => Ok(text.to_string()),
-            // Identité assumée : la cascade se limite pour l'instant au
-            // niveau 0 ; le niveau 1 est activé par `postProcessing=rules`
-            // avec `FrenchProcessor` (assemblage).
+            // Deliberate identity: for now the cascade stops at level 0;
+            // level 1 is enabled by `postProcessing=rules` with the
+            // `FrenchProcessor` (wiring).
             Style::Punctuated => Ok(text.to_string()),
         }
     }
 }
 
-/// Niveau 1 : post-traitement français local — dictionnaire du profil puis
-/// règles déterministes. Aucun appel réseau, aucune dépendance.
+/// Level 1: local French post-processing — the profile's dictionary first,
+/// then deterministic rules. No network calls, no dependencies.
 pub struct FrenchProcessor;
 
 impl PostProcessor for FrenchProcessor {
     fn process(&self, text: &str, profile: &Profile) -> Result<String, PostError> {
-        // RF-23 : le dictionnaire est un **opt-in explicite par profil** — il
-        // s'applique aussi en verbatim (c'est son rôle : corriger un nom
-        // propre mal transcrit sans toucher au reste).
+        // RF-23: the dictionary is an **explicit per-profile opt-in** — it
+        // also applies in verbatim mode (that is its role: fix a badly
+        // transcribed proper noun without touching anything else).
         let text = if profile.dictionary.is_empty() {
             text.to_string()
         } else {
@@ -50,36 +51,36 @@ impl PostProcessor for FrenchProcessor {
     }
 }
 
-// --------------------------------------------------------- règles FR -------
+// ----------------------------------------------------- FR rules -----------
 
-/// Hésitations orales courantes de dictée (RF-26) — comparaison normalisée
-/// (casse/accents ignorés), en mot entier.
+/// Common spoken-dictation hesitations (RF-26) — normalized comparison
+/// (case/accents ignored), whole word only.
 const HESITATIONS: &[&str] = &[
     "euh", "euhh", "euhhh", "euhhhh", "heu", "heuu", "heuuu", "hum", "hmm", "hmmm", "mmh", "mmm",
     "ben", "bah", "euhm", "uh", "um",
 ];
 
-/// Mots dont la répétition consécutive est légitime en français et ne doit
-/// jamais être supprimée (pronoms réfléchis, adverbes intensifs, affirmations).
+/// Words whose consecutive repetition is legitimate in French and must
+/// never be removed (reflexive pronouns, intensifying adverbs, affirmations).
 const REPETITION_EXCLUSIONS: &[&str] = &[
-    // Pronoms réfléchis ("nous nous levons", "vous vous souvenez")
-    "nous", "vous", // Adverbes intensifs et qualificatifs répétés volontairement
+    // Reflexive pronouns ("nous nous levons", "vous vous souvenez")
+    "nous", "vous", // Intensifying adverbs and adjectives repeated on purpose
     "tres", "trop", "bien", "vite", "beaucoup", "presque", "plus", "moins", "tout", "jamais",
-    // Affirmations / négations orales répétées ("oui oui", "non non")
+    // Repeated spoken affirmations / negations ("oui oui", "non non")
     "oui", "non", "si",
 ];
 
-/// Applique les règles de niveau 1 (Magic Formatting v1).
-/// Garde RF-27 : la séquence de chiffres du texte ne change jamais.
+/// Applies the level-1 rules (Magic Formatting v1).
+/// RF-27 guard: the text's digit sequence never changes.
 pub fn apply_french_rules(text: &str) -> String {
-    // 1. Espaces multiples → simple, bordures nettoyées.
+    // 1. Multiple spaces → single, trimmed boundaries.
     let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.is_empty() {
         return String::new();
     }
 
-    // 2. Découpage en tokens avec suppression des hésitations orales
-    //    et rattachement naturel des signes de ponctuation isolés.
+    // 2. Tokenization with spoken hesitation removal and natural
+    //    reattachment of isolated punctuation marks.
     let raw_tokens: Vec<&str> = collapsed.split(' ').collect();
     let mut tokens: Vec<String> = Vec::new();
     let mut dropped_hesitation = false;
@@ -88,11 +89,11 @@ pub fn apply_french_rules(text: &str) -> String {
         let norm = normalize_lossy(raw);
         let bare = norm.trim_matches(|c: char| !c.is_alphanumeric());
 
-        // Hésitation identifiée
+        // Identified hesitation
         if HESITATIONS.contains(&bare) {
             dropped_hesitation = true;
-            // Si l'hésitation portait une ponctuation forte terminale (. ! ? ;),
-            // on la reporte sur le token précédent s'il existe.
+            // If the hesitation carried a strong terminal punctuation mark
+            // (. ! ? ;), carry it over to the previous token, if any.
             let strong_punct: String = raw
                 .chars()
                 .filter(|c| matches!(c, '.' | '!' | '?' | ';' | ':'))
@@ -107,7 +108,7 @@ pub fn apply_french_rules(text: &str) -> String {
             continue;
         }
 
-        // Signe de ponctuation isolé (ex. "mot , mot" ou "phrase . phrase")
+        // Isolated punctuation mark (e.g. "word , word" or "sentence . sentence")
         if raw == "," || raw == "." || raw == ";" || raw == ":" || raw == "!" || raw == "?" {
             if let Some(prev) = tokens.last_mut() {
                 if !prev.ends_with(|c: char| !c.is_alphanumeric()) {
@@ -117,8 +118,9 @@ pub fn apply_french_rules(text: &str) -> String {
             continue;
         }
 
-        // Si une hésitation avec virgule précédait une conjonction de subordination
-        // (ex. "je pense, [euh,] qu'il faut"), nettoyer la virgule superflue.
+        // If a hesitation ended with a comma before a subordinating
+        // conjunction (e.g. "je pense, [euh,] qu'il faut"), clean up
+        // the superfluous comma.
         if dropped_hesitation {
             dropped_hesitation = false;
             let bare_raw = norm.trim_matches(|c: char| !c.is_alphanumeric());
@@ -142,8 +144,8 @@ pub fn apply_french_rules(text: &str) -> String {
         return String::new();
     }
 
-    // 3. Suppression des répétitions orales involontaires (bégaiements) :
-    //    Passes sur les blocs de 3 mots, puis 2 mots, puis 1 mot.
+    // 3. Removal of involuntary spoken repetitions (stutters):
+    //    passes over 3-word blocks, then 2 words, then 1 word.
     let tokens = collapse_phrase_repetitions(&tokens, 3);
     let tokens = collapse_phrase_repetitions(&tokens, 2);
     let tokens = collapse_single_word_repetitions(&tokens);
@@ -154,18 +156,18 @@ pub fn apply_french_rules(text: &str) -> String {
         return String::new();
     }
 
-    // 4. Casse de début de phrase : première lettre du texte et de toute
-    //    phrase suivant . ! ? (les tirets listes restent en l'état).
+    // 4. Sentence-start capitalization: first letter of the text and of
+    //    any sentence following . ! ? (list dashes are left untouched).
     let mut chars: Vec<char> = cleaned.chars().collect();
     capitalize_sentence_starts(&mut chars);
 
-    // 5. Typographie française : espace insécable avant : ; ! ? % € —
-    //    NE touche jamais aux chiffres proprement dits.
+    // 5. French typography: non-breaking space before : ; ! ? % € —
+    //    NEVER touches actual digits.
     let out: String = chars.into_iter().collect();
     apply_french_spacing(&out)
 }
 
-/// Supprime les répétitions de phrases de `n` mots consécutifs (ex. "dans le dans le" -> "dans le").
+/// Removes repetitions of `n`-word phrases (e.g. "dans le dans le" -> "dans le").
 fn collapse_phrase_repetitions(tokens: &[String], n: usize) -> Vec<String> {
     if tokens.len() < 2 * n {
         return tokens.to_vec();
@@ -185,7 +187,8 @@ fn collapse_phrase_repetitions(tokens: &[String], n: usize) -> Vec<String> {
                 for k in 0..n {
                     out.push(tokens[i + k].clone());
                 }
-                // Si le second bloc portait une ponctuation finale et pas le premier, la récupérer
+                // If the second block had trailing punctuation the first block
+                // lacked, recover it
                 let last_punct: String = tokens[i + 2 * n - 1]
                     .chars()
                     .filter(|c| matches!(c, '.' | '!' | '?' | ',' | ';' | ':'))
@@ -207,7 +210,7 @@ fn collapse_phrase_repetitions(tokens: &[String], n: usize) -> Vec<String> {
     out
 }
 
-/// Supprime les bégaiements d'un seul mot (ex. "je je" -> "je", "dans dans" -> "dans").
+/// Removes single-word stutters (e.g. "je je" -> "je", "dans dans" -> "dans").
 fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
     if tokens.len() < 2 {
         return tokens.to_vec();
@@ -226,7 +229,8 @@ fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
                 && w1_bare == w2_bare
                 && !REPETITION_EXCLUSIONS.contains(&w1_bare)
             {
-                // Répétition consécutive détectée : absorber toutes les répétitions identiques consécutives
+                // Consecutive repetition detected: absorb all following identical
+                // consecutive repetitions
                 let is_capitalized = tokens[i]
                     .chars()
                     .next()
@@ -282,11 +286,11 @@ fn collapse_single_word_repetitions(tokens: &[String]) -> Vec<String> {
     out
 }
 
-/// Nettoie les ponctuations orphelines aux extrémités et les doublons de virgules.
+/// Cleans orphan punctuation at the boundaries and doubled commas.
 fn clean_punctuation_edges(text: &str) -> String {
-    // Retrait des virgules ou points en tout début de texte
+    // Trims commas or periods at the very start of the text
     let trimmed = text.trim_start_matches([',', ' ']);
-    // Nettoyage des virgules doubles ",," ou ", ,"
+    // Cleans doubled commas ",," or ", ,"
     let mut out = String::with_capacity(trimmed.len());
     let mut prev_comma = false;
     for c in trimmed.chars() {
@@ -306,26 +310,26 @@ fn clean_punctuation_edges(text: &str) -> String {
     out
 }
 
-/// Insécable (\u{00A0}) avant les ponctuations doubles et unités monétaires/
-/// pourcentage : une espace ordinaire est remplacée, une absence d'espace
-/// est comblée sauf continuation de type URL (…://) et sauf « deux-points
-/// compacts » suivis d'un alphanumérique (horaires 12:00, ratios 3:2).
+/// Non-breaking space (\u{00A0}) before double punctuation and currency/
+/// percentage units: an ordinary space is replaced, a missing space is
+/// filled in — except for URL-like continuations (…://) and "compact
+/// colons" followed by an alphanumeric (times 12:00, ratios 3:2).
 fn apply_french_spacing(text: &str) -> String {
     let nbsp = '\u{00A0}';
     let mut out = String::with_capacity(text.len() + 4);
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
-        // Cas compact 12:00 / 3:2 / heure:minute : des deux-points immé-
-        // diatement suivis d'un caractère alphanumérique ne constituent PAS
-        // une ponctuation double française (horaire, ratio, code). Transcri-
-        // re tel quel — RF-27 : le contenu dicté reste fidèle.
+        // Compact case 12:00 / 3:2 / hour:minute: colons immediately
+        // followed by an alphanumeric character are NOT French double
+        // punctuation (time, ratio, code). Transcribe verbatim —
+        // RF-27: dictated content stays faithful.
         if c == ':' && matches!(chars.peek(), Some(n) if n.is_alphanumeric()) {
             out.push(c);
             continue;
         }
         if matches!(c, ':' | ';' | '!' | '?' | '%' | '€') {
             let trailing = out.ends_with(' ');
-            // Continuation URL (…://) : ne rien insérer.
+            // URL continuation (…://): insert nothing.
             let colon_url = c == ':' && matches!(chars.peek(), Some('/'));
             if trailing {
                 out.pop();
@@ -341,7 +345,7 @@ fn apply_french_spacing(text: &str) -> String {
                 }
             }
             out.push(c);
-            // Espace après la ponctuation forte (sauf fin de texte).
+            // Space after strong punctuation (except end of text).
             if let Some(&n) = chars.peek() {
                 if n.is_alphanumeric() {
                     out.push(' ');
@@ -354,7 +358,8 @@ fn apply_french_spacing(text: &str) -> String {
     out
 }
 
-/// Majuscule en tête de texte et après . ! ? — in place sur le tampon char.
+/// Capitalizes the start of the text and after . ! ? — in place, on the
+/// char buffer.
 fn capitalize_sentence_starts(chars: &mut [char]) {
     let mut at_start = true;
     for c in chars.iter_mut() {
@@ -373,11 +378,11 @@ fn capitalize_sentence_starts(chars: &mut [char]) {
     }
 }
 
-// ------------------------------------------------------ dictionnaire -------
+// ---------------------------------------------------- dictionary -----------
 
-/// Format d'entrée du dictionnaire (RF-23) : `cible|variante1|variante2`.
-/// Variante absente → la cible est son propre déclencheur (utile pour
-/// capitaliser un sigle métier, ex. `CEFIR`).
+/// Dictionary entry format (RF-23): `target|variant1|variant2`.
+/// No variant → the target triggers itself (useful to capitalize a
+/// business acronym, e.g. `CEFIR`).
 pub fn parse_dictionary_entry(entry: &str) -> Option<(String, Vec<String>)> {
     let mut parts = entry.split('|');
     let target = parts.next()?.trim().to_string();
@@ -391,9 +396,9 @@ pub fn parse_dictionary_entry(entry: &str) -> Option<(String, Vec<String>)> {
     Some((target, variants))
 }
 
-/// Applique le dictionnaire au texte : remplacements insensibles à la casse
-/// et aux accents (variantes déclarées), puis correction floue de mots
-/// entiers (distance d'édition ≤ 1, mots ≥ 5 lettres) vers le terme cible.
+/// Applies the dictionary to the text: case- and accent-insensitive
+/// replacements of the declared variants, then fuzzy correction of whole
+/// words (edit distance ≤ 1, words ≥ 5 letters) toward the target term.
 pub fn apply_dictionary(text: &str, entries: &[String]) -> String {
     let mut out = text.to_string();
     for entry in entries {
@@ -411,7 +416,7 @@ pub fn apply_dictionary(text: &str, entries: &[String]) -> String {
     out
 }
 
-/// Remplacements insensibles casse/accents d'une occurrence exacte.
+/// Case/accent-insensitive replacement of an exact occurrence.
 fn replace_insensitive(text: &str, pattern: &str, replacement: &str) -> String {
     let hay = normalize_lossy(text);
     let needle = normalize_lossy(pattern);
@@ -427,8 +432,8 @@ fn replace_insensitive(text: &str, pattern: &str, replacement: &str) -> String {
         let hit = hchars.len() - i >= nchars.len()
             && (0..nchars.len()).all(|k| hchars[i + k] == nchars[k]);
         if hit {
-            // Respect de la casse locale : initiale majuscule si l'occurrence
-            // d'origine commence par une majuscule.
+            // Respect local casing: capital initial if the original
+            // occurrence begins with a capital letter.
             let capitalized = orig[i].is_uppercase();
             let rep = if capitalized {
                 let mut cs = replacement.chars();
@@ -454,16 +459,16 @@ fn replace_insensitive(text: &str, pattern: &str, replacement: &str) -> String {
     out
 }
 
-/// Correction floue de mots entiers (distance ≤ 1, mots ≥ 5 lettres) —
-/// les termes du dictionnaire servent de référence de longueur proche.
+/// Fuzzy correction of whole words (distance ≤ 1, words ≥ 5 letters) —
+/// dictionary terms serve as the length reference.
 fn fuzzy_replace(text: &str, target: &str) -> String {
     let norm_target = normalize_lossy(target);
     if norm_target.chars().count() < 5 {
-        return text.to_string(); // garde anti-fausses-corrections
+        return text.to_string(); // guard against false corrections
     }
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len() + 8);
-    let mut segment: Vec<char> = Vec::new(); // mot courant (original)
+    let mut segment: Vec<char> = Vec::new(); // current word (original)
     let mut seg_norm: Vec<char> = Vec::new();
     let flush = |out: &mut String, segment: &mut Vec<char>, seg_norm: &mut Vec<char>| {
         if seg_norm.is_empty() {
@@ -510,7 +515,7 @@ fn fuzzy_replace(text: &str, target: &str) -> String {
     out
 }
 
-/// Minuscule + accents français retirés (longueur conservée).
+/// Lowercase with French accents removed (length preserved).
 fn normalize_lossy(s: &str) -> String {
     s.chars()
         .map(|c| {
@@ -533,8 +538,8 @@ fn deaccent(c: char) -> char {
     }
 }
 
-/// Distance d'édition classique (Levenshtein) — implémentation bornée, les
-/// mots traités font au plus quelques dizaines de caractères.
+/// Classic edit distance (Levenshtein) — bounded implementation, the words
+/// processed are at most a few dozen characters long.
 pub fn levenshtein(a: &[char], b: &[char]) -> usize {
     let (m, n) = (a.len(), b.len());
     let mut prev: Vec<usize> = (0..=n).collect();
@@ -576,7 +581,7 @@ mod tests {
         let out = apply_french_rules("euh  bonjour , ceci  est un test . merci bien");
         assert!(!out.to_lowercase().contains("euh"));
         assert!(out.starts_with("Bonjour"));
-        // Fin de phrase suivie de nouvelle phrase.
+        // End of sentence followed by a new sentence.
         let out2 = apply_french_rules("voilà la première. et la deuxième");
         assert!(
             out2.contains(". Et la deuxième"),
@@ -617,12 +622,12 @@ mod tests {
         assert_eq!(out, "Un réunion est prévu, chaque réunion aussi.");
     }
 
-    /// T-23 : « métalurgie » est corrigée en « métallurgie » (distance ≤ 1).
+    /// T-23: "métalurgie" is corrected to "métallurgie" (distance ≤ 1).
     #[test]
     fn t_dictionary_fuzzy_correction() {
         let out = apply_dictionary(" rapport de la métalurgie interne", &["métallurgie".into()]);
         assert!(out.contains("métallurgie"), "obtenu : {out}");
-        // Les petits mots ne sont jamais touchés (garde ≥ 5 lettres).
+        // Short words are never touched (≥ 5-letter guard).
         let guarded = apply_dictionary("ce son", &["raison".into()]);
         assert_eq!(guarded, "ce son");
     }
@@ -636,7 +641,7 @@ mod tests {
 
         let verbatim = profile(Style::Verbatim, &["CEFIR|cefir"]);
         let out2 = p.process("euh cefir dossier", &verbatim).unwrap();
-        // Verbatim : pas de règles de ponctuation, mais dictionnaire oui.
+        // Verbatim: no punctuation rules, but the dictionary applies.
         assert_eq!(out2, "euh CEFIR dossier");
     }
 
@@ -680,13 +685,13 @@ mod tests {
 
     #[test]
     fn t_rules_legitimate_repetitions_preserved() {
-        // Pronoms réfléchis
+        // Reflexive pronouns
         assert_eq!(
             apply_french_rules("nous nous sommes vus hier"),
             "Nous nous sommes vus hier"
         );
         assert_eq!(apply_french_rules("vous vous trompez"), "Vous vous trompez");
-        // Adverbes intensifs
+        // Intensifying adverbs
         assert_eq!(
             apply_french_rules("c'est très très bien"),
             "C'est très très bien"
@@ -695,7 +700,7 @@ mod tests {
             apply_french_rules("c'est trop trop fort"),
             "C'est trop trop fort"
         );
-        // Affirmation orale volontaire
+        // Deliberate spoken affirmation
         assert_eq!(apply_french_rules("oui oui c'est bon"), "Oui oui c'est bon");
     }
 }

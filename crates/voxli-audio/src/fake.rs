@@ -1,12 +1,12 @@
-﻿//! Capture synthétique — double de test de `Capture` (aucun micro requis en
-//! CI ; docs/05 §2.2 « injection d'un AudioSource synthétique »).
+﻿//! Synthetic capture — test double of `Capture` (no microphone required in
+//! CI; docs/05 §2.2 "injecting a synthetic AudioSource").
 
 use std::time::Duration;
 
 use voxli_core::{AudioBuffer, Capture, CaptureError, Level, SAMPLE_RATE_HZ};
 
-/// Génère de l'audio 16 kHz mono : tonalité continue quand `voiced`, silence
-/// sinon. Pratique pour tester l'orchestrateur et la latence de bout en bout.
+/// Generates 16 kHz mono audio: a continuous tone when `voiced`, silence
+/// otherwise. Handy for testing the orchestrator and end-to-end latency.
 pub struct FakeCapture {
     started: bool,
     voiced: bool,

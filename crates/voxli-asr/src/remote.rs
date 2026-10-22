@@ -1,19 +1,20 @@
-//! Moteur IA distant **BYOK** (Bring Your Own Key) — ADR-03 point 3,
+//! Remote **BYOK** AI engine (Bring Your Own Key) — ADR-03 point 3,
 //! feature `remote`, P4 (RF-36).
 //!
-//! Garde-fous (par ordre de défense) :
-//! 1. `consented` : l'assemblage refuse de construire ce moteur sans le
-//!    double consentement (`privacy.consent.remoteAsr` **et** mode strict
-//!    désactivé). Côté moteur, un refus redondant (`ConsentMissing`) ;
-//! 2. la clé API ne vit jamais dans `config.json` : injectée au montage
-//!    depuis `voxli-secure` (DPAPI) — jamais journalisée, jamais dans
-//!    l'erreur renvoyée ;
-//! 3. l'appelante n'appelle ce moteur que sur action explicite ("utiliser
-//!    le cloud pour CETTE transcription").
+//! Guards (in order of defense):
+//! 1. `consented`: the assembly refuses to build this engine without the
+//!    double consent (`privacy.consent.remoteAsr` **and** strict mode
+//!    disabled). On the engine side, a redundant refusal
+//!    (`ConsentMissing`);
+//! 2. the API key never lives in `config.json`: injected at mount time
+//!    from `voxli-secure` (DPAPI) — never logged, never present in the
+//!    returned error;
+//! 3. the caller invokes this engine only on an explicit action
+//!    ("use the cloud for THIS transcription").
 //!
-//! Transport : multipart OpenAI-compatible (`/v1/audio/transcriptions`).
-//! Le WAV encodé est en mémoire ; il ne contourne jamais le mode strict
-//! local (`strictLocalMode=true` gate dans l'assemblage, doc RF-14).
+//! Transport: OpenAI-compatible multipart (`/v1/audio/transcriptions`).
+//! The encoded WAV stays in memory; it never bypasses the strict local
+//! mode (`strictLocalMode=true` gate in the assembly, doc RF-14).
 
 use std::time::Duration;
 
@@ -22,16 +23,16 @@ use voxli_core::{
 };
 
 pub struct RemoteEngine {
-    /// Fournisseur choisi (journalisé, jamais le contenu).
+    /// Chosen provider (logged, never the content).
     pub provider: String,
-    /// Base API OpenAI-compatible (ex. `https://api.example.com/v1`).
+    /// OpenAI-compatible API base (e.g. `https://api.example.com/v1`).
     pub base_url: String,
-    /// Modèle demandé (ex. `gpt-4o-transcribe`).
+    /// Requested model (e.g. `gpt-4o-transcribe`).
     pub model: String,
-    /// Clé API utilisateur — injectée depuis voxli-secure AU MONTAGE,
-    /// jamais persistée ni journalisée (ADR-07).
+    /// User API key — injected from voxli-secure AT MOUNT TIME,
+    /// never persisted nor logged (ADR-07).
     pub api_key: String,
-    /// Garde redondant : `false` ⇒ erreur immédiate, aucun octet envoyé.
+    /// Redundant guard: `false` ⇒ immediate error, zero bytes sent.
     pub consented: bool,
 }
 
@@ -55,7 +56,7 @@ impl RemoteEngine {
 
 impl Transcriptor for RemoteEngine {
     fn warmup(&self) -> Result<(), AsrError> {
-        // Aucun préchauffage réseau à l'insu de l'utilisateur.
+        // No network warm-up behind the user's back.
         Ok(())
     }
 
@@ -67,11 +68,12 @@ impl Transcriptor for RemoteEngine {
         if !self.consented || self.api_key.is_empty() {
             return Err(AsrError::ConsentMissing);
         }
-        // Le WAV est étiqueté 16 kHz sans rééchantillonnage (aucun resampler
-        // local) : tout autre taux donnerait une transcription déphasée (temps
-        // étiré/comprimé) envoyée à un serveur tiers. La chaîne de capture
-        // garantit 16 kHz (RF-19) ; un usage hors contrat est refusé AVANT
-        // tout octet envoyé.
+        // The WAV is labeled 16 kHz with no resampling (no local
+        // resampler): any other rate would yield a time-shifted
+        // transcription (time stretched/compressed) sent to a
+        // third-party server. The capture chain guarantees 16 kHz
+        // (RF-19); out-of-contract usage is refused BEFORE any byte
+        // is sent.
         if audio.sample_rate != SAMPLE_RATE_HZ {
             return Err(AsrError::Runtime(format!(
                 "taux {} Hz refusé : le mode distant exige {SAMPLE_RATE_HZ} Hz",
@@ -92,7 +94,7 @@ impl Transcriptor for RemoteEngine {
             .send_bytes(&body)
             .map_err(|e| match e {
                 ureq::Error::Status(_code, resp) => {
-                    // Aucun corps renvoyé à l'app : le serveur peut logguer.
+                    // No body returned to the app: the server may log.
                     let _ = resp.into_string();
                     AsrError::Inference
                 }
@@ -127,7 +129,7 @@ impl Transcriptor for RemoteEngine {
 
 const MULTI_BOUNDARY: &str = "----voxli-boundary-7f3b914a";
 
-/// Encode mono 16 kHz f32 → WAV PCM16 en mémoire.
+/// Encodes mono 16 kHz f32 → in-memory WAV PCM16.
 pub fn encode_wav_16k_mono(audio: &AudioBuffer) -> Vec<u8> {
     let rate = if audio.sample_rate == 0 {
         SAMPLE_RATE_HZ
@@ -144,12 +146,12 @@ pub fn encode_wav_16k_mono(audio: &AudioBuffer) -> Vec<u8> {
     out.extend_from_slice(&(36 + samples.len() as u32 * 2).to_le_bytes());
     out.extend_from_slice(b"WAVE");
     out.extend_from_slice(b"fmt ");
-    out.extend_from_slice(&16u32.to_le_bytes()); // taille fmt
+    out.extend_from_slice(&16u32.to_le_bytes()); // fmt size
     out.extend_from_slice(&1u16.to_le_bytes()); // PCM
     out.extend_from_slice(&1u16.to_le_bytes()); // mono
     out.extend_from_slice(&rate.to_le_bytes());
-    out.extend_from_slice(&(rate * 2).to_le_bytes()); // octets/s
-    out.extend_from_slice(&2u16.to_le_bytes()); // bloc aligne
+    out.extend_from_slice(&(rate * 2).to_le_bytes()); // bytes/s
+    out.extend_from_slice(&2u16.to_le_bytes()); // block align
     out.extend_from_slice(&16u16.to_le_bytes()); // bits
     out.extend_from_slice(b"data");
     out.extend_from_slice(&(samples.len() as u32 * 2).to_le_bytes());
@@ -159,7 +161,7 @@ pub fn encode_wav_16k_mono(audio: &AudioBuffer) -> Vec<u8> {
     out
 }
 
-/// Corps multipart minimal : fichier WAV + langue optionnelle.
+/// Minimal multipart body: WAV file + optional language.
 pub fn multipart_body(model: &str, language: Option<&str>, wav: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(wav.len() + 512);
     let push_str = |s: &str, out: &mut Vec<u8>| {
@@ -196,9 +198,9 @@ mod tests {
         let wav = encode_wav_16k_mono(&audio);
         assert_eq!(&wav[0..4], b"RIFF");
         assert_eq!(&wav[8..12], b"WAVE");
-        // Taille attendue : 44 octets d'en-tête + 200 d'échantillons.
+        // Expected size: 44 header bytes + 200 for samples.
         assert_eq!(wav.len(), 44 + 200);
-        // Le nombre d'octets "data" est correct.
+        // The "data" byte count is correct.
         let dlen = u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]);
         assert_eq!(dlen, 200);
     }
@@ -229,8 +231,8 @@ mod tests {
 
     #[test]
     fn t_no_consent_sends_nothing() {
-        // Sans consentement : erreur immédiate, AUCUN accès réseau (le test
-        // ne monterait pas un serveur : l'erreur est levée avant).
+        // Without consent: immediate error, ZERO network access (the test
+        // need not stand up a server: the error is raised before).
         let engine = RemoteEngine::new("openai", "http://127.0.0.1:1/v1", "m", "".into(), false);
         let audio = AudioBuffer::new(vec![0.0; 160], SAMPLE_RATE_HZ);
         let opts = TranscribeOptions {
@@ -245,11 +247,11 @@ mod tests {
 
     #[test]
     fn t_non_16k_rejected_before_network() {
-        // Taux ≠ 16 kHz : refus AVANT toute requête (aucun octet ne quitte la
-        // machine) — `Runtime` avec détail, jamais `Inference` (un `Inference`
-        // ici signifierait que la requête réseau a été tentée).
+        // Rate ≠ 16 kHz: refusal BEFORE any request (zero bytes leave
+        // the machine) — `Runtime` with detail, never `Inference` (an
+        // `Inference` here would mean the network request was attempted).
         let engine = RemoteEngine::new("openai", "http://127.0.0.1:1/v1", "m", "k".into(), true);
-        // 100 ms à 44 100 Hz : hors contrat.
+        // 100 ms at 44,100 Hz: out of contract.
         let audio = AudioBuffer::new(vec![0.0; 4_410], 44_100);
         let opts = TranscribeOptions {
             language: Some("fr".into()),

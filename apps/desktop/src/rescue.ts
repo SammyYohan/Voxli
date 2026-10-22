@@ -1,9 +1,9 @@
 /**
- * Fenêtre de secours (RF-31) : affiche le dernier texte transcrit conservé
- * dans le tampon interne de l'orchestrateur, et permet de le replacer dans la
- * cible (« Coller à nouveau ») ou de relancer la transcription (« Réessayer »).
- * Aucun envoi réseau : tout reste dans la WebView locale.
- * Langue de présentation : `general.uiLanguage` (v5, repli fr).
+ * Rescue window (RF-31): shows the last transcribed text kept
+ * in the internal buffer of the orchestrator, and allows putting it back into
+ * the target ("Paste again") or re-running transcription ("Retry").
+ * No network send: everything stays in the local WebView.
+ * Presentation language: `general.uiLanguage` (v5, fr fallback).
  */
 import { invoke } from "@tauri-apps/api/core";
 import { applyUiLanguage, t } from "./i18n";
@@ -36,8 +36,8 @@ document.getElementById("btn-paste")?.addEventListener("click", () => {
 });
 
 document.getElementById("btn-copy")?.addEventListener("click", () => {
-  // Copie volontaire de l'utilisateur : pas de presse-papiers côté Voxli
-  // sans ce geste explicite (RF-30).
+  // Voluntary copy by the user: no clipboard on the Voxli side
+  // without this explicit gesture (RF-30).
   text.removeAttribute("readonly");
   text.select();
   document.execCommand("copy");
@@ -48,7 +48,7 @@ document.getElementById("btn-close")?.addEventListener("click", () => {
   void invoke("rescue_close");
 });
 
-// Langue de l'interface (v5) : lue de la configuration, repli fr.
+// UI language (v5): read from the configuration, fr fallback.
 try {
   void (async () => {
     const cfg = await invoke<{ general: { uiLanguage: string } }>("config_get");
@@ -58,7 +58,7 @@ try {
   applyUiLanguage("fr");
 }
 
-// Le texte peut être remplacé pendant que la fenêtre est ouverte
-// (nouvelle dictée réussie) : relecture au focus.
+// The text can be replaced while the window is open
+// (new successful dictation): re-read on focus.
 window.addEventListener("focus", () => void refresh());
 void refresh();

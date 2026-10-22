@@ -1,9 +1,9 @@
-/** i18n Voxli v2 — référence FRANÇAISE (distribution cible). Traduction
- * des clés de la référence anglaise ; une clé manquante retombe sur `en`
- * puis `fr` (jamais d'écran abscons, RF-29).
+/** i18n Voxli v2 — FRENCH reference (target distribution). Translates the
+ * keys of the English reference; a missing key falls back to `en`
+ * then `fr` (never an obscure screen, RF-29).
  */
 export const dict: Record<string, string> = {
-  // Squelette / mode simple-avancé
+  // Skeleton / simple-advanced mode
   "app.tagline": "Dictée par la voix, 100 % locale. Vos mots ne quittent jamais cette machine — sauf si vous le demandez explicitement.",
   "mode.advanced": "Mode avancé — tous les réglages",
   "mode.theme": "Thème",
@@ -11,13 +11,13 @@ export const dict: Record<string, string> = {
   "theme.light": "clair",
   "theme.dark": "sombre",
 
-  // Onboarding 1-clic
+  // One-click onboarding
   "onboarding.title": "🚀 Bienvenue sur Voxli !",
   "onboarding.intro": "Prêt pour une dictée vocale instantanée, fluide et 100 % locale ?",
   "onboarding.desc": "Pour démarrer immédiatement, installez le modèle Whisper compact en un clic (57 Mo, téléchargé une seule fois, tout tourne hors-ligne) :",
   "onboarding.download": "⚡ Télécharger et activer Whisper (1 clic)",
 
-  // État
+  // Status
   "state.section": "État",
   "state.engineWord": "moteur :",
   "audio.meterTitle": "Niveau du micro — jamais envoyé, jamais enregistré",
@@ -29,7 +29,7 @@ export const dict: Record<string, string> = {
   "state.inserting": "insertion…",
   "state.recovery": "incident — réessayer possible",
 
-  // Général
+  // General
   "general.section": "Général",
   "general.languageLabel": "Langue de dictée (auto = la machine la détecte)",
   "general.languageAuto": "Détection automatique (recommandée)",
@@ -41,7 +41,7 @@ export const dict: Record<string, string> = {
   "general.save": "Enregistrer les réglages",
   "general.saved": "enregistré — appliqué à chaud",
 
-  // Raccourcis
+  // Hotkeys
   "hk.section": "Raccourcis & déclenchement",
   "hk.pushLabel": "Dictée",
   "hk.modeLabel": "Mode de déclenchement",
@@ -52,7 +52,7 @@ export const dict: Record<string, string> = {
   "hk.showLabel": "Montrer le dernier texte",
   "hk.note": "Appliqués immédiatement à l'enregistrement (RF-01) — si un raccourci est déjà pris par une autre application, un message le signale.",
 
-  // Vocabulaire
+  // Vocabulary
   "vocab.section": "Dictionnaire & Vocabulaire personnalisé",
   "vocab.intro": "Enseignez à Voxli vos acronymes, noms propres, entreprises ou jargon métier. Ces termes sont injectés dans Whisper pour une précision chirurgicale (Magic Formatting).",
   "vocab.profileLabel": "Profil de vocabulaire :",
@@ -80,7 +80,7 @@ export const dict: Record<string, string> = {
   "audio.vadBalanced": "équilibrée (défaut)",
   "audio.vadHigh": "stricte — ignore le bruit",
 
-  // Modèles
+  // Models
   "models.section": "Voix (moteur de reconnaissance)",
   "models.intro": "Le téléchargement est <b>votre action explicite</b>, ici, et la <b>seule</b> connexion réseau de Voxli depuis cet écran. Chaque fichier est vérifié après réception ; la preuve reste dans un journal local.",
   "models.colModel": "Modèle",
@@ -102,12 +102,12 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— {n} Mo env.",
   "models.verifiedBadge": "correspond à la référence de confiance publiée (docs/11 §3)",
 
-  // Moteurs (sélection, écran Voix)
+  // Engines (selection, Voice screen)
   "engines.auto": "Automatique (recommandé)",
   "engines.hintSdk": "indisponible — SDK non inclus dans ce build",
   "engines.effective": "Moteur effectif : {engine}",
 
-  // Profils
+  // Profiles
   "profiles.section": "Profils & dictionnaires",
   "profiles.lockNotice": "Profils multiples : fonctionnalité Pro. Sans licence, seul le profil par défaut s'applique — vos liaisons restent enregistrées ici.",
   "profiles.codeAppsLabel": "Profil « code » — applications associées (séparées par des virgules)",
@@ -120,7 +120,7 @@ export const dict: Record<string, string> = {
   "profiles.note": "Le dictionnaire remplace vos variantes (métallurgie → « métallurjie » redevient <i>métallurgie</i>) même en mode « texte brut » : c'est votre correction, pas une réécriture du produit.",
   "dict.imported": "Dictionnaire importé : {n} entrée(s).",
 
-  // Historique
+  // History
   "history.section": "Historique",
   "history.keepLabel": "Conserver les transcriptions",
   "history.no": "non — rien n'est conservé (défaut navigateur)",
@@ -137,7 +137,7 @@ export const dict: Record<string, string> = {
   "history.delete": "supprimer",
   "history.empty": "aucune entrée",
 
-  // Licence
+  // License
   "license.section": "Licence",
   "license.active": "Licence active — titulaire : {name}.",
   "license.grace": "Licence expirée — période de grâce hors ligne : encore {days} jour(s) de fonctionnalités Pro, puis retour à l'édition gratuite.",
@@ -148,7 +148,7 @@ export const dict: Record<string, string> = {
   "license.importAction": "Vérifier et importer",
   "license.imported": "licence importée et vérifiée.",
 
-  // Vie privée
+  // Privacy
   "privacy.simpleNote": "Totalement local : rien ne quitte cette machine sans votre accord explicite. Les détails (consentements, lecture du contexte) sont dans le mode avancé.",
   "privacy.section": "Vie privée",
   "privacy.strictLabel": "Mode local strict",
@@ -167,30 +167,30 @@ export const dict: Record<string, string> = {
   "privacy.contextEmpty": "aucun contexte lu",
   "privacy.note": "Aucun service distant n'est activé tant que ces deux interrupteurs restent sur « jamais » — même si un moteur distant est compilé.",
 
-  // Diagnostic
+  // Diagnostics
   "diag.section": "Diagnostic & données",
   "diag.exportReport": "Exporter le rapport de diagnostic",
   "diag.exportData": "Exporter mes données (configuration + dictionnaires)",
   "diag.downloadLink": "Télécharger le fichier",
   "diag.note": "Le rapport ne contient, par conception, ni caractère dicté, ni audio, ni contenu de presse-papiers. Relisez-le avant tout envoi.",
 
-  // Pied de page
+  // Footer
   "footer.text": "Voxli — 100 % local. Réglages avancés accessibles dans <code>%APPDATA%\\Voxli\\config.json</code>.",
 
-  // Dons (visibles mais discrets : pied de page permanent + encart périodique)
+  // Donations (visible but discreet: permanent header-bar link + periodic banner)
   "donate.bannerTitle": "Voxli est gratuit, local et sans publicité. Vous pouvez soutenir son développement :",
   "donate.kofi": "Offrir un café sur Ko-fi",
   "donate.paypal": "Don via PayPal.me",
   "donate.later": "Peut-être plus tard",
   "donate.forever": "Ne plus me le proposer",
 
-  // Notifications dynamiques
+  // Dynamic notifications
   "notice.modelStarted": "Téléchargement du modèle Whisper démarré (57 Mo)...",
   "notice.modelInterrupted": "Téléchargement interrompu ({reason}). Vous pouvez recommencer : il reprendra là où il s'était arrêté.",
   "notice.modelOk": "Modèle installé — pris en compte immédiatement.",
   "notice.networkError": "erreur réseau",
 
-  // Fenêtre de secours
+  // Rescue window
   "rescue.title": "Texte de secours",
   "rescue.intro": "Ce texte vient d'être dicté : il n'a pas pu être inséré dans l'application cible. Il reste sur votre machine, dans le tampon interne de Voxli — rien d'autre n'en a gardé trace.",
   "rescue.retry": "Réessayer",
@@ -199,10 +199,10 @@ export const dict: Record<string, string> = {
   "rescue.close": "Fermer",
   "rescue.emptyHint": "Aucun texte en attente. Si une transcription vient d'échouer, l'audio est conservé : appuyez sur « Réessayer ».",
 
-  // Pastille
+  // Pill
   "pill.legend": "Dictée",
 
-  // Noms de touches (légende de survol)
+  // Key names (hover legend)
   "key.Space": "Espace",
   "key.Control": "Ctrl",
   "key.Ctrl": "Ctrl",
@@ -214,7 +214,7 @@ export const dict: Record<string, string> = {
   "key.Enter": "Entrée",
   "key.Escape": "Échap",
 
-  // Libellés moteur
+  // Engine labels
   "engine.fake": "moteur factice (démo)",
   "engine.whisper.cpp": "whisper.cpp — 100 % local",
   "engine.parakeet": "Parakeet — 100 % local",

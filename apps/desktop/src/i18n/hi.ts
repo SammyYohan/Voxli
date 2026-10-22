@@ -1,6 +1,6 @@
-/** i18n Voxli v2 — Hindi (traduction de la référence anglaise ; relecture native bienvenue). */
+/** i18n Voxli v2 — HINDI (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
-  // Squelette / mode simple-avancé
+  // Skeleton / simple-advanced mode
   "app.tagline": "वॉयस डिक्टेशन, 100% लोकल। आपके शब्द इस मशीन से कभी बाहर नहीं जाते — जब तक आप स्वयं स्पष्ट रूप से न कहें।",
   "mode.advanced": "उन्नत मोड — हर सेटिंग",
   "mode.theme": "थीम",
@@ -8,13 +8,13 @@ export const dict: Record<string, string> = {
   "theme.light": "लाइट",
   "theme.dark": "डार्क",
 
-  // Onboarding 1-clic
+  // One-click onboarding
   "onboarding.title": "🚀 Voxli में आपका स्वागत है!",
   "onboarding.intro": "तुरंत, सहज और 100% लोकल वॉयस डिक्टेशन के लिए तैयार हैं?",
   "onboarding.desc": "अभी शुरू करने के लिए एक क्लिक में कॉम्पैक्ट Whisper मॉडल इंस्टॉल करें (57 MB, एक बार डाउनलोड, सब कुछ ऑफ़लाइन चलता है):",
   "onboarding.download": "⚡ Whisper डाउनलोड और चालू करें (1 क्लिक)",
 
-  // État
+  // Status
   "state.section": "स्थिति",
   "state.engineWord": "इंजन:",
   "audio.meterTitle": "माइक्रोफ़ोन स्तर — कभी भेजा नहीं जाता, कभी रिकॉर्ड नहीं होता",
@@ -26,7 +26,7 @@ export const dict: Record<string, string> = {
   "state.inserting": "इंसर्शन…",
   "state.recovery": "त्रुटि — पुनः प्रयास संभव",
 
-  // Général
+  // General
   "general.section": "सामान्य",
   "general.languageLabel": "डिक्टेशन भाषा (ऑटो = ऐप स्वयं पहचानता है)",
   "general.languageAuto": "स्वतः पहचान (सुझावित)",
@@ -38,7 +38,7 @@ export const dict: Record<string, string> = {
   "general.save": "सेटिंग्स सहेजें",
   "general.saved": "सहेजा गया — तुरंत लागू",
 
-  // Raccourcis
+  // Hotkeys
   "hk.section": "शॉर्टकट और ट्रिगरिंग",
   "hk.pushLabel": "डिक्टेशन",
   "hk.modeLabel": "ट्रिगर मोड",
@@ -49,7 +49,7 @@ export const dict: Record<string, string> = {
   "hk.showLabel": "आख़िरी टेक्स्ट दिखाएँ",
   "hk.note": "रिकॉर्डिंग पर तुरंत लागू (RF-01) — यदि कोई दूसरा ऐप इस शॉर्टकट को पहले से उपयोग कर रहा है, तो संदेश में बताया जाएगा।",
 
-  // Vocabulaire
+  // Vocabulary
   "vocab.section": "डिक्शनरी और कस्टम शब्दावली",
   "vocab.intro": "Voxli को अपने एक्रोनिम, नाम, कंपनियाँ या काम की भाषा सिखाएँ। बेहतरीन सटीकता के लिए ये शब्द Whisper में जोड़े जाते हैं (Magic Formatting)।",
   "vocab.profileLabel": "शब्दावली प्रोफ़ाइल:",
@@ -77,7 +77,7 @@ export const dict: Record<string, string> = {
   "audio.vadBalanced": "संतुलित (डिफ़ॉल्ट)",
   "audio.vadHigh": "सख़्त — शोर नज़रअंदाज़ करता है",
 
-  // Modèles
+  // Models
   "models.section": "वॉयस (पहचान इंजन)",
   "models.intro": "डाउनलोड <b>आपकी स्पष्ट कार्रवाई</b> है, और यही वह <b>एकमात्र</b> नेटवर्क कनेक्शन है जो Voxli इस स्क्रीन से खोलता है। हर फ़ाइल प्राप्ति के बाद जाँची जाती है; प्रमाण एक स्थानीय लॉग में रहता है।",
   "models.colModel": "मॉडल",
@@ -99,12 +99,12 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— लगभग {n} MB",
   "models.verifiedBadge": "प्रकाशित भरोसेमंद संदर्भ से मेल खाता है (docs/11 §3)",
 
-  // Moteurs (sélection, écran Voix)
+  // Engines (selection, Voice screen)
   "engines.auto": "स्वतः (सुझावित)",
   "engines.hintSdk": "उपलब्ध नहीं — SDK इस बिल्ड में शामिल नहीं है",
   "engines.effective": "सक्रिय इंजन: {engine}",
 
-  // Profils
+  // Profiles
   "profiles.section": "प्रोफ़ाइल और डिक्शनरी",
   "profiles.lockNotice": "कई प्रोफ़ाइल: Pro सुविधा। लाइसेंस के बिना केवल डिफ़ॉल्ट प्रोफ़ाइल लागू होती है — आपकी बाइंडिंग यहाँ दर्ज रहती है।",
   "profiles.codeAppsLabel": "“कोड” प्रोफ़ाइल — जुड़े ऐप (अल्पविराम से अलग)",
@@ -117,7 +117,7 @@ export const dict: Record<string, string> = {
   "profiles.note": "डिक्शनरी आपके बोले रूप वापस ठीक कर देती है (बोला गया “मेटलजी” फिर <i>मेटलर्जी</i> बन जाता है) — “कच्चे टेक्स्ट” मोड में भी: यह आपका सुधार है, प्रोडक्ट का दोबारा लेखन नहीं।",
   "dict.imported": "डिक्शनरी आयात हुई: {n} एंट्री।",
 
-  // Historique
+  // History
   "history.section": "इतिहास",
   "history.keepLabel": "ट्रांसक्रिप्ट रखें",
   "history.no": "नहीं — कुछ भी नहीं रखा जाता (डिफ़ॉल्ट व्यवहार)",
@@ -134,7 +134,7 @@ export const dict: Record<string, string> = {
   "history.delete": "हटाएँ",
   "history.empty": "कोई एंट्री नहीं",
 
-  // Licence
+  // License
   "license.section": "लाइसेंस",
   "license.active": "लाइसेंस सक्रिय — धारक: {name}।",
   "license.grace": "लाइसेंस समाप्त — ऑफ़लाइन रियायती अवधि: Pro सुविधाओं के {days} दिन बचे हैं, फिर मुफ़्त संस्करण।",
@@ -145,7 +145,7 @@ export const dict: Record<string, string> = {
   "license.importAction": "सत्यापित करें और आयात करें",
   "license.imported": "लाइसेंस आयात और सत्यापित हुआ।",
 
-  // Vie privée
+  // Privacy
   "privacy.simpleNote": "पूरी तरह लोकल: आपकी स्पष्ट सहमति के बिना कुछ भी इस मशीन से बाहर नहीं जाता। विवरण (सहमतियाँ, संदर्भ पढ़ना) उन्नत मोड में हैं।",
   "privacy.section": "प्राइवेसी",
   "privacy.strictLabel": "सख़्त लोकल मोड",
@@ -164,30 +164,30 @@ export const dict: Record<string, string> = {
   "privacy.contextEmpty": "संदर्भ नहीं पढ़ा गया",
   "privacy.note": "जब तक दोनों स्विच “कभी नहीं” पर रहें, कोई रिमोट सेवा सक्रिय नहीं रहती — भले ही कोई रिमोट इंजन कंपाइल हो।",
 
-  // Diagnostic
+  // Diagnostics
   "diag.section": "डायग्नोस्टिक्स और डेटा",
   "diag.exportReport": "डायग्नोस्टिक रिपोर्ट निर्यात करें",
   "diag.exportData": "मेरा डेटा निर्यात करें (कॉन्फ़िगरेशन + डिक्शनरी)",
   "diag.downloadLink": "फ़ाइल डाउनलोड करें",
   "diag.note": "डिज़ाइन के अनुसार रिपोर्ट में कोई डिक्टेटेड अक्षर, ऑडियो या क्लिपबोर्ड सामग्री नहीं होती। कुछ भेजने से पहले उसे पढ़ें।",
 
-  // Pied de page
+  // Footer
   "footer.text": "Voxli — 100% लोकल। उन्नत सेटिंग्स <code>%APPDATA%\\Voxli\\config.json</code> में हैं।",
 
-  // Dons (可见 mais discrets : pied de page permanent + encart périodique)
+  // Donations (visible but discreet: permanent header-bar link + periodic banner)
   "donate.bannerTitle": "Voxli मुफ़्त, लोकल और बिना विज्ञापन है। आप इसके विकास में सहयोग कर सकते हैं:",
   "donate.kofi": "Ko-fi पर एक कॉफ़ी ख़रीदें",
   "donate.paypal": "PayPal.me से दान करें",
   "donate.later": "शायद बाद में",
   "donate.forever": "दोबारा न पूछें",
 
-  // Notifications dynamiques
+  // Dynamic notifications
   "notice.modelStarted": "Whisper मॉडल डाउनलोड शुरू हुआ (57 MB)...",
   "notice.modelInterrupted": "डाउनलोड बाधित हुआ ({reason})। आप फिर कोशिश कर सकते हैं: यह वहीं से चलेगा जहाँ से रुका था।",
   "notice.modelOk": "मॉडल इंस्टॉल हुआ — तुरंत उपयोग में।",
   "notice.networkError": "नेटवर्क त्रुटि",
 
-  // Fenêtre de secours
+  // Rescue window
   "rescue.title": "बचाव टेक्स्ट",
   "rescue.intro": "यह टेक्स्ट अभी डिक्टेट हुआ था: लक्ष्य ऐप में डाला नहीं जा सका। यह आपकी मशीन पर, Voxli के आंतरिक बफ़र में रहता है — और कहीं उसका कोई निशान नहीं।",
   "rescue.retry": "फिर कोशिश करें",
@@ -196,10 +196,10 @@ export const dict: Record<string, string> = {
   "rescue.close": "बंद करें",
   "rescue.emptyHint": "कोई टेक्स्ट इंतज़ार में नहीं। अगर ट्रांसक्रिप्शन अभी नाकाम हुई है, तो ऑडियो रखा गया है: “फिर कोशिश करें” दबाएँ।",
 
-  // Pastille
+  // Pill
   "pill.legend": "डिक्टेशन",
 
-  // Noms de touches (légende de survol)
+  // Key names (hover legend)
   "key.Space": "स्पेस",
   "key.Control": "Ctrl",
   "key.Ctrl": "Ctrl",
@@ -211,7 +211,7 @@ export const dict: Record<string, string> = {
   "key.Enter": "Enter",
   "key.Escape": "Esc",
 
-  // Libellés moteur
+  // Engine labels
   "engine.fake": "डमी इंजन (डेमो)",
   "engine.whisper.cpp": "whisper.cpp — 100% लोकल",
   "engine.parakeet": "Parakeet — 100% लोकल",

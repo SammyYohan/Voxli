@@ -1,11 +1,11 @@
-﻿# Preuve d'absence de connexion sortante (RF-36, docs/06 §5.3).
+﻿# Proof of absence of outbound connection (RF-36, docs/06 §5.3).
 #
-# Pendant la fenêtre d'observation, relaie via Get-NetTCPConnection toutes les
-# sockets TCP du processus Voxli. Un seul ESTABLISHED sortant non local est un
-# échec. Le rapport craché à la fin sert de preuve pour la recette.
+# During the observation window, relays via Get-NetTCPConnection all the
+# TCP sockets of the Voxli process. A single non-local outbound ESTABLISHED is a
+# failure. The report dumped at the end serves as acceptance-test proof.
 #
-# Exécuter :
-#   lancez Voxli, puis :
+# Run:
+#   start Voxli, then:
 #   powershell -ExecutionPolicy Bypass -File scripts/prove-no-network.ps1 -Seconds 120
 
 param(
@@ -32,7 +32,7 @@ while ((Get-Date) -lt $end) {
         $seen++
         if ($c.State -eq 'Established') {
             $remote = $c.RemoteAddress
-            # localhost : boucle IPv4/IPv6 et même machine
+            # localhost: IPv4/IPv6 loopback and same machine
             $isLocal = $remote -in @('127.0.0.1', '::1')
             if (-not $isLocal) {
                 $line = '{0:HH:mm:ss} ESTABLISHED vers {1}:{2} (port local {3})' -f (Get-Date), $remote, $c.RemotePort, $c.LocalPort

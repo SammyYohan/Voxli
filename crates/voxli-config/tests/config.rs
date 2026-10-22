@@ -17,9 +17,9 @@ fn t_default_serializes_to_documented_schema() {
     assert!(raw.contains("\"compute\": \"auto\""));
 }
 
-/// Choix de calcul CPU/GPU/Duo (additif v5) : valeurs préservées, inconnue
-/// conservée telle quelle (le noyau la normalise en `auto` à l'usage,
-/// RF-29), aller-retour sérialisation intact.
+/// CPU/GPU/Duo compute choice (additive v5): values preserved, an unknown
+/// one kept as-is (the core normalizes it to `auto` at use time, RF-29),
+/// serialization round-trip intact.
 #[test]
 fn t_compute_round_trip_and_unknown() {
     for v in ["cpu", "gpu", "duo"] {
@@ -35,8 +35,8 @@ fn t_compute_round_trip_and_unknown() {
     assert_eq!(cfg.general.compute, "tpu");
 }
 
-/// v3 → v4 : mode de déclenchement implicite (`hold`, compatibilité P0) et
-/// consentements RF-36 absents → tout faux.
+/// v3 → v4: implicit trigger mode (`hold`, P0 compatibility) and absent
+/// RF-36 consents → all false.
 #[test]
 fn t_migration_from_schema_3() {
     let old = r#"{
@@ -52,7 +52,7 @@ fn t_migration_from_schema_3() {
     assert!(!cfg.privacy.consent.cloud_post);
 }
 
-/// Le mode de déclenchement est mémorisé entre les sessions (RF-02c).
+/// The trigger mode is persisted across sessions (RF-02c).
 #[test]
 fn t_trigger_mode_round_trip() {
     let mut cfg = Config::default();
@@ -73,7 +73,7 @@ fn t_round_trip() {
 
 #[test]
 fn t_migration_from_schema_1() {
-    // Fichier ancien : champ `cleanup`, pas de VAD explicite.
+    // Old file: `cleanup` field, no explicit VAD.
     let old = r#"{
         "schema": 1,
         "general": { "language": "fr", "cleanup": "none" },
@@ -94,9 +94,9 @@ fn t_migration_from_schema_2() {
     assert!(cfg.audio.vad.min_speech_ms >= 100);
 }
 
-/// v4 → v5 : la langue de l'interface apparaît (`uiLanguage`, défaut `fr`)
-/// tandis que `language` garde son rôle unique de langue d'écoute ASR (RF-17)
-/// — les deux réglages deviennent indépendants (i18n, docs/11).
+/// v4 → v5: the UI language appears (`uiLanguage`, default `fr`) while
+/// `language` keeps its single role as the ASR listening language (RF-17)
+/// — the two settings become independent (i18n, docs/11).
 #[test]
 fn t_migration_from_schema_4() {
     let old = r#"{
@@ -105,14 +105,14 @@ fn t_migration_from_schema_4() {
     }"#;
     let cfg = Config::from_json(old).unwrap();
     assert_eq!(cfg.schema, CURRENT_SCHEMA);
-    // La langue d'écoute existante est préservée ; l'interface retombe sur
-    // la valeur sûre (fr) tant que l'utilisateur n'a pas choisi.
+    // The existing listening language is preserved; the UI falls back to
+    // the safe value (fr) until the user chooses.
     assert_eq!(cfg.general.language, "en");
     assert_eq!(cfg.general.ui_language, "fr");
-    // Choix de calcul additif v5 : valeur sûre « auto » sur fichier ancien.
+    // Additive v5 compute choice: safe value "auto" on an old file.
     assert_eq!(cfg.general.compute, "auto");
 
-    // Un `uiLanguage` déjà présent n'est jamais écrasé par la migration.
+    // A `uiLanguage` already present is never overwritten by the migration.
     let already = r#"{
         "schema": 4,
         "general": { "language": "fr", "uiLanguage": "en" }
@@ -120,7 +120,7 @@ fn t_migration_from_schema_4() {
     let cfg = Config::from_json(already).unwrap();
     assert_eq!(cfg.general.ui_language, "en");
 
-    // La paire fait un aller-retour sérialisation intact (round-trip).
+    // The pair survives an intact serialization round-trip.
     let raw = serde_json::to_string(&cfg).unwrap();
     let back: Config = serde_json::from_str(&raw).unwrap();
     assert_eq!(back.general.ui_language, "en");
@@ -161,8 +161,7 @@ fn t_save_and_load_file() {
 
 #[test]
 fn t_default_excluded_apps_never_empty() {
-    // RF-29 : la liste d'exclusion par défaut protège les gestionnaires de
-    // mots de passe.
+    // RF-29: the default exclusion list protects password managers.
     assert!(default_excluded_apps().len() >= 3);
     assert!(default_excluded_apps()
         .iter()

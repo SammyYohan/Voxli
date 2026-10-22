@@ -1,11 +1,11 @@
-//! Édition de liens vers le SDK NeMo-Speech.cpp quand la feature `nemo` est
-//! active. Localisation : `$NEMO_SPEECH_PREFIX` ou l'installation par défaut
-//! de l'installeur officiel (`%LOCALAPPDATA%\Programs\NeMoSpeech`).
+//! Linking against the NeMo-Speech.cpp SDK when the `nemo` feature is
+//! active. Location: `$NEMO_SPEECH_PREFIX` or the official installer's
+//! default location (`%LOCALAPPDATA%\Programs\NeMoSpeech`).
 //!
-//! `build.rs` est exécuté par cargo (« pas de réseau, pas unsafe ») : ici la
-//! seule action est de décrire au linker où trouver `nemo_speech_asr_c.lib`
-//! et de copier les DLL du SDK à côté de l'exécutable final, pour que
-//! `cargo run` / `cargo test` fonctionnent sans manipulation du PATH.
+//! `build.rs` is executed by cargo ("no network, no unsafe"): its only
+//! actions are to tell the linker where to find `nemo_speech_asr_c.lib`
+//! and to copy the SDK DLLs next to the final executable, so that
+//! `cargo run` / `cargo test` work without PATH manipulation.
 
 use std::env;
 use std::path::PathBuf;
@@ -43,7 +43,7 @@ fn main() {
     );
     println!("cargo:rustc-link-lib=dylib=nemo_speech_asr_c");
 
-    // DLL d'exécution à côté de la cible : ggml/llama + ABI C + runtime MSVC.
+    // Runtime DLLs next to the target: ggml/llama + C ABI + MSVC runtime.
     let bin = prefix.join("bin");
     let target = env::var("CARGO_TARGET_DIR")
         .map(PathBuf::from)

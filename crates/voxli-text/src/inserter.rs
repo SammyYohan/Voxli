@@ -1,9 +1,9 @@
-﻿//! Exécuteur d'insertion — implémente le trait `Inserter` du noyau.
+﻿//! Insertion executor — implements the kernel's `Inserter` trait.
 //!
-//! Exécute le plan niveau par niveau ; chaque échec indique au niveau
-//! suivant *pourquoi* il a échoué (règle de conception docs/04 §4) et le
-//! motif est consigné localement **sans contenu** (RF-34) pour mesurer le
-//! taux de repli par application (hypothèse H3).
+//! Runs the plan level by level; every failure tells the next level *why*
+//! it failed (design rule docs/04 §4) and the reason is logged locally
+//! **without content** (RF-34) to measure the per-app fallback rate
+//! (hypothesis H3).
 
 use voxli_core::{
     FocusSnapshot, InsertError, InsertLevel, InsertPlan, InsertReport, Inserter, Profile,
@@ -14,23 +14,22 @@ use voxli_win::uia::Uia;
 
 pub struct WindowsInserter {
     uia: Option<Uia>,
-    /// Temporisation de maintien effectivement appliquée au niveau 2 : le
-    /// thread de restauration (`paste_with_restore`) attend ce délai avant
-    /// de remettre l'ancien presse-papiers.
+    /// Hold timeout actually applied at level 2: the restore thread
+    /// (`paste_with_restore`) waits this long before restoring the old
+    /// clipboard.
     pub hold_ms_default: u32,
-    /// Réglé depuis la config (worker.rs) mais **non lu aujourd'hui** : la
-    /// temporisation « applications lentes » (Outlook, RDP) supposerait de
-    /// choisir le maintien selon l'application identifiée au moment de
-    /// l'insertion, ce que `try_level` ne fait pas encore. Impact : délai
-    /// uniforme `hold_ms_default` partout pour l'instant. Câblage suivi via
-    /// docs/09 (M2).
+    /// Set from the config (worker.rs) but **read nowhere today**: the
+    /// "slow apps" timeout (Outlook, RDP) would suppose choosing the hold
+    /// based on the application identified at insertion time, which
+    /// `try_level` does not do yet. Impact: a uniform `hold_ms_default`
+    /// delay everywhere for now. Wiring tracked via docs/09 (M2).
     pub hold_ms_slow_apps: u32,
-    /// Idem, bureau distant.
+    /// Same, for remote desktop.
     pub hold_ms_remote_desktop: u32,
-    /// Réglé mais **sans effet réversible** : les drapeaux d'hygiène RF-30b
-    /// (`CanIncludeInClipboardHistory` etc.) sont posés inconditionnellement
-    /// par `set_text_excluding_history` dans voxli-win. Désactiver ce
-    /// réglage exigerait un paramètre au niveau bas.
+    /// Set but **irreversibly without effect**: the RF-30b hygiene flags
+    /// (`CanIncludeInClipboardHistory` etc.) are set unconditionally by
+    /// `set_text_excluding_history` in voxli-win. Turning this setting off
+    /// would require a low-level parameter.
     pub exclude_from_clipboard_history: bool,
 }
 
@@ -45,8 +44,7 @@ impl WindowsInserter {
         }
     }
 
-    /// Exécute un niveau ; retourne le motif d'échec (code court) le cas
-    /// échéant.
+    /// Runs one level; returns the failure reason (short code), if any.
     fn try_level(&self, level: InsertLevel, text: &str) -> Result<(), &'static str> {
         match level {
             InsertLevel::ValuePattern => {
@@ -54,12 +52,13 @@ impl WindowsInserter {
                     return Err("uia-indisponible");
                 };
                 let element = uia.focused_element().map_err(|_| "focus-illisible")?;
-                // `SetValue` **remplace la valeur entière** du contrôle
-                // (API Windows) : n'écrire QUE dans un champ vide, sinon le
-                // texte dicté détruirait le texte déjà posé (bug constaté).
-                // Champ non vide ou illisible → repli immédiat au niveau
-                // suivant (presse-papiers : Ctrl+V insère au curseur, sans
-                // effacement). Codes consignés sans contenu (RF-34).
+                // `SetValue` **replaces the control's whole value** (Windows
+                // API): write ONLY into an empty field, otherwise the
+                // dictated text would destroy the text already there
+                // (observed bug). Non-empty or unreadable field → immediate
+                // fallback to the next level (clipboard: Ctrl+V inserts at
+                // the cursor, without erasing). Codes logged without content
+                // (RF-34).
                 let current = uia
                     .current_value(&element)
                     .map_err(|_| "valeur-illisible")?;
@@ -70,8 +69,8 @@ impl WindowsInserter {
                     .map_err(|_| "setvalue-ou-relecture-echec")
             }
             InsertLevel::Clipboard => {
-                // Hygiène complète : sauvegarde, formats d'exclusion,
-                // Ctrl+V, restauration différée (RF-30).
+                // Full hygiene: backup, exclusion formats, Ctrl+V, deferred
+                // restore (RF-30).
                 ClipboardGuard::paste_with_restore(text, self.hold_ms_default)
                     .map(|_| ())
                     .map_err(|_| "presse-papiers-echec")?;
@@ -91,7 +90,7 @@ impl Default for WindowsInserter {
 
 impl Inserter for WindowsInserter {
     fn plan(&self, target: &FocusSnapshot, profile: &Profile) -> InsertPlan {
-        // Fonction pure — testée hors Windows (plan.rs).
+        // Pure function — tested outside Windows (plan.rs).
         crate::plan::plan_insertion(target, profile)
     }
 
@@ -115,8 +114,8 @@ impl Inserter for WindowsInserter {
                 }
             }
         }
-        // Tous les niveaux ont échoué : le texte reste au tampon du noyau
-        // (RF-22) et la fenêtre de secours prend le relais (RF-31).
+        // Every level failed: the text stays in the kernel's buffer
+        // (RF-22) and the rescue window takes over (RF-31).
         Err(InsertError::AllLevelsFailed(
             report
                 .attempts

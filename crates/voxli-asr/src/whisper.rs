@@ -1,15 +1,15 @@
-//! Moteur whisper.cpp via `whisper-rs` (ADR-03) — feature `whisper`.
+//! whisper.cpp engine via `whisper-rs` (ADR-03) — feature `whisper`.
 //!
-//! Paramètres anti-hallucination (RF-18) et amorce de vocabulaire (RF-24).
-//! Le modèle est chargé depuis le disque ; son empreinte SHA-256 est vérifiée
-//! à l'installation (voxli-diagnostics consigne le chargement, jamais le
-//! contenu des dictées).
+//! Anti-hallucination settings (RF-18) and vocabulary bootstrap (RF-24).
+//! The model is loaded from disk; its SHA-256 fingerprint is verified at
+//! install time (voxli-diagnostics logs the load, never the content of
+//! dictations).
 //!
-//! Choix de calcul CPU/GPU (`load_with`) : un build sans backend accéléré
-//! reste CPU (valeur par défaut du compilé) ; un build avec backend
-//! (Vulkan/CUDA, feature opt-in `whisper-gpu`) utilise le GPU selon le
-//! choix — repli interne de ggml sur CPU si l'initialisation échoue
-//! (pilote absent/occupé), jamais d'échec muet.
+//! CPU/GPU compute choice (`load_with`): a build without an accelerated
+//! backend stays on CPU (the compiled default); a build with a backend
+//! (Vulkan/CUDA, opt-in feature `whisper-gpu`) uses the GPU according to
+//! the choice — internal ggml fallback to CPU if initialization fails
+//! (missing/busy driver), never a silent failure.
 
 use std::path::Path;
 use std::time::Duration;
@@ -18,9 +18,9 @@ use voxli_core::{
     AsrError, AudioBuffer, EngineId, TranscribeOptions, Transcript, Transcriptor, SAMPLE_RATE_HZ,
 };
 
-/// Motifs d'hallucination connus de Whisper sur silence/bruit (RF-18). La
-/// liste est filtrée après transcription ; les motifs s'étendent avec les
-/// campagnes de mesure (docs/06 §5.1).
+/// Hallucination patterns Whisper is known to produce on silence/noise
+/// (RF-18). The list is filtered after transcription; patterns grow with
+/// the measurement campaigns (docs/06 §5.1).
 const HALLUCINATION_PATTERNS: &[&str] = &[
     "merci d'avoir regardé",
     "merci d'avoir écouté",
@@ -35,32 +35,32 @@ const HALLUCINATION_PATTERNS: &[&str] = &[
 pub struct WhisperCppEngine {
     ctx: whisper_rs::WhisperContext,
     model_id: String,
-    /// Choix de calcul demandé au chargement (`auto`|`cpu`|`gpu`), gardé
-    /// pour l'observabilité (le journal du noyau consigne le DEMANDÉ ;
-    /// le backend réellement utilisé dépend du build et des pilotes).
+    /// Compute choice requested at load time (`auto`|`cpu`|`gpu`), kept
+    /// for observability (the core log records the REQUESTED choice;
+    /// the backend actually used depends on the build and the drivers).
     compute: String,
 }
 
-// whisper_rs::WhisperContext est Send+Sync.
+// whisper_rs::WhisperContext is Send+Sync.
 unsafe impl Send for WhisperCppEngine {}
 unsafe impl Sync for WhisperCppEngine {}
 
 impl WhisperCppEngine {
-    /// Charge un modèle ggml (ex. `ggml-base-q5_1.bin`). Vérifie l'existence
-    /// AVANT de contacter le moteur — aucun échec silencieux (RF-20).
-    /// Choix de calcul par défaut : `auto` (GPU quand le build en a un).
+    /// Loads a ggml model (e.g. `ggml-base-q5_1.bin`). Verifies existence
+    /// BEFORE touching the engine — no silent failure (RF-20).
+    /// Default compute choice: `auto` (GPU when the build bundles one).
     pub fn load(model_path: &Path) -> Result<Self, AsrError> {
         Self::load_with(model_path, "auto")
     }
 
-    /// Charge avec un choix de calcul explicite :
-    /// - `cpu` : whisper.cpp ne MONTERA jamais de GPU, même si le build en
-    ///   embarque un (sémantique : le souhait explicite n'est pas contourné) ;
-    /// - `gpu` : accélérateur attendu — l'utilisateur a vu l'état du build ;
-    /// - `auto`/inconnu/vide : `use_gpu` reste la valeur par défaut du
-    ///   compilé (GPU quand un backend est embarqué, CPU sinon) — si
-    ///   l'initialisation GPU échoue (pilotes, machine occupée), ggml replie
-    ///   LUI-MÊME sur le CPU : jamais d'échec muet de sortie.
+    /// Loads with an explicit compute choice:
+    /// - `cpu`: whisper.cpp will never bring up a GPU, even if the build
+    ///   bundles one (semantics: an explicit wish is not bypassed);
+    /// - `gpu`: accelerator expected — the user has seen the build state;
+    /// - `auto`/unknown/empty: `use_gpu` keeps the compiled default
+    ///   (GPU when a backend is bundled, CPU otherwise) — if GPU
+    ///   initialization fails (drivers, busy machine), ggml falls back
+    ///   on its own to the CPU: never a silent failure handed out.
     pub fn load_with(model_path: &Path, compute: &str) -> Result<Self, AsrError> {
         if !model_path.is_file() {
             return Err(AsrError::ModelMissing(model_path.display().to_string()));
@@ -87,17 +87,19 @@ impl WhisperCppEngine {
         })
     }
 
-    /// Choix de calcul DEMANDÉ au chargement (observabilité ; le réel
-    /// dépend du build et des pilotes — jamais affirmer sans mesure).
+    /// Compute choice REQUESTED at load time (observability; the actual
+    /// one depends on the build and the drivers — never claim without
+    /// measuring).
     pub fn compute_choice(&self) -> &str {
         &self.compute
     }
 
-    /// Filtre les hallucinations de silence (RF-18) — retourne `None` si le
-    /// texte ne doit pas être inséré. Ancrage en DÉBUT de texte uniquement :
-    /// un motif isolé au milieu d'une dictée légitime (« bye-bye » en fin de
-    /// message) ne doit jamais effacer le tout. Un motif de tête est une
-    /// hallucination seulement si le résidu ne contient plus rien de verbal.
+    /// Filters silence hallucinations (RF-18) — returns `None` when the
+    /// text must not be inserted. Anchoring at the START of the text only:
+    /// an isolated pattern in the middle of a legitimate dictation
+    /// ("bye-bye" at the end of a message) must never wipe it all. A
+    /// leading pattern is a hallucination only when the residue no longer
+    /// holds anything verbal.
     pub fn filter_hallucination(text: &str) -> Option<String> {
         let trimmed = text.trim();
         let mut lower = trimmed.to_lowercase();
@@ -111,8 +113,8 @@ impl WhisperCppEngine {
             let Some(pattern) = matched else {
                 break;
             };
-            // Résidu après le motif : la ponctuation/espaces qui suit n'est
-            // pas de la parole (« sous-titres, » → vide).
+            // Residue after the pattern: the punctuation/spaces that follows
+            // is not speech ("sous-titres," → empty).
             lower = lower[pattern.len()..]
                 .trim()
                 .trim_start_matches(|c: char| !c.is_alphanumeric())
@@ -128,10 +130,11 @@ impl WhisperCppEngine {
 
 impl Transcriptor for WhisperCppEngine {
     fn warmup(&self) -> Result<(), AsrError> {
-        // whisper.cpp compile son graphe au premier appel : un warm-up complet
-        // (RF-19) passe par une inférence réelle sur 100 ms de silence ; le
-        // résultat est jeté (l'audio est un silence, rien n'est conservé ni
-        // inséré, RF-18). Un échec ici révèle le problème AVANT une dictée.
+        // whisper.cpp compiles its graph on the first call: full warm-up
+        // (RF-19) goes through a real inference on 100 ms of silence; the
+        // result is discarded (the audio is silence, nothing is kept nor
+        // inserted, RF-18). A failure here reveals the problem BEFORE a
+        // dictation.
         let silence = AudioBuffer::new(vec![0.0; (SAMPLE_RATE_HZ / 10) as usize], SAMPLE_RATE_HZ);
         let opts = TranscribeOptions {
             language: None,
@@ -154,11 +157,11 @@ impl Transcriptor for WhisperCppEngine {
 
         let mut params =
             whisper_rs::FullParams::new(whisper_rs::SamplingStrategy::Greedy { best_of: 1 });
-        // RF-17 : le réglage utilisateur prime ; sinon défaut moteur = 4
-        // threads bornés au parallélisme disponible. Sans `set_threads`
-        // explicite, whisper.cpp reste à un seul thread (constat : 32 s
-        // d'inférence pour 13 s d'audio sur un i5-10210U — journal latency
-        // du 19/10/2026).
+        // RF-17: the user setting wins; otherwise the engine default is 4
+        // threads capped at available parallelism. Without an explicit
+        // `set_threads`, whisper.cpp stays on a single thread (observed: 32 s
+        // of inference for 13 s of audio on an i5-10210U — latency journal
+        // entry of 19/10/2026).
         let n_threads = opts.threads.map(|t| t.max(1) as i32).unwrap_or_else(|| {
             let cores = std::thread::available_parallelism()
                 .map(|n| n.get() as i32)
@@ -198,10 +201,10 @@ impl Transcriptor for WhisperCppEngine {
         }
 
         let filtered = Self::filter_hallucination(&text);
-        let duration_ms = ((t1 - t0).max(0) / 10) as u64; // unités de 10 ms
+        let duration_ms = ((t1 - t0).max(0) / 10) as u64; // units of 10 ms
         Ok(Transcript {
             text: filtered.unwrap_or_default(),
-            confidence: 0.0, // moyenne logprob exposée en P1 (RF-27)
+            confidence: 0.0, // logprob average exposed in P1 (RF-27)
             duration: Duration::from_millis(duration_ms),
             engine: EngineId::WhisperCpp,
             model: Some(self.model_id.clone()),
@@ -217,22 +220,23 @@ impl Transcriptor for WhisperCppEngine {
 mod filter_tests {
     use super::WhisperCppEngine;
 
-    // RF-18 : le filtre ancre les motifs en TÊTE (hallucinations de
-    // silence/fond) — un même motif au milieu ou en fin de dictée légitime
-    // ne doit jamais effacer le tout (« À demain, bye-bye »).
+    // RF-18: the filter anchors patterns at the HEAD (hallucinations of
+    // silence/background) — the same pattern in the middle or at the end
+    // of a legitimate dictation must never wipe it all
+    // ("À demain, bye-bye").
     #[test]
     fn motifes_tete_sans_residu_verbal_alpha() {
-        // Résidu uniquement ponctuation/espaces → hallucination (None).
+        // Residue is punctuation/whitespace only → hallucination (None).
         assert!(WhisperCppEngine::filter_hallucination("Merci d'avoir regardé !").is_none());
         assert!(WhisperCppEngine::filter_hallucination("bye-bye.").is_none());
         assert!(WhisperCppEngine::filter_hallucination("  Sous-titres .  ").is_none());
         assert!(WhisperCppEngine::filter_hallucination("BYE-BYE").is_none());
-        // Plusieurs motifs successifs en tête.
+        // Several successive leading patterns.
         assert!(WhisperCppEngine::filter_hallucination(
             "Merci d'avoir regardé. Merci d'avoir écouté."
         )
         .is_none());
-        // Erreur typique de Whisper sur silence : motif + « à nous… » (RF-18).
+        // Typical Whisper mistake on silence: pattern + "à nous…" (RF-18).
         assert!(WhisperCppEngine::filter_hallucination(
             "Merci d'avoir regardé — à nous dans la prochaine vidéo !"
         )
@@ -253,7 +257,8 @@ mod filter_tests {
 
     #[test]
     fn motif_tete_avec_residu_verbal_est_conserve() {
-        // Résidu verbal après le motif de tête → dictée légitime, conservée.
+        // Verbal residue after the leading pattern → legitimate dictation,
+        // kept.
         assert_eq!(
             WhisperCppEngine::filter_hallucination("Sous-titrage du dialogue, s'il te plaît"),
             Some("Sous-titrage du dialogue, s'il te plaît".to_string())

@@ -1,7 +1,7 @@
-//! Outil d'émission de licences Voxli (RF-38) — binaire développement.
+//! Voxli license-issuing tool (RF-38) — development binary.
 //!
-//! La paire de clés vit hors dépôt (`.keys/license-keypair.json`, ignoré
-//! par git). Usages :
+//! The key pair lives outside the repo (`.keys/license-keypair.json`,
+//! git-ignored). Usages:
 //!
 //! ```text
 //! cargo run -p voxli-license --bin issue-license -- --public-key
@@ -10,8 +10,8 @@
 //!     --expires 2030-12-31 --out .keys/exemple.license
 //! ```
 //!
-//! En production, la paire n'est JAMAIS sur la machine de build : ce binaire
-//! est un outil de développement, pas un composant embarqué.
+//! In production, the pair is NEVER on the build machine: this binary is a
+//! development tool, not an embedded component.
 
 use std::path::PathBuf;
 
@@ -79,7 +79,7 @@ fn main() {
         std::process::exit(2);
     }
 
-    // Cohérence RF-38 : aucune fonctionnalité inconnue.
+    // RF-38 consistency: no unknown feature.
     for f in &features {
         if !PURCHASABLE_FEATURES.contains(&f.as_str()) && f != "all" {
             eprintln!(
@@ -104,9 +104,9 @@ fn main() {
     } else {
         Some(format!("{expires}T23:59:59Z"))
     };
-    // Sièges : option absente → illimité (`None`). Présente mais non
-    // numérique ou nulle → refus explicite (jamais une licence illimitée
-    // produite par une faute de frappe).
+    // Seats: option absent → unlimited (`None`). Present but
+    // non-numeric or zero → explicit refusal (never an unlimited license
+    // produced by a typo).
     let seats_opt = if seats.is_empty() {
         None
     } else {
@@ -164,7 +164,7 @@ fn load_or_create(path: &PathBuf) -> KeypairFile {
             }
         }
     }
-    // Génération : 32 octets de qualité cryptographique (OS RNG).
+    // Generation: 32 bytes of cryptographic quality (OS RNG).
     let mut seed = [0u8; 32];
     getrandom::fill(&mut seed).expect("entropie système indisponible");
     let key = SigningKey::from_bytes(&seed);
@@ -186,7 +186,8 @@ fn load_or_create(path: &PathBuf) -> KeypairFile {
 }
 
 fn rfc3339_now() -> String {
-    // Horodatage UTC à la seconde, sans dépendance de fuseau : systime époq.
+    // UTC timestamp at second precision, no timezone dependency:
+    // systemtime epoch.
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()

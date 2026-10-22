@@ -1,23 +1,23 @@
-﻿//! Plan d'insertion — **fonction pure** (docs/05 §2.4), traduction directe du
-//! diagramme de décision de `docs/04` §4 :
+﻿//! Insertion planner — **pure function** (docs/05 §2.4), direct translation
+//! of the `docs/04` §4 decision diagram:
 //!
 //! ```text
-//! Cible valide ? ── non → fenêtre de secours
-//! Champ sensible (IsPassword / app exclue / fenêtre élevée) ? ── oui → refus
-//! ValuePattern disponible et éditable ? ── oui → niveau 1, puis repli
-//! Profil presse-papiers → niveau 2 puis 3
-//! Profil frappe directe → niveau 3 puis 2
-//! Toujours : niveau 4 (secours) en dernier recours
+//! Valid target? ── no → rescue window
+//! Sensitive field (IsPassword / excluded app / elevated window)? ── yes → refuse
+//! ValuePattern available and editable? ── yes → level 1, then fallback
+//! Clipboard profile → level 2 then 3
+//! Direct-typing profile → level 3 then 2
+//! Always: level 4 (rescue) as last resort
 //! ```
 
 use voxli_core::{FocusSnapshot, InsertLevel, InsertPlan, InsertionPolicy, Profile, RefuseReason};
 
 pub fn plan_insertion(target: &FocusSnapshot, profile: &Profile) -> InsertPlan {
-    // Fenêtre cible fermée ou perdue (RF-32) : secours immédiat.
+    // Target window closed or gone (RF-32): immediate rescue.
     if !target.valid {
         return InsertPlan::refused(RefuseReason::TargetUnavailable);
     }
-    // Fenêtre élevée (UIPI) ou champ de mot de passe (RF-29) : refus neutre.
+    // Elevated window (UIPI) or password field (RF-29): neutral refusal.
     if target.elevated {
         return InsertPlan::refused(RefuseReason::SensitiveField);
     }
@@ -26,8 +26,8 @@ pub fn plan_insertion(target: &FocusSnapshot, profile: &Profile) -> InsertPlan {
     }
 
     let mut levels: Vec<InsertLevel> = Vec::with_capacity(4);
-    // Niveau 1 : contrôle simple, éditable, non sensible (contrainte API
-    // Windows : ValuePattern = mono-ligne uniquement).
+    // Level 1: simple control, editable, non-sensitive (Windows API
+    // constraint: ValuePattern = single-line only).
     if target.caps.value_pattern_writable && target.caps.editable {
         levels.push(InsertLevel::ValuePattern);
     }
@@ -41,7 +41,7 @@ pub fn plan_insertion(target: &FocusSnapshot, profile: &Profile) -> InsertPlan {
             levels.push(InsertLevel::Clipboard);
         }
     }
-    // Niveau 4 : aucun texte n'est jamais perdu (RF-31).
+    // Level 4: no text is ever lost (RF-31).
     levels.push(InsertLevel::Rescue);
     InsertPlan::ordered(levels)
 }
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn t_simple_control_uses_value_pattern_first() {
-        // Ligne 1 de la matrice : Notepad, contrôle simple → niveau 1.
+        // Matrix line 1: Notepad, simple control → level 1.
         let plan = plan_insertion(&snap(caps(true, true, false, false)), &Profile::default());
         assert_eq!(plan.levels.first(), Some(&InsertLevel::ValuePattern));
         assert_eq!(plan.levels.last(), Some(&InsertLevel::Rescue));
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn t_rich_editor_goes_to_clipboard() {
-        // Lignes 2-3 : Word/Outlook, édition riche → presse-papiers.
+        // Lines 2-3: Word/Outlook, rich editing → clipboard.
         let plan = plan_insertion(&snap(caps(false, true, false, true)), &Profile::default());
         assert_eq!(plan.levels.first(), Some(&InsertLevel::Clipboard));
         assert_eq!(plan.levels.get(1), Some(&InsertLevel::SendInput));
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn t_code_profile_types_first() {
-        // Ligne 9 : VS Code, profil verbatim → frappe directe d'abord.
+        // Line 9: VS Code, verbatim profile → direct typing first.
         let profile = Profile {
             insertion: InsertionPolicy::TypingFirst,
             ..Default::default()
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn t_rescue_always_last() {
-        // Quel que soit le chemin, le niveau 4 termine la liste.
+        // Whatever the path, level 4 always ends the list.
         for vc in [true, false] {
             let plan = plan_insertion(&snap(caps(vc, true, false, false)), &Profile::default());
             assert_eq!(plan.levels.last(), Some(&InsertLevel::Rescue));
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn t_full_cascade_order_documented() {
-        // Ordre canonique docs/04 §4 pour un champ simple profil défaut.
+        // Canonical docs/04 §4 order for a simple field with the default profile.
         let plan = plan_insertion(&snap(caps(true, true, false, false)), &Profile::default());
         assert_eq!(
             plan.levels,

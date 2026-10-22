@@ -1,15 +1,15 @@
-﻿//! UI Automation — détection de champ sensible et insertion niveau 1
+﻿//! UI Automation — sensitive-field detection and level 1 insertion
 //! (ADR-06, RF-28, RF-29).
 //!
-//! Faits Windows (docs/03 §5) :
-//! - `ValuePattern.SetValue` ne vaut que pour les contrôles simples ; les
-//!   contrôles multilignes n'exposent pas le motif, et `TextPattern` ne
-//!   permet pas d'écrire — d'où la cascade ;
-//! - `CurrentIsPassword` est la seule détection fiable d'un champ de mot de
-//!   passe : aucune insertion ni lecture dans ces champs (RF-29).
+//! Windows facts (docs/03 §5):
+//! - `ValuePattern.SetValue` only applies to simple controls; multiline
+//!   controls do not expose the pattern, and `TextPattern` cannot
+//!   write — hence the cascade;
+//! - `CurrentIsPassword` is the only reliable detection of a password
+//!   field: no insertion and no read in those fields (RF-29).
 //!
-//! Tout le COM vit ici, sur le thread d'injection (initialisation COM par
-//! thread). Les autres modules ne voient que `probe`/`set_value_focused`.
+//! All COM lives here, on the injection thread (COM initialization is
+//! per-thread). The other modules only go through `probe`/`set_value`.
 
 use windows::core::BSTR;
 use windows::Win32::System::Com::{
@@ -20,7 +20,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_ValuePatternId,
 };
 
-/// Capacités lues par UIA pour le `FocusSnapshot` (voxli-core).
+/// Capabilities read through UIA for the `FocusSnapshot` (voxli-core).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct UiCapabilities {
     pub is_password: bool,
@@ -32,17 +32,17 @@ pub struct Uia {
     automation: IUIAutomation,
 }
 
-// Les interfaces UIA sont à thread cloisonné (STA) mais la coclasse accepte
-// un client MTA ; l'orchestrateur garde tout usage sur le thread d'injection.
-unsafe impl Send for Uia {}
-unsafe impl Sync for Uia {}
+// NOTE: `Uia` is deliberately NOT Send/Sync. COM is initialized STA
+// (COINIT_APARTMENTTHREADED) below; crossing apartments would violate COM
+// threading rules. Every use site constructs its own `Uia` on its own
+// thread (foreground probe, insertion cascade) and drops it there.
 
 impl Uia {
-    /// Initialise COM pour le thread courant et crée l'automate. À appeler une
-    /// fois par thread d'injection.
+    /// Initializes COM for the current thread and creates the automation
+    /// object. Call once per injection thread.
     pub fn new() -> Result<Self, String> {
         unsafe {
-            // S_FALSE (déjà initialisé) est un succès ; pas d'erreur fatale.
+            // S_FALSE (already initialized) is a success; not a fatal error.
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             let automation: IUIAutomation =
                 CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
@@ -51,7 +51,7 @@ impl Uia {
         }
     }
 
-    /// Élément focalisé (préféré : c'est exactement la cible de frappe).
+    /// Focused element (preferred: it is exactly the typing target).
     pub fn focused_element(&self) -> Result<IUIAutomationElement, String> {
         unsafe {
             self.automation
@@ -60,7 +60,7 @@ impl Uia {
         }
     }
 
-    /// Élément par handle de fenêtre (cible mémorisée, RF-32).
+    /// Element by window handle (remembered target, RF-32).
     pub fn element_from_hwnd(&self, hwnd: isize) -> Result<IUIAutomationElement, String> {
         unsafe {
             self.automation
@@ -69,8 +69,8 @@ impl Uia {
         }
     }
 
-    /// Lit les capacités d'un élément : mot de passe ? éditable ? ValuePattern
-    /// disponible ? (RF-28, RF-29.)
+    /// Reads an element's capabilities: password? editable? ValuePattern
+    /// available? (RF-28, RF-29.)
     pub fn probe(&self, element: &IUIAutomationElement) -> UiCapabilities {
         unsafe {
             let is_password = element
@@ -95,31 +95,31 @@ impl Uia {
         element: &IUIAutomationElement,
     ) -> Result<IUIAutomationValuePattern, String> {
         unsafe {
-            // GetCurrentPatternAs fait le QueryInterface du motif directement.
+            // GetCurrentPatternAs performs the pattern's QueryInterface directly.
             element
                 .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
                 .map_err(|e| e.to_string())
         }
     }
 
-    /// Lit la valeur courante du contrôle via `ValuePattern` — préalable
-    /// obligatoire à `set_value` : « SetValue » **remplace la valeur
-    /// entière** ; écrire dans un champ non vide détruirait son contenu
-    /// (RF-28 durci : la dictée ne détruit jamais le texte existant).
+    /// Reads the control's current value via `ValuePattern` — mandatory
+    /// precondition to `set_value`: "SetValue" **replaces the entire
+    /// value**; writing into a non-empty field would destroy its content
+    /// (hardened RF-28: the dictation never destroys existing text).
     pub fn current_value(&self, element: &IUIAutomationElement) -> Result<String, String> {
         let pattern = self.value_pattern(element)?;
         let v = unsafe { pattern.CurrentValue().map_err(|e| e.to_string())? };
         Ok(v.to_string())
     }
 
-    /// Écrit une valeur via `ValuePattern` puis **relit** pour vérifier
-    /// (RF-28 : « SetValue puis vérification de lecture »).
+    /// Writes a value via `ValuePattern` then **reads it back** to verify
+    /// (RF-28: "SetValue then read-back verification").
     pub fn set_value(&self, element: &IUIAutomationElement, text: &str) -> Result<(), String> {
         let pattern = self.value_pattern(element)?;
         let bstr = BSTR::from(text);
         unsafe {
             pattern.SetValue(&bstr).map_err(|e| e.to_string())?;
-            // Vérification de relecture.
+            // Read-back verification.
             let read_back = pattern.CurrentValue().map_err(|e| e.to_string())?;
             if read_back != text {
                 return Err("relecture différente du texte posé".into());

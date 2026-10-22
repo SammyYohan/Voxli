@@ -1,6 +1,6 @@
-/** i18n Voxli v2 — ALLEMAND (Übersetzung der englischen Referenz; muttersprachliche Korrektur willkommen). */
+/** i18n Voxli v2 — GERMAN (translation of the English reference; native review welcome). */
 export const dict: Record<string, string> = {
-  // Squelette / mode simple-avancé
+  // Skeleton / simple-advanced mode
   "app.tagline": "Sprachdiktat, 100 % lokal. Ihre Worte verlassen diesen Rechner nie — es sei denn, Sie fordern es ausdrücklich.",
   "mode.advanced": "Erweiterter Modus — alle Einstellungen",
   "mode.theme": "Design",
@@ -8,13 +8,13 @@ export const dict: Record<string, string> = {
   "theme.light": "hell",
   "theme.dark": "dunkel",
 
-  // Onboarding 1-clic
+  // One-click onboarding
   "onboarding.title": "🚀 Willkommen bei Voxli!",
   "onboarding.intro": "Bereit für sofortiges, flüssiges, 100 % lokales Sprachdiktat?",
   "onboarding.desc": "Um sofort loszulegen, installieren Sie mit einem Klick das kompakte Whisper-Modell (57 MB, einmal heruntergeladen, alles läuft offline):",
   "onboarding.download": "⚡ Whisper laden und aktivieren (1 Klick)",
 
-  // État
+  // Status
   "state.section": "Status",
   "state.engineWord": "Motor:",
   "audio.meterTitle": "Mikrofonpegel — nie gesendet, nie aufgezeichnet",
@@ -26,7 +26,7 @@ export const dict: Record<string, string> = {
   "state.inserting": "Einfügen…",
   "state.recovery": "Fehler — Wiederholung möglich",
 
-  // Général
+  // General
   "general.section": "Allgemein",
   "general.languageLabel": "Diktatsprache (Auto = die App erkennt sie)",
   "general.languageAuto": "Automatische Erkennung (empfohlen)",
@@ -38,7 +38,7 @@ export const dict: Record<string, string> = {
   "general.save": "Einstellungen speichern",
   "general.saved": "gespeichert — sofort übernommen",
 
-  // Raccourcis
+  // Hotkeys
   "hk.section": "Tastenkürzel und Auslösung",
   "hk.pushLabel": "Diktat",
   "hk.modeLabel": "Auslösemodus",
@@ -49,7 +49,7 @@ export const dict: Record<string, string> = {
   "hk.showLabel": "Letzten Text anzeigen",
   "hk.note": "Wird sofort auf die Aufnahme angewendet (RF-01) — belegt eine andere Anwendung das Kürzel bereits, weist eine Meldung darauf hin.",
 
-  // Vocabulaire
+  // Vocabulary
   "vocab.section": "Wörterbuch und eigener Wortschatz",
   "vocab.intro": "Bringen Sie Voxli Ihre Abkürzungen, Eigennamen, Firmen oder Fachbegriffe bei. Diese Begriffe werden in Whisper eingespeist — für chirurgisch präzise Ergebnisse (Magic Formatting).",
   "vocab.profileLabel": "Wortschatz-Profil:",
@@ -77,7 +77,7 @@ export const dict: Record<string, string> = {
   "audio.vadBalanced": "ausbalanciert (Standard)",
   "audio.vadHigh": "streng — ignoriert Geräusche",
 
-  // Modèles
+  // Models
   "models.section": "Stimme (Erkennungsmotor)",
   "models.intro": "Das Herunterladen ist <b>Ihre ausdrückliche Aktion</b>, hier, und die <b>einzige</b> Netzverbindung, die Voxli von diesem Bildschirm aus öffnet. Jede Datei wird nach dem Empfang geprüft; der Nachweis bleibt in einem lokalen Protokoll.",
   "models.colModel": "Modell",
@@ -99,12 +99,12 @@ export const dict: Record<string, string> = {
   "models.sizeMb": "— etwa {n} MB",
   "models.verifiedBadge": "entspricht der veröffentlichten vertrauenswürdigen Referenz (docs/11 §3)",
 
-  // Moteurs (sélection, écran Voix)
+  // Engines (selection, Voice screen)
   "engines.auto": "Automatisch (empfohlen)",
   "engines.hintSdk": "nicht verfügbar — das SDK ist in dieser Version nicht enthalten",
   "engines.effective": "Aktiver Motor: {engine}",
 
-  // Profils
+  // Profiles
   "profiles.section": "Profile und Wörterbücher",
   "profiles.lockNotice": "Mehrere Profile: eine Pro-Funktion. Ohne Lizenz gilt nur das Standardprofil — Ihre Zuordnungen bleiben hier gespeichert.",
   "profiles.codeAppsLabel": "Profil „Code“ — zugeordnete Apps (durch Kommas getrennt)",
@@ -117,7 +117,7 @@ export const dict: Record<string, string> = {
   "profiles.note": "Das Wörterbuch ersetzt Ihre Varianten (metallurgy → „metallurjie“ wird wieder <i>metallurgy</i>), auch im Modus „Rohtext“: es ist Ihre Korrektur, keine Umschreibung durch das Produkt.",
   "dict.imported": "Wörterbuch importiert: {n} Eintrag/Einträge.",
 
-  // Historique
+  // History
   "history.section": "Verlauf",
   "history.keepLabel": "Transkripte aufbewahren",
   "history.no": "nein — es bleibt nichts erhalten (Browser-Standard)",
@@ -134,7 +134,7 @@ export const dict: Record<string, string> = {
   "history.delete": "löschen",
   "history.empty": "kein Eintrag",
 
-  // Licence
+  // License
   "license.section": "Lizenz",
   "license.active": "Lizenz aktiv — Inhaber: {name}.",
   "license.grace": "Lizenz abgelaufen — Gnadenfrist offline: {days} Tag(e) Pro-Funktionen übrig, danach zurück zur Gratis-Edition.",
@@ -145,7 +145,7 @@ export const dict: Record<string, string> = {
   "license.importAction": "Prüfen und importieren",
   "license.imported": "Lizenz importiert und geprüft.",
 
-  // Vie privée
+  // Privacy
   "privacy.simpleNote": "Vollständig lokal: nichts verlässt diesen Rechner ohne Ihre ausdrückliche Zustimmung. Einzelheiten (Zustimmungen, Kontextablesung) finden Sie im erweiterten Modus.",
   "privacy.section": "Datenschutz",
   "privacy.strictLabel": "Strenger Lokalmodus",
@@ -164,30 +164,30 @@ export const dict: Record<string, string> = {
   "privacy.contextEmpty": "keine Kontextablesung",
   "privacy.note": "Kein entfernter Dienst ist aktiv, solange beide Schalter auf „nie“ stehen — selbst wenn eine entfernte Engine kompiliert ist.",
 
-  // Diagnostic
+  // Diagnostics
   "diag.section": "Diagnose und Daten",
   "diag.exportReport": "Diagnosebericht exportieren",
   "diag.exportData": "Meine Daten exportieren (Konfiguration + Wörterbücher)",
   "diag.downloadLink": "Datei herunterladen",
   "diag.note": "Im Bericht steht von vornherein kein diktiertes Zeichen, kein Audio, kein Inhalt der Zwischenablage. Lesen Sie ihn vor dem Senden durch.",
 
-  // Pied de page
+  // Footer
   "footer.text": "Voxli — 100 % lokal. Erweiterte Einstellungen liegen in <code>%APPDATA%\\Voxli\\config.json</code>.",
 
-  // Dons (可见 mais discrets : pied de page permanent + encart périodique)
+  // Donations (visible but discreet: permanent header-bar link + periodic banner)
   "donate.bannerTitle": "Voxli ist gratis, lokal und werbefrei. Sie können die Entwicklung unterstützen:",
   "donate.kofi": "Einen Kaffee auf Ko-fi ausgeben",
   "donate.paypal": "Spenden über PayPal.me",
   "donate.later": "Vielleicht später",
   "donate.forever": "Nicht mehr fragen",
 
-  // Notifications dynamiques
+  // Dynamic notifications
   "notice.modelStarted": "Download des Whisper-Modells gestartet (57 MB)...",
   "notice.modelInterrupted": "Download unterbrochen ({reason}). Sie können es erneut versuchen: der Download setzt dort fort, wo er aufhörte.",
   "notice.modelOk": "Modell installiert — wird sofort übernommen.",
   "notice.networkError": "Netzfehler",
 
-  // Fenêtre de secours
+  // Rescue window
   "rescue.title": "Rettungstext",
   "rescue.intro": "Dieser Text wurde gerade diktiert: er ließ sich nicht in die Zielanwendung einfügen. Er bleibt auf Ihrem Rechner, im internen Puffer von Voxli — nichts sonst hat eine Spur davon behalten.",
   "rescue.retry": "Erneut versuchen",
@@ -196,10 +196,10 @@ export const dict: Record<string, string> = {
   "rescue.close": "Schließen",
   "rescue.emptyHint": "Kein Text wartet. Ist eine Transkription gerade fehlgeschlagen, bleibt das Audio erhalten: drücken Sie „Erneut versuchen“.",
 
-  // Pastille
+  // Pill
   "pill.legend": "Diktat",
 
-  // Noms de touches (légende de survol)
+  // Key names (hover legend)
   "key.Space": "Leertaste",
   "key.Control": "Ctrl",
   "key.Ctrl": "Ctrl",
@@ -211,7 +211,7 @@ export const dict: Record<string, string> = {
   "key.Enter": "Enter",
   "key.Escape": "Esc",
 
-  // Libellés moteur
+  // Engine labels
   "engine.fake": "Platzhalter-Motor (Demo)",
   "engine.whisper.cpp": "whisper.cpp — 100 % lokal",
   "engine.parakeet": "Parakeet — 100 % lokal",
