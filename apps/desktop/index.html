@@ -367,16 +367,20 @@
         <div class="row">
           <label for="calc-select" data-i18n="engines.calcLabel">Calcul des transcriptions</label>
           <select id="calc-select">
-            <option value="auto" data-i18n="engines.calcAuto">Automatique — GPU si plus rapide (recommandé)</option>
-            <option value="duo" data-i18n="engines.calcDuo">Duo — partiels sur GPU, final sur CPU</option>
-            <option value="gpu" data-i18n="engines.calcGpu">GPU — Vulkan/CUDA</option>
+            <option value="auto" data-i18n="engines.calcAuto">Automatique — GPU si disponible (recommandé)</option>
+            <option value="gpu" data-i18n="engines.calcGpu">GPU — Vulkan</option>
             <option value="cpu" data-i18n="engines.calcCpu">CPU — toujours disponible</option>
+            <option value="duo" data-i18n="engines.calcDuo">Duo — texte en direct fluide (GPU), final fiable (CPU)</option>
           </select>
         </div>
         <p class="muted" id="calc-note" data-i18n="engines.calcNote">
           « Auto » choisit le GPU quand un accélérateur est disponible et
           retombe sur le CPU sinon ; le journal consigne le choix et la
           latence réelle.
+        </p>
+        <p class="muted" id="calc-scope" data-i18n="engines.calcScope">
+          Ce choix ne concerne que le moteur Whisper — Nemotron et
+          Parakeet tournent toujours sur CPU.
         </p>
       </div>
       <!-- Catalogue = la surface de sélection UNIQUE (vues séparées le
