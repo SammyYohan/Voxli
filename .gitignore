@@ -35,3 +35,5 @@ Desktop.ini
 # Outils
 .vscode/
 .idea/
+
+apps/desktop/src-tauri/dist-dlls/

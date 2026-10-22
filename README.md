@@ -291,6 +291,51 @@ l'usage (jamais de promesse non mesurée, RF-29). Variable
 d'environnement `VOXLI_COMPUTE=auto|cpu|gpu` pour tester sans changer la
 config (prioritaire sur elle).
 
+#### Empaquetage pour distribution (un seul fichier — installateur NSIS)
+
+Le bundle est configuré (`tauri.conf.json` : cible `nsis`, icônes,
+sélecteur FR/EN) et whisper.cpp est lié **statiquement** dans
+l'exécutable — les DLL `ggml/llama` vues à côté du binaire viennent du
+sous-répertoire `bin` du SDK NeMoSpeech (copie du `build.rs`
+`voxli-win`), pas de whisper. Deux contraintes constatées (21-22/10/2026)
+dictent la procédure — répéter l'essai à froid via `tauri build` seul
+casse dans le MSBuild imbriqué de CMake (MSB3501 au-delà de ~240 chars,
+MSB6003/MSB8066 même en répertoire court) ; la version unifié marche :
+
+```powershell
+cd apps/desktop
+$env:VULKAN_SDK = "C:\VulkanSDK\1.4.363.0"
+$env:CARGO_TARGET_DIR = "C:\t"                    # cible courte
+
+# 1) l'exécutable d'abord via cargo standard (compilation fiable) :
+cargo build --release -p voxli-desktop `
+  --features "custom-protocol,nemo-stream,gpu"
+
+# 2) mise en scène des DLL d'exécution (runtimes MSVC + SDK NeMoSpeech) —
+#    NE PAS versionner (gitignore) ; copier depuis l'installation SDK ;
+New-Item -ItemType Directory -Force src-tauri/dist-dlls | Out-Null
+Copy-Item "$env:LOCALAPPDATA\Programs\NeMoSpeech\bin\*.dll" `
+  src-tauri/dist-dlls/
+
+# 3) WHISPER EST FRAIS (cache) — le build script ne ré-exécute pas CMake :
+pnpm tauri build --features custom-protocol,nemo-stream,gpu
+# → %CARGO_TARGET_DIR%\bundle\nsis\Voxli_0.1.0_x64-setup.exe (un fichier)
+```
+
+Le fichier installe sur n'importe quelle Windows 10/11 : raccourcis,
+désinstalleur, WebView2 installé **automatiquement** s'il manque
+(bootstrap NSIS Tauri), et les 18 DLL exécutables passent en resources
+(`bundle.resources` map `dist-dlls/* → ""` posées à plat au dir
+d'installation). Limites honnêtes : binaire non signé (SmartScreen
+avertira — signer exige un certificat payant) ; le modèle Whisper (57
+Mo) se télécharge au premier lancement (Internet requis une première
+fois) ; le build embarque Vulkan (machine sans aucun pilote GPU
+Vulkan-capable refusera de démarrer l'exécutable — cas marginal, quasimment
+toutes les machines Windows 10/11 à jour en ont) ; le runtime NeMoSpeech
+redistribué via l'installateur reste soumis à sa licence NVIDIA (à
+vérifier avantageuse Toute distribution). Voir aussi §11 pour la
+question de la licence du dépôt avant toute distribution.
+
 #### Partiels « vivants » (fenêtre adaptative — texte affiché pendant la prise)
 
 La pastille écrit le texte pendant la prise (`dictation://partial`), via un
