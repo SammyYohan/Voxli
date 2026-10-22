@@ -119,11 +119,14 @@ aucun digest inventé.
 ### 3.2 Étendue
 
 Modèles concernés aujourd'hui : `ggml-base-q5_1.bin`,
-`ggml-small-q5_1.bin`, `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf`,
-`sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` (pour Parakeet, le digest porte
-sur le fichier modèle regroupé, pas sur le répertoire : convention du champ
-`expected_sha256`). Ceux qui ne peuvent fournir ce niveau de preuve restent
-à `None` — c'est un choix assumé : ne pas prétendre.
+`ggml-large-v3-turbo-q5_0.bin`,
+`nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` (catalogue épuré le 22/10 :
+Parakeet et les quantisés whisper intermédiaires ne sont plus offerts au
+téléchargement ; l'entrée parakeet reviendra avec un build `parakeet-asr`,
+pour Parakeet le digest porte sur le fichier modèle regroupé, pas sur le
+répertoire : convention du champ `expected_sha256`). Ceux qui ne peuvent
+fournir ce niveau de preuve restent à `None` — c'est un choix assumé :
+ne pas prétendre.
 
 > Rappel P1-7 : le défaut du script PS est `ggml-base-q5_1.bin` —
 > aligné sur le catalogue ; l'onboarding 1-clic installe le même id.

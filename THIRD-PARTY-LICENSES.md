@@ -16,9 +16,19 @@ consignée dans `%APPDATA%\Voxli\models\manifests.json`.
 
 | Modèle | Source primaire | Licence | Attribution |
 |---|---|---|---|
-| `ggml-base-q5_1.bin`, `ggml-small-q5_1.bin` (Whisper quantisés) | `huggingface.co/ggerganov/whisper.cpp` | **MIT** (dépôt whisper.cpp) | citation du dépôt suffit, pas d'exigence formelle |
-| `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` (Parakeet TDT v3, 25 langues européennes) | `github.com/k2-fsa/sherpa-onnx/releases` (archive `asr-models`) | **CC-BY-4.0** (modèle NeMo de NVIDIA) | **Attribution obligatoire** : crédits « Modèle Parakeet de NVIDIA, converti par sherpa-onnx, sous CC-BY-4.0 » dans « À propos » à la distribution |
+| `ggml-base-q5_1.bin`, `ggml-large-v3-turbo-q5_0.bin` (Whisper quantisés) | `huggingface.co/ggerganov/whisper.cpp` | **MIT** (dépôt whisper.cpp) | citation du dépôt suffit, pas d'exigence formelle |
 | `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` (Nemotron 3.5 streaming) | HuggingFace / NeMo-Speech | **OpenMDW-1.1** | Attribution obligatoire |
+
+Catalogue épuré le 22/10 : seuls les modèles les plus puissants et fiables
+restent proposés au téléchargement. Le code moteur Parakeet existe toujours
+(feature `parakeet-asr`, opt-in) ; son entrée catalogue — et cette ligne de
+licence — reviennent avec un build sherpa-onnx : `sherpa-onnx-nemo-parakeet-
+tdt-0.6b-v3-int8`, `github.com/k2-fsa/sherpa-onnx/releases` (archive
+`asr-models`), **CC-BY-4.0** — **Attribution obligatoire** : crédits « Modèle
+Parakeet de NVIDIA, converti par sherpa-onnx, sous CC-BY-4.0 » dans « À
+propos » à la distribution. De même, les quantisés whisper des versions
+antérieures restés sur disque (`tiny`, `small`, `medium`) demeurent honorés
+par la résolution « auto » (MIT, dépôt whisper.cpp).
 
 Ces URL sont celles consultées et validées lors de l'étude
 (`docs/01`, `docs/03` ADR-03). Un changement d'URL ou de licence en amont doit

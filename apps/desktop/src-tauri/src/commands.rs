@@ -310,7 +310,7 @@ pub fn devices_list() -> Vec<DeviceInfo> {
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
-    /// "whisper" | "parakeet" | "nemo".
+    /// "whisper" | "nemo" (kinds du catalogue actuel).
     pub kind: String,
     /// Taille estimée (Mo) — indicative.
     #[serde(rename = "sizeMb")]
@@ -333,7 +333,10 @@ pub struct ModelInfo {
 struct ModelEntry {
     id: &'static str,
     label: &'static str,
-    /// "whisper" | "parakeet" | "nemo".
+    /// "whisper" | "nemo". (Parakeet retiré du catalogue le 22/10 — le
+    /// build distribué ne compile pas sherpa-onnx et ne peut donc pas
+    /// l'activer ; l'entrée et sa ligne de licence reviennent ensemble
+    /// dès qu'un build `parakeet-asr` est produit.)
     kind: &'static str,
     /// Taille estimée (Mo) — indicative.
     size_mb: Option<u64>,
@@ -358,30 +361,6 @@ const MODEL_CATALOG: &[ModelEntry] = &[
         expected_sha256: None,
     },
     ModelEntry {
-        id: "ggml-tiny-q8_0.bin",
-        label: "Whisper tiny (ultra-léger, machines modestes — 43 Mo)",
-        kind: "whisper",
-        size_mb: Some(43),
-        license: "MIT — ggerganov/whisper.cpp",
-        expected_sha256: None,
-    },
-    ModelEntry {
-        id: "ggml-small-q5_1.bin",
-        label: "Whisper small (multilingue, quantisé — 190 Mo)",
-        kind: "whisper",
-        size_mb: Some(190),
-        license: "MIT — ggerganov/whisper.cpp",
-        expected_sha256: None,
-    },
-    ModelEntry {
-        id: "ggml-medium-q5_0.bin",
-        label: "Whisper medium (précision étoffée, multilingue — 539 Mo)",
-        kind: "whisper",
-        size_mb: Some(539),
-        license: "MIT — ggerganov/whisper.cpp",
-        expected_sha256: None,
-    },
-    ModelEntry {
         id: "ggml-large-v3-turbo-q5_0.bin",
         label: "Whisper large-v3-turbo (précision maximale, GPU conseillé — 574 Mo)",
         kind: "whisper",
@@ -395,14 +374,6 @@ const MODEL_CATALOG: &[ModelEntry] = &[
         kind: "nemo",
         size_mb: Some(742),
         license: "OpenMDW-1.1 — NVIDIA Nemotron Speech",
-        expected_sha256: None,
-    },
-    ModelEntry {
-        id: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-        label: "Parakeet TDT v3 0.6B (int8, 25 langues — 487 Mo)",
-        kind: "parakeet",
-        size_mb: Some(487),
-        license: "CC-BY-4.0 — NVIDIA NeMo (attribution requise)",
         expected_sha256: None,
     },
 ];
@@ -498,9 +469,10 @@ pub struct EngineInfo {
 }
 
 /// Résolution du modèle whisper quand la config dit « auto » (ou vide) :
-/// le premier fichier du catalogue présent sur disque, dans l'ordre de
-/// préférence (base — bon équilibre — puis small, medium, large-v3-turbo,
-/// tiny), sinon le défaut du catalogue. Partagée par `engines_list` et
+/// le premier modèle présent sur disque, dans l'ordre de préférence
+/// (base — bon équilibre — puis turbo, et enfin les ids des versions
+/// antérieures restés sur le disque — jamais ignorés), sinon le défaut
+/// du catalogue. Partagée par `engines_list` et
 /// `worker::model_path` : UNE seule vérité, le choix « auto » ne dépend
 /// jamais du compte qui l'interroge (l'incohérence du 21/10 — moteur
 /// « chargé » et table « non installé » — vient des résolutions jumelles).
@@ -555,18 +527,11 @@ pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
             .join("nemotron-3.5-asr-streaming-0.6b.q8_0.gguf")
             .is_file();
 
-    // Parakeet (sherpa-onnx) — installation = encoder présent, même
-    // critère que `models_list`.
-    let parakeet_compiled = cfg!(feature = "parakeet-asr");
-    let parakeet_usable = parakeet_compiled
-        && MODEL_CATALOG.iter().any(|e| {
-            e.kind == "parakeet"
-                && (models_dir.join(e.id).join("encoder.int8.onnx").is_file()
-                    || models_dir.join(e.id).join("encoder.onnx").is_file())
-        });
-
     // « auto » résout toujours vers quelque chose (factice en bout de
     // chaîne, jamais muet) : utilisable par construction.
+    // Parakeet absent de la liste : le catalogue ne le propose plus
+    // (retrait 22/10 — sherpa-onnx non compilé dans le build distribué,
+    // lire ModelEntry et THIRD-PARTY-LICENSES.md §1).
     vec![
         EngineInfo {
             id: "auto".into(),
@@ -582,11 +547,6 @@ pub fn engines_list(shared: State<'_, UiShared>) -> Vec<EngineInfo> {
             id: "nemo".into(),
             compiled: nemo_compiled,
             usable: nemo_usable,
-        },
-        EngineInfo {
-            id: "parakeet".into(),
-            compiled: parakeet_compiled,
-            usable: parakeet_usable,
         },
     ]
 }

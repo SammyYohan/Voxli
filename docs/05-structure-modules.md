@@ -274,8 +274,7 @@ migration testée.
 
 %LOCALAPPDATA%\Voxli\
 ├── models\                      # modèles téléchargés (taille annoncée dans l'UI)
-│   ├── ggml-small-q5_0.bin
-│   ├── parakeet-tdt-0.6b-v3-int8\
+│   ├── ggml-base-q5_1.bin
 │   └── manifests.json           # empreintes, dates, provenance
 └── cache\                       # audio temporaire de récupération d'erreur (chiffré, purgé)
 ```
