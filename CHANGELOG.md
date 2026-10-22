@@ -15,6 +15,55 @@ détail des correctifs d'hygiène faits au passage.
 
 ## [Non publié]
 
+### Passe de lisibilité et d'honnêteté (22/10/2026)
+
+- **Commentaires du code en anglais** : l'intégralité du workspace
+  (~1 700 blocs) dorénavant commentée en anglais — premier public visé.
+  Les références `RF-xx`/`P1-3`/`ADR-xx`, dates et chiffres sont
+  conservées verbatim ; les messages d'exécution français (journal,
+  erreurs, interface) restent des données du produit. Pendant la lecture
+  complète : une vingtaine de commentaires mensongers réécrits pour
+  coller au code réel (sémantique `update_mount`, ordre réel de
+  `resolve_whisper_model`, chemin réel d'export, fenêtre visible au
+  lancement, etc.).
+- **Correctifs relevés par la lecture complète** :
+  `voxli-win/clipboard.rs` — la sauvegarde couvre désormais CF_DIB et
+  CF_DIBV5 (contenu bitmap) ; la restauration ne vide plus jamais un
+  presse-papiers quand rien n'est récupérable (RF-30a : rien ne se
+  perd) ; le scan du terminateur NUL est borné par `GlobalSize`
+  (malformation = plus aucun accès hors-limites) ;
+  `voxli-win/uia.rs` — `unsafe impl Send/Sync` retiré (initialisation
+  COM STA : chaque `Uia` vit et meurt sur son thread) ;
+  `voxli-audio/capture.rs` — l'heuristique `lost` s'élargit (« device »
+  OU « lost », insensible à la casse) et son commentaire est mis en
+  accord avec le code.
+- **Interface de calcul rendue honnête (commit `d07aaa4`)** : le menu
+  « Calcul des transcriptions » promet exactement ce qui tourne (« GPU
+  si disponible », pas « si plus rapide » ; « Vulkan » sans CUDA
+  fantôme ; Duo reformulé en langage humain) + hint de portée Whisper
+  dans les 15 langues (`engines.calcScope`) ; ordre
+  Auto→GPU→CPU→Duo.
+- **Catalogue épuré (22/10)** : téléchargement limité aux plus
+  puissants et fiables — Whisper base, Whisper large-v3-turbo, Nemotron
+  3.5 continu ; tiny/small/medium (échelons faibles ou redondants) et
+  Parakeet (inactivable dans ce build) retirés ; les quantisés déjà sur
+  disque restent honorés par « auto » ; `THIRD-PARTY-LICENSES.md`
+  aligné (turbo ajouté, attribution Parakeet conservée en note de
+  ré-entrée).
+- **README en deux langues** : `README.md` passe en anglais (priorité
+  au premier public visé), `README.fr.md` en miroir français ; 15
+  langues d'interface expliquées, badge CI réel, procédures de build et
+  d'empaquetage conservées, état assumé (mesuré vs à produire).
+- **Licence du dépôt posée** : double licence `MIT OR Apache-2.0`
+  (fichiers canoniques `LICENSE-MIT` / `LICENSE-APACHE`, textes vérifiés)
+  — standard de l'écosystème Rust ; les licences tierces gardent leurs
+  termes propres (`THIRD-PARTY-LICENSES.md`).
+- **Validation** : `cargo fmt --check` 0 ; `cargo check --workspace
+  --all-targets` 0 ; `cargo test --workspace` 91 verts ; suites à
+  features (`voxli-win --features nemo` 2/2, `voxli-asr
+  --features nemo-stream` 7/7 sur le GGUF réel, `voxli-asr
+  --features whisper` 10/10) ; `tsc` 0 ; audit-i18n 191×15 vert.
+
 ### Audit UX/UI (résolu le 19/10/2026, code seul — compilation locale requise)
 
 - **Partiels réellement visibles dans la pastille** : le worker émettait

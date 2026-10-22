@@ -26,8 +26,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
-# Profil de release : conforme aux attentes d'un binaire de dictée
-# (vitesse d'inférence, taille).
+# Release profile: tuned for the expectations of a dictation binary
+# (inference speed, size).
 [profile.release]
 lto = "thin"
 codegen-units = 1
