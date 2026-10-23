@@ -193,6 +193,12 @@ Queda por producir (con seguimiento, no oculto): campaña de medición de latenc
 sobre la matriz de inserción de 12 aplicaciones, compilación de Parakeet (el backend existe
 como feature), firma de código.
 
+**Linux**: en la hoja de ruta, sin fecha prometida. La capa de motores
+(whisper.cpp, GGUF, Vulkan) es portátil; la capa de entrada específica de
+Windows (inyección UIA, restauración del portapapeles, atajos globales)
+necesita primero su equivalente en Linux. Seguido en el mismo plan que el
+resto — nada oculto.
+
 ## Mapa de la documentación
 
 Estudio del producto → requisitos → arquitectura (`docs/01`–`docs/04`), estructura de

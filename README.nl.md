@@ -193,6 +193,12 @@ Nog te leveren (opgevolgd, niet verstopt): de veldcampagne voor latentie- en
 WER-metingen over de invoegmatrix van 12 apps, de Parakeet-build (de backend bestaat
 als feature), codeondertekening.
 
+**Linux**: op de roadmap, zonder beloofde datum. De motorlaag
+(whisper.cpp, GGUF, Vulkan) is draagbaar; de Windowsspecifieke invoerlaag
+(UIA-injectie, klembordherstel, globale sneltoetsen) heeft eerst haar
+Linux-tegenhanger nodig. Wordt in hetzelfde plan gevolgd — niets blijft
+verborgen.
+
 ## Documentatiemap
 
 Productstudie → vereisten → architectuur (`docs/01`–`docs/04`), modulestructuur

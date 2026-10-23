@@ -204,6 +204,12 @@ Resta ancora da produrre (tracciato, non nascosto): campagna di misurazione
 di latenza/WER sul campo attraverso la matrice di inserimento su 12 app,
 compilazione di Parakeet (il backend esiste come feature), firma del codice.
 
+**Linux**: nella roadmap, senza data promessa. Lo strato motori
+(whisper.cpp, GGUF, Vulkan) è portabile; lo strato di input specifico di
+Windows (iniezione UIA, ripristino degli appunti, scorciatoie globali) ha
+bisogno prima della sua controparte Linux. Tracciato nello stesso piano
+del resto — nulla è nascosto.
+
 ## Mappa della documentazione
 
 Studio di prodotto → requisiti → architettura (`docs/01`–`docs/04`),

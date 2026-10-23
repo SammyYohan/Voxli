@@ -191,6 +191,12 @@ mène une dictée réelle de bout en bout.
 Reste à produire (suivi, pas caché) : campagne de mesure latence/WER sur la
 matrice 12 apps, build Parakeet, signature de code.
 
+**Linux** — au programme, sans date promise. La couche des moteurs
+(whisper.cpp, GGUF, Vulkan) est portable ; la couche d'entrée spécifique à
+Windows (injection UIA, restauration du presse-papiers, raccourcis globaux)
+doit d'abord recevoir son équivalent Linux. Suivi dans le même plan que le
+reste — rien n'est caché.
+
 ## Carte de la documentation
 
 L'étude produit → exigences → architecture (`docs/01`–`docs/04`), structure

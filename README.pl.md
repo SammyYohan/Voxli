@@ -205,6 +205,12 @@ Jeszcze do zrobienia (śledzone, nie ukrywane): kampania pomiarów
 latencji/WER w terenie na 12-aplikacyjnej macierzy wstawiania, budowa
 Parakeet (backend istnieje jako feature), podpisywanie kodu.
 
+**Linux**: w planach, bez obiecywanej daty. Warstwa silników (whisper.cpp,
+GGUF, Vulkan) jest przenośna; warstwa wejściowa specyficzna dla Windows
+(wstawianie przez UIA, odtwarzanie schowka, globalne skróty) najpierw
+potrzebuje swojego odpowiednika pod Linuksem. Śledzone w tym samym planie —
+nic nie jest ukrywane.
+
 ## Mapa dokumentacji
 
 Studium produktu → wymagania → architektura (`docs/01`–`docs/04`), struktura

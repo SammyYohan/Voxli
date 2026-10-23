@@ -202,6 +202,12 @@ Henüz üretilmesi gerekenler (takip altında, gizli değil): 12 uygulamalı
 ekleme matrisi üzerinden saha gecikme/WER ölçüm kampanyası, Parakeet
 derlemesi (arka uç bir özellik olarak mevcut), kod imzalama.
 
+**Linux**: yol haritasında, tarih sözü vermeden. Motor katmanı
+(whisper.cpp, GGUF, Vulkan) taşınabilirdir; Windows'a özgü giriş katmanı
+(UIA ile alan ekleme, panoyu geri yükleme, genel kısayollar) önce kendi
+Linux karşılığını gerektiriyor. Geri kalanıyla aynı planda izleniyor —
+hiçbir şey gizlenmiyor.
+
 ## Belgelendirme haritası
 
 Ürün çalışması → gereksinimler → mimari (`docs/01`–`docs/04`), modül yapısı

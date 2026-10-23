@@ -193,6 +193,11 @@ Still to be produced (tracked, not hidden): field latency/WER measurement
 campaign across the 12-app insertion matrix, Parakeet build (backend exists
 as a feature), code signing.
 
+**Linux** — on the roadmap, without a promised date. The engine layer
+(whisper.cpp, GGUF, Vulkan) is portable; the Windows-specific input layer
+(UIA field injection, clipboard restore, global hotkeys) needs its Linux
+counterpart first. Tracked in the same plan as the rest — nothing hidden.
+
 ## Documentation map
 
 Product study → requirements → architecture (`docs/01`–`docs/04`), module

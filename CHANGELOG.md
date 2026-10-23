@@ -32,6 +32,11 @@ détail des correctifs d'hygiène faits au passage.
   anglaise et française : structure 1:1 vérifiée (titres, fences,
   liens, tables) ; ligne de choix de langue à 10 variantes en tête de
   chaque fichier.
+- **Promesse Linux, honnête** : la section état de chaque README (10
+  langues) porte désormais la ligne « Linux — sans date promise » : la
+  couche des moteurs (whisper.cpp, GGUF, Vulkan) est portable, la couche
+  d'entrée spécifique à Windows (UIA, presse-papiers, raccourcis globaux)
+  doit d'abord recevoir son équivalent Linux.
 
 ### Passe de lisibilité et d'honnêteté (22/10/2026)
 

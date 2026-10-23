@@ -201,6 +201,12 @@ Noch offen (erfasst, nicht versteckt): Messkampagne für Feld-Latenz/WER über
 die Einfüge-Matrix aus 12 Apps, Parakeet-Build (das Backend existiert als
 Feature), Code-Signierung.
 
+**Linux**: auf der Roadmap, ohne versprochenes Datum. Die Motorebene
+(whisper.cpp, GGUF, Vulkan) ist portabel; die Windows-spezifische
+Eingabeebene (UIA-Einfügung, Zwischenablage-Wiederherstellung, globale
+Tastenkombinationen) braucht zuerst ihr Linux-Pendant. Wird im selben Plan
+verfolgt — nichts bleibt verborgen.
+
 ## Dokumentationsübersicht
 
 Produktstudie → Anforderungen → Architektur (`docs/01`–`docs/04`),

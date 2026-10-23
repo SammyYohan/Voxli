@@ -193,6 +193,12 @@ Ainda a produzir (rastreado, não escondido): campanha de medição de latência
 em campo pela matriz de inserção de 12 apps, build do Parakeet (o backend existe
 como feature) e assinatura de código.
 
+**Linux**: no roteiro, sem data prometida. A camada de motores
+(whisper.cpp, GGUF, Vulkan) é portátil; a camada de entrada específica do
+Windows (injeção UIA, restauração da área de transferência, atalhos
+globais) precisa primeiro de um equivalente Linux. Fica no mesmo plano do
+resto — nada escondido.
+
 ## Mapa da documentação
 
 Estudo de produto → requisitos → arquitetura (`docs/01`–`docs/04`), estrutura
