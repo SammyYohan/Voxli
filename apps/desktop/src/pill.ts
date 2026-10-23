@@ -1,9 +1,15 @@
-/** Pill RF-09 v2 — permanent indicator at the top center of the screen.
+/** Pill RF-09 v3 — permanent indicator at the top center of the screen.
  * The window lives from startup to shutdown: at rest it shows the
  * armed listening point alone, during a take the full visual (state,
- * level meter, live text). Hover is detected on the core side (the window
- * is click-through): on entry, the legend shows the configured
- * dictation hotkey — re-read on every hover, it can change at runtime.
+ * level meter, live text). Visual sequence = an Xbox-like morph: on take
+ * start the pill body stretches into the full bar (long decel arc + one
+ * light sweep, see pill.css); on release it folds back into a compact
+ * pill hugging its content (finalising… / inserting…), then settles to
+ * the lone dot. The body width is measured here (`--pill-w`): CSS can
+ * never animate to/from `auto`. The hotkey legend appears UNDER the pill
+ * on hover — at rest only — so no gray box ever stacks over "finalising…".
+ * Hover is detected on the core side (the window is click-through); the
+ * legended hotkey is re-read on every hover, it can change at runtime.
  * No dictated content is logged or kept (RF-34); the
  * streaming partials are transient (ADR-02 amendment) and
  * vanish as soon as the take ends.
@@ -123,9 +129,32 @@ void (async function init() {
     document.body.classList.remove("has-partial");
   }
 
+  /* Morph (Xbox-style transition): the pill body's width is MEASURED here
+   * and posed as `--pill-w`. Rationale: CSS can never transition to/from
+   * `auto` — an explicit pixel value always can. recording = the full
+   * bar; the other active states = a compact pill hugging dot + label;
+   * idle = 0 (the body itself fades out, only the listening dot remains). */
+  const BAR_INSET = 14;
+  let currentState = "idle";
+  function setPillWidth(state: string): void {
+    const stage = document.getElementById("stage");
+    const label = document.getElementById("label");
+    if (stage === null) return;
+    let w = 0;
+    if (state === "recording") {
+      w = Math.max(180, stage.clientWidth - BAR_INSET * 2);
+    } else if (state !== "idle") {
+      const labelW = label !== null ? label.offsetWidth : 44;
+      // 2 × inset + dot (10) + gap (10) + the label itself.
+      w = BAR_INSET * 2 + 10 + 10 + labelW;
+    }
+    document.body.style.setProperty("--pill-w", `${Math.round(w)}px`);
+  }
+
   /** The whole visual follows the data-state attribute (CSS = single truth). */
   function applyState(state: string): void {
     document.body.dataset.state = state;
+    currentState = state;
     if (state !== "recording") {
       // Partials only make sense during a take: they are
       // cleared as soon as the engine takes over.
@@ -138,5 +167,9 @@ void (async function init() {
       // Unknown key → the raw state name stays readable (never blank).
       label.textContent = rendered === key ? state : rendered;
     }
+    setPillWidth(state);
   }
+
+  // Resize (DPI change, 85 % clamp replayed by the core): the bar follows.
+  window.addEventListener("resize", () => setPillWidth(currentState));
 })();

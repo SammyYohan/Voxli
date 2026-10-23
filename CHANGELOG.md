@@ -15,6 +15,24 @@ détail des correctifs d'hygiène faits au passage.
 
 ## [Non publié]
 
+### Passe pastille v3 et diffusion README (23/10/2026)
+
+- **Pastille en morphing « transition Xbox »** : à l'appui du raccourci, le
+  corps de la pastille s'étire en barre plein format (arc long
+  `cubic-bezier(.16,1,.3,1)` + balayage lumineux unique) ; à la relâche, il
+  se replie en pillule compacte qui épouse son contenu (« finalisation… » →
+  « insertion… »), puis retour au point d'écoute seul. La largeur est
+  mesurée côté TS dans `--pill-w` (CSS ne sait pas animer vers `auto`) —
+  la largeur du corps n'est plus un plein-fenêtrage brutal ; le vumètre
+  n'existe que pendant la prise (épinglé à droite, comme le prévoyait le
+  contrat documenté) ; la légende grise du raccourci n'apparaît plus
+  qu'au repos — plus aucun chevauchement avec « finalisation… ».
+- **README en 10 langues** : traductions Europe/Amérique
+  (`es`, `pt`, `de`, `it`, `nl`, `ru`, `pl`, `tr`) ajoutées aux variantes
+  anglaise et française : structure 1:1 vérifiée (titres, fences,
+  liens, tables) ; ligne de choix de langue à 10 variantes en tête de
+  chaque fichier.
+
 ### Passe de lisibilité et d'honnêteté (22/10/2026)
 
 - **Commentaires du code en anglais** : l'intégralité du workspace

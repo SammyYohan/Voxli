@@ -1,10 +1,17 @@
-/** Pastille RF-09 v2 — indicateur permanent en haut au centre de l'écran.
+/** Pastille RF-09 v3 — indicateur permanent en haut au centre de l'écran.
  * Au repos : un seul point discret (écoute armée — le raccourci est prêt).
- * Pendant une prise : pill complète (état + vumètre + texte en direct du
- * streaming, amendement ADR-02 ; partiels transitoires, jamais conservés,
- * RF-34). Au survol (détecté côté noyau — la fenêtre est traversée par le
- * clic) : la légende du raccourci glisse sous la pilule. La fenêtre est
- * transparente et son contenu n'est jamais interactif. */
+ * Morphing (transition à la Xbox) : à l'appui du raccourci le corps de la
+ * pilule s'étire en barre plein format (arc long, balayage lumineux) ; à
+ * la relâche il se replie en pillule compacte qui épouse son contenu
+ * (« finalisation… » → « insertion… »), puis retour au point seul. La
+ * largeur est mesurée côté TS (`--pill-w`) — CSS ne sait pas animer vers
+ * `auto` — et chaque état garde UNE seule surface visuelle : la légende
+ * du raccourci n'apparaît QU'AU REPOS (plus de boîte grise empilée sur
+ * « finalisation… »). Pendant une prise : état + vumètre + texte en
+ * direct du streaming (amendement ADR-02 ; partiels transitoires, jamais
+ * conservés, RF-34). Au survol (détecté côté noyau — la fenêtre est
+ * traversée par le clic) au repos : la légende glisse sous la pilule.
+ * La fenêtre est transparente et son contenu n'est jamais interactif. */
 :root {
   color-scheme: dark;
 }
@@ -36,12 +43,24 @@ body.pill {
 .stage::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  /* Morph (Xbox-style transition): the body slides between three widths —
+   * 0 (idle, invisible), full bar (a take) and a compact pill hugging its
+   * content (finalising / transcribing / inserting). Width is measured by
+   * the TS into `--pill-w`: CSS can never animate to/from `auto`, an
+   * explicit pixel value always does. */
+  width: var(--pill-w, 0px);
   border-radius: 17px;
   background: rgba(13, 17, 21, 0.94);
   border: 1px solid #374151;
   opacity: 0;
-  transition: opacity 0.22s ease;
+  transform: translateX(-50%);
+  /* Collapse (out of a take): short, decisive — the pill folds back. */
+  transition:
+    opacity 0.2s ease,
+    width 0.34s cubic-bezier(0.33, 0, 0.2, 1);
 }
 body[data-state="recording"] .stage::before,
 body[data-state="finalizing"] .stage::before,
@@ -50,6 +69,48 @@ body[data-state="post-processing"] .stage::before,
 body[data-state="inserting"] .stage::before,
 body[data-state="recovery"] .stage::before {
   opacity: 1;
+}
+/* Expand (into a take): the long, hard-decelerating arc — the transition
+ * in effect is the DESTINATION state's one, so this rule bears it. */
+body[data-state="recording"] .stage::before {
+  transition:
+    opacity 0.22s ease,
+    width 0.52s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Light sweep on expansion: a translucent glint crosses the bar once at
+ * take start (the selector only matches when `recording` ARRIVES, so the
+ * animation replays on every press). Very low alpha: a sheen, not a flare. */
+body[data-state="recording"] .stage::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 96px;
+  z-index: 2;
+  border-radius: 15px;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.13) 50%,
+    transparent 100%
+  );
+  animation: sweep 0.58s cubic-bezier(0.2, 0.8, 0.3, 1) 0.06s 1 forwards;
+  pointer-events: none;
+}
+@keyframes sweep {
+  0% {
+    transform: translateX(-120px);
+    opacity: 0;
+  }
+  14% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(700px);
+    opacity: 0;
+  }
 }
 .stage > * {
   position: relative;
@@ -60,7 +121,9 @@ body[data-state="recovery"] .stage::before {
  * rien à lire (prise sans partiel : le couple flotte au milieu de la
  * pilule, pas collé à gauche) ; dès qu'un texte partiel arrive, il frise
  * depuis la gauche et le vumètre reste épinglé à droite (comportement
- * documenté du vumètre ci-dessous). */
+ * documenté du vumètre ci-dessous). La marge interne SYMÉTRIQUE tient le
+ * contenu à l'intérieur de la barre rétrécie (--pill-w) sans biaiser le
+ * centrage (les marges asymétriques du point créaient un décalage). */
 .main {
   display: flex;
   align-items: center;
@@ -68,6 +131,7 @@ body[data-state="recovery"] .stage::before {
   gap: 10px;
   flex: 1;
   min-width: 0;
+  padding: 0 14px;
 }
 body.has-partial .main {
   justify-content: flex-start;
@@ -116,7 +180,6 @@ body.hover .dot {
 body[data-state="recording"] .dot {
   background: #ef4444;
   animation: battre 0.9s ease-in-out infinite;
-  margin-left: 14px;
 }
 @keyframes battre {
   0%,
@@ -133,11 +196,9 @@ body[data-state="transcribing"] .dot,
 body[data-state="post-processing"] .dot,
 body[data-state="recovery"] .dot {
   background: #f59e0b;
-  margin-left: 14px;
 }
 body[data-state="inserting"] .dot {
   background: #22c55e;
-  margin-left: 14px;
 }
 
 .label {
@@ -194,19 +255,23 @@ body[data-state="recording"].has-partial .label {
 }
 
 /* Jauge de voix : épinglée à la FIN de la pilule (le texte frise à
- * gauche, la jauge ne bouge jamais). Le remplissage et la vidange sont
- * animés côté TS (balistiques VU via requestAnimationFrame) — aucune
- * transition CSS ici, qui donnerait un aspect figé. L'intensité (opacité,
- * halo) suit le niveau par la variable `--lvl` posée par le TS. */
+ * gauche, la jauge ne bouge jamais) et visible UNIQUEMENT pendant la
+ * prise (les états d'après n'ont rien à mesurer). Le remplissage et la
+ * vidange sont animés côté TS (balistiques VU via requestAnimationFrame) —
+ * aucune transition CSS ici, qui donnerait un aspect figé. L'intensité
+ * (opacité, halo) suit le niveau par la variable `--lvl` posée par le TS. */
 .meter {
   flex: none;
-  margin-left: 10px;
+  margin-left: auto;
   width: 64px;
   height: 6px;
   background: #1f2937;
   border-radius: 3px;
   margin-right: 14px;
   overflow: hidden;
+}
+body:not([data-state="recording"]) .meter {
+  display: none;
 }
 .meter.slim {
   height: 6px;
@@ -219,8 +284,10 @@ body[data-state="recording"].has-partial .label {
   box-shadow: 0 0 calc(var(--lvl, 0) * 12px) rgba(245, 158, 11, 0.6);
 }
 
-/* Légende du raccourci (RF-09 v2) : sous la pilule, au survol. Animation
- * d'entrée — fondu et léger glissement vers le bas. */
+/* Légende du raccourci (RF-09 v2) : sous la pastille, au survol — au
+ * REPOS UNIQUEMENT. Pendant une prise elle s'empilerait avec la pilule
+ * active (la boîte grise par-dessus « finalisation… ») : les états
+ * actifs gardent une seule surface visuelle, la légende attend le calme. */
 .legend {
   position: absolute;
   top: 38px;
@@ -241,7 +308,10 @@ body[data-state="recording"].has-partial .label {
   transition: opacity 0.18s ease, transform 0.18s ease;
   pointer-events: none;
 }
-body.hover .legend {
+/* Au repos seulement : hover + état idle. Pendant une prise, aucun
+ * chevauchement possible — c'est la vraie correction du bug signalé
+ * (la pastille grise qui apparaissait par-dessus « finalisation… »). */
+body[data-state="idle"].hover .legend {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
