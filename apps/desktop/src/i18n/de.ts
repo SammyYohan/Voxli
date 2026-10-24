@@ -232,4 +232,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "Installiert, aber in diesem Build nicht aktivierbar (Motor-SDK fehlt) — die Datei bleibt auf dem Datenträger.",
   "engines.fellFake": "Zurzeit kein nutzbares Modell: das Demo-Modell übernimmt — laden Sie unten ein Whisper-Modell herunter.",
   "models.introTop": "Ihre aktive Stimme: die ZEILE ist der Wähler — Klick = Aktivierung (oder Download, falls fehlt). Die Auswahl wird sofort geschrieben, ohne Bestätigungs-Button.",
+  "nav.home": "Start",
+  "nav.voice": "Stimme",
+  "nav.keys": "Tastenkürzel",
+  "nav.vocab": "Wortschatz",
+  "nav.history": "Verlauf",
+  "nav.advanced": "Erweitert",
+  "nav.support": "Voxli unterstützen",
 };

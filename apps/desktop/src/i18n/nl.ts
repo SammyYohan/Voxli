@@ -232,4 +232,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "Geïnstalleerd, maar niet activeerbaar in deze build (motor-SDK ontbreekt) — het bestand blijft op schijf.",
   "engines.fellFake": "Voorlopig geen bruikbaar model: de demo-engine neemt over — download hieronder een whispermodel.",
   "models.introTop": "Jouw actieve stem: de RIJ is de kiezer — klik = activeren (of downloaden als deze ontbreekt). De keuze wordt onmiddellijk weggeschreven, zonder bevestigingsknop.",
+  "nav.home": "Start",
+  "nav.voice": "Stem",
+  "nav.keys": "Sneltoetsen",
+  "nav.vocab": "Woordenlijst",
+  "nav.history": "Geschiedenis",
+  "nav.advanced": "Geavanceerd",
+  "nav.support": "Voxli steunen",
 };

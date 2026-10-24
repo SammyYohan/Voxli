@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Voxli — Réglages",
-        "width": 780,
-        "height": 620,
-        "minWidth": 620,
-        "minHeight": 480,
+        "width": 900,
+        "height": 660,
+        "minWidth": 640,
+        "minHeight": 500,
         "visible": true,
         "resizable": true,
         "center": true

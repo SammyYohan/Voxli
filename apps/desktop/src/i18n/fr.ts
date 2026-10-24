@@ -235,4 +235,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "Installé, mais non activable dans ce build (SDK du moteur requis) — le fichier reste sur le disque.",
   "engines.fellFake": "Aucun modèle utilisable pour l'instant : le moteur de démonstration prend le relais — téléchargez un modèle whisper ci-dessous.",
   "models.introTop": "Sélectionnez la voix active : la LIGNE est le sélecteur — clic = activation (ou téléchargement si absente). L'écriture est immédiate, sans bouton de confirmation.",
+  "nav.home": "Accueil",
+  "nav.voice": "Voix",
+  "nav.keys": "Raccourcis",
+  "nav.vocab": "Vocabulaire",
+  "nav.history": "Historique",
+  "nav.advanced": "Avancé",
+  "nav.support": "Soutenir Voxli",
 };

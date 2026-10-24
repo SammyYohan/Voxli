@@ -211,4 +211,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "다운로드는 되었지만 이 빌드에서는 활성화할 수 없습니다 (엔진 SDK 필요) — 파일은 디스크에 유지됩니다.",
   "engines.fellFake": "지금은 사용 가능한 모델이 없습니다: 데모 엔진이 대신 동작합니다 — 아래에서 whisper 모델을 다운로드하세요.",
   "models.introTop": "활성 목소리 선택: 행 자체가 선택기입니다 — 클릭 = 활성화 (없으면 다운로드). 선택은 즉시 기록되며 확인 버튼이 없습니다.",
+  "nav.home": "홈",
+  "nav.voice": "음성",
+  "nav.keys": "단축키",
+  "nav.vocab": "어휘",
+  "nav.history": "기록",
+  "nav.advanced": "고급",
+  "nav.support": "Voxli 후원",
 };

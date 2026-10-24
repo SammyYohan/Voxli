@@ -21,13 +21,27 @@
     </script>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
-  <body>
+  <body data-page="home">
+    <div class="app">
+  <nav class="side" aria-label="Voxli">
+    <div class="brand"><img src="/logo.svg" alt="" width="28" height="28" /><span>Voxli</span></div>
+      <button type="button" class="nav on" data-nav="home" aria-current="page"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l7-6 7 6v8h-4v-5H7v5H3z"/></svg><span data-i18n="nav.home">Accueil</span></button>
+      <button type="button" class="nav" data-nav="voice"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3"/><path d="M4 9a6 6 0 0012 0M10 15v3"/></svg><span data-i18n="nav.voice">Voix</span></button>
+      <button type="button" class="nav" data-nav="keys"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="16" height="10" rx="2"/><path d="M5 9h1M9 9h2M14 9h1M6 12h8"/></svg><span data-i18n="nav.keys">Raccourcis</span></button>
+      <button type="button" class="nav" data-nav="vocab"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3h10a2 2 0 012 2v12H6a2 2 0 01-2-2zM4 15a2 2 0 012-2h10"/></svg><span data-i18n="nav.vocab">Vocabulaire</span></button>
+      <button type="button" class="nav" data-nav="history"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg><span data-i18n="nav.history">Historique</span></button>
+      <button type="button" class="nav" data-nav="advanced"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h14M3 14h14"/><circle cx="7" cy="6" r="2"/><circle cx="13" cy="14" r="2"/></svg><span data-i18n="nav.advanced">Avancé</span></button>
+    <div class="side-foot">
+      <span class="side-support" data-i18n="nav.support">Soutenir Voxli</span>
+      <span class="donate-chip">
+        <a id="link-donate-kofi" class="donate-link" href="https://ko-fi.com/sammyyohan" role="button" title="Ko-fi">Ko-fi</a>
+        <a id="link-donate-paypal" class="donate-link" href="https://paypal.me/sammyyohan" role="button" title="PayPal.me">PayPal.me</a>
+      </span>
+    </div>
+  </nav>
+  <main>
     <header>
-      <div class="hero-brand">
-        <img src="/logo.svg" alt="Voxli logo" width="38" height="38" style="border-radius: 8px;" />
-        <h1 style="margin: 0;">Voxli</h1>
-      </div>
-      <p class="muted tagline" data-i18n="app.tagline">
+      <p class="muted tagline" data-page="home" data-i18n="app.tagline">
         Dictée par la voix, 100&nbsp;% locale. Vos mots ne quittent jamais cette
         machine — sauf si vous le demandez explicitement.
       </p>
@@ -39,7 +53,7 @@
          NEVER during a dictation (the settings window is closed then),
          closes with one click, and the header-bar chip stays the
          permanent reminder. Cf. main.ts (counter `state://changed`). -->
-    <div id="donate-banner" class="donate-banner" hidden>
+    <div id="donate-banner" class="donate-banner" data-page="home" hidden>
       <p data-i18n="donate.bannerTitle">
         Voxli est gratuit, local et sans publicité. Vous pouvez soutenir son
         développement :
@@ -52,33 +66,25 @@
       </div>
     </div>
 
-    <!-- ================================================ Simple / Advanced -->
-    <div id="mode-bar">
+    <div id="mode-bar" data-page="advanced">
       <label>
         <input id="mode-avance" type="checkbox" />
         <span data-i18n="mode.advanced">Mode avancé — tous les réglages</span>
       </label>
-      <div class="mode-bar-right">
-        <!-- Donations: PERMANENT reminder at the top of the page (visible
-             without intruding: a discreet heart link, next to the theme). The periodic
-             banner remains the second chance to notice (milestone counter). -->
-        <span class="donate-chip">
-          <a id="link-donate-kofi" class="donate-link" href="https://ko-fi.com/sammyyohan" role="button" title="Ko-fi">❤ Ko-fi</a>
-          <a id="link-donate-paypal" class="donate-link" href="https://paypal.me/sammyyohan" role="button" title="PayPal.me">❤ PayPal.me</a>
-        </span>
-        <label class="mode-theme">
-          <span data-i18n="mode.theme">Thème</span>
-          <select id="ui-theme">
-            <option value="system" data-i18n="theme.system">celui du système</option>
-            <option value="light" data-i18n="theme.light">clair</option>
-            <option value="dark" data-i18n="theme.dark">sombre</option>
-          </select>
-        </label>
-      </div>
+    </div>
+    <div class="theme-bar" data-page="home">
+      <label class="mode-theme">
+        <span data-i18n="mode.theme">Thème</span>
+        <select id="ui-theme">
+          <option value="system" data-i18n="theme.system">celui du système</option>
+          <option value="light" data-i18n="theme.light">clair</option>
+          <option value="dark" data-i18n="theme.dark">sombre</option>
+        </select>
+      </label>
     </div>
 
     <!-- ================================================ One-click onboarding -->
-    <div id="onboarding-card" class="notice onboarding" hidden>
+    <div id="onboarding-card" class="notice onboarding" data-page="home" hidden>
       <div class="onboarding-header">
         <strong data-i18n="onboarding.title">🚀 Bienvenue sur Voxli !</strong>
         <span data-i18n="onboarding.intro">Prêt pour une dictée vocale instantanée, fluide et 100&nbsp;% locale ?</span>
@@ -92,7 +98,7 @@
     </div>
 
     <!-- ================================================== status + meter -->
-    <section>
+    <section data-page="home">
       <h2 data-i18n="state.section">État</h2>
       <p class="status">
         <span id="badge" class="badge">…</span>
@@ -108,7 +114,7 @@
     </section>
 
     <!-- ================================================== general -->
-    <section>
+    <section data-page="home">
       <h2 data-i18n="general.section">Général</h2>
       <div class="row">
         <label for="gen-ui-language" data-i18n="general.uiLanguageLabel">Langue de l'interface</label>
@@ -249,7 +255,7 @@
     </section>
 
     <!-- ================================================== hotkeys -->
-    <section>
+    <section data-page="keys">
       <h2 data-i18n="hk.section">Raccourcis &amp; déclenchement</h2>
       <p class="muted" data-i18n="hk.captureHint">
         Cliquez dans un champ puis tapez directement les touches du nouveau
@@ -284,7 +290,7 @@
     </section>
 
     <!-- ================================================== dictionary & vocabulary -->
-    <section id="sec-vocab">
+    <section id="sec-vocab" data-page="vocab">
       <h2 data-i18n="vocab.section">Dictionnaire &amp; Vocabulaire personnalisé</h2>
       <p class="muted" data-i18n="vocab.intro">
         Enseignez à Voxli vos acronymes, noms propres, entreprises ou jargon métier.
@@ -318,7 +324,7 @@
     </section>
 
     <!-- ================================================== audio -->
-    <section>
+    <section data-page="home">
       <h2 data-i18n="audio.section">Réglages audio</h2>
       <div class="row">
         <label for="audio-device" data-i18n="audio.deviceLabel">Microphone</label>
@@ -343,12 +349,12 @@
           <option value="high" data-i18n="audio.vadHigh">stricte — ignore le bruit</option>
         </select>
       </div>
-      <button id="btn-save-general" type="button" data-i18n="general.save">Enregistrer les réglages</button>
+      <button id="btn-save-general" type="button" class="btn-primary" data-i18n="general.save">Enregistrer les réglages</button>
       <span id="save-result" class="muted"></span>
     </section>
 
     <!-- ================================================== models -->
-    <section id="sec-modeles">
+    <section id="sec-modeles" data-page="voice">
       <h2 data-i18n="models.section">Voix (moteur de reconnaissance)</h2>
       <p class="muted" data-i18n-html="models.intro">
         Le téléchargement est <b>votre action explicite</b>, ici, et la
@@ -410,7 +416,7 @@
     </section>
 
     <!-- ================================================== profiles -->
-    <section class="advanced">
+    <section data-page="advanced">
       <h2 data-i18n="profiles.section">Profils &amp; dictionnaires</h2>
       <div id="profiles-lock" class="notice" hidden></div>
       <div class="row">
@@ -441,7 +447,7 @@
     </section>
 
     <!-- ================================================== history -->
-    <section>
+    <section data-page="history">
       <h2 data-i18n="history.section">Historique</h2>
       <div class="row">
         <label for="hist-enabled" data-i18n="history.keepLabel">Conserver les transcriptions</label>
@@ -477,7 +483,7 @@
     </section>
 
     <!-- ================================================== license -->
-    <section class="advanced">
+    <section data-page="advanced">
       <h2 data-i18n="license.section">Licence</h2>
       <p id="license-line">…</p>
       <ul id="license-features" class="muted"></ul>
@@ -491,12 +497,12 @@
     </section>
 
     <!-- ================================================== privacy -->
-    <p class="simple-only muted" data-i18n="privacy.simpleNote">
+    <p class="simple-only muted" data-page="home" data-i18n="privacy.simpleNote">
       Totalement local : rien ne quitte cette machine sans votre accord
       explicite. Les détails (consentements, lecture du contexte) sont dans le
       mode avancé.
     </p>
-    <section class="advanced">
+    <section data-page="advanced">
       <h2 data-i18n="privacy.section">Vie privée</h2>
       <div class="row">
         <label for="pv-strict" data-i18n="privacy.strictLabel">Mode local strict</label>
@@ -536,7 +542,7 @@
     </section>
 
     <!-- ================================================== diagnostics -->
-    <section class="advanced">
+    <section data-page="advanced">
       <h2 data-i18n="diag.section">Diagnostic &amp; données</h2>
       <button id="btn-export" data-i18n="diag.exportReport">Exporter le rapport de diagnostic</button>
       <span id="export-result" class="muted"></span>
@@ -554,6 +560,9 @@
       <code>%APPDATA%\Voxli\config.json</code>.
     </footer>
 
+    </main>
+  </div>
+    <script type="module" src="/src/nav.ts"></script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

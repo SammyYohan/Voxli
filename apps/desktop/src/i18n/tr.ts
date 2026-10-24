@@ -232,4 +232,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "İndirildi ancak bu derlemede etkinleştirilemez (motor SDK'sı gerekir) — dosya diskte kalır.",
   "engines.fellFake": "Şu anda kullanılabilir model yok: demo motor devralıyor — aşağıdan bir whisper modeli indirin.",
   "models.introTop": "Etkin sesiniz: SATIR seçicidir — tıklamak = etkinleştirme (yoksa indirme). Seçim anında yazılır, onay düğmesi yoktur.",
+  "nav.home": "Ana sayfa",
+  "nav.voice": "Ses",
+  "nav.keys": "Kısayollar",
+  "nav.vocab": "Sözlük",
+  "nav.history": "Geçmiş",
+  "nav.advanced": "Gelişmiş",
+  "nav.support": "Voxli'yi destekle",
 };

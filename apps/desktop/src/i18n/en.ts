@@ -236,4 +236,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "Downloaded, but not activatable in this build (engine SDK needed) — the file stays on disk.",
   "engines.fellFake": "No usable model right now: the demo engine took over — download a whisper model below.",
   "models.introTop": "Your active voice: the ROW is the selector — click to activate (or download if absent). The choice is written immediately, no confirm button.",
+  "nav.home": "Home",
+  "nav.voice": "Voice",
+  "nav.keys": "Shortcuts",
+  "nav.vocab": "Vocabulary",
+  "nav.history": "History",
+  "nav.advanced": "Advanced",
+  "nav.support": "Support Voxli",
 };

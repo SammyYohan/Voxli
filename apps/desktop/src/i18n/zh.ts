@@ -211,4 +211,11 @@ export const dict: Record<string, string> = {
   "models.noActivation": "已下载，但在此版本中无法启用（需要引擎 SDK）——文件保留在磁盘上。",
   "engines.fellFake": "当前没有可用模型：演示引擎临时接管——请在下方下载 whisper 模型。",
   "models.introTop": "选择您的启用嗓音：行即选择器——点击即启用（若未安装则开始下载）。所选即时写入生效，无需确认按钮。",
+  "nav.home": "主页",
+  "nav.voice": "语音",
+  "nav.keys": "快捷键",
+  "nav.vocab": "词汇",
+  "nav.history": "历史记录",
+  "nav.advanced": "高级",
+  "nav.support": "支持 Voxli",
 };
